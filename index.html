@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chittam Enterprises — Message Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark">Ledger &amp; Dispatch</div>
+      <div class="name" id="sbBusinessName">Chittam Enterprises</div>
+    </div>
+    <nav class="navlist" id="navlist">
+      <button class="navbtn" data-view="dashboard"><span class="ic">🏠</span> Dashboard</button>
+      <button class="navbtn" data-view="customers"><span class="ic">👥</span> Customers</button>
+      <button class="navbtn" data-view="products"><span class="ic">🏷️</span> Product Database</button>
+      <button class="navbtn" data-view="payment-updated"><span class="ic">💰</span> Payment Updated</button>
+      <button class="navbtn" data-view="balance-confirmation"><span class="ic">📋</span> Balance Confirmation</button>
+      <button class="navbtn" data-view="payment-reminder"><span class="ic">💳</span> Payment Reminder</button>
+      <button class="navbtn" data-view="dispatch-confirmation"><span class="ic">🚚</span> Dispatch Confirmation</button>
+      <button class="navbtn" data-view="stock-update"><span class="ic">📦</span> Stock Update</button>
+      <button class="navbtn" data-view="settings"><span class="ic">⚙️</span> Settings</button>
+    </nav>
+    <div class="sidebar-foot">Stored only on this device.<br>No server, no account.</div>
+  </aside>
+
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <section class="view" id="view-dashboard">
+      <div class="view-head">
+        <p class="eyebrow">Welcome</p>
+        <h1 class="title" id="dashGreeting">Good day</h1>
+        <p class="sub">Pick a template below, fill in the balances, and send it straight to WhatsApp. Everything is saved on this device only.</p>
+      </div>
+      <div class="welcome-card">
+        <div class="stampline">
+          <div class="seal">👥</div>
+          <div>
+            <div style="font-weight:600; font-size:15px;" id="custCountLine">0 customers on file</div>
+            <div style="font-size:12.5px; color:var(--ink-soft);">Add customers once — reuse them in every message.</div>
+          </div>
+        </div>
+      </div>
+      <div class="grid-tiles" id="dashTiles">
+        <button class="tile" data-view="payment-updated"><div class="ic">💰</div><div class="t">Payment Updated</div><div class="d">Confirm a payment received and show the new balance.</div></button>
+        <button class="tile" data-view="balance-confirmation"><div class="ic">📋</div><div class="t">Balance Confirmation</div><div class="d">Share today's outstanding for the customer to confirm.</div></button>
+        <button class="tile" data-view="payment-reminder"><div class="ic">💳</div><div class="t">Payment Reminder</div><div class="d">Outstanding by account, days pending, and how to pay.</div></button>
+        <button class="tile" data-view="dispatch-confirmation"><div class="ic">🚚</div><div class="t">Dispatch Confirmation</div><div class="d">Let a customer know their order is on the way.</div></button>
+        <button class="tile" data-view="stock-update"><div class="ic">📦</div><div class="t">Stock Update</div><div class="d">Announce newly available products and prices.</div></button>
+        <button class="tile" data-view="customers"><div class="ic">👥</div><div class="t">Manage Customers</div><div class="d">Add, edit or remove customers stored on this device.</div></button>
+        <button class="tile" data-view="products"><div class="ic">🏷️</div><div class="t">Product Database</div><div class="d">Manage products and prices used in Stock Update.</div></button>
+      </div>
+    </section>
+
+    <!-- CUSTOMERS -->
+    <section class="view" id="view-customers">
+      <div class="view-head">
+        <p class="eyebrow">Customer Master</p>
+        <h1 class="title">Customers</h1>
+        <p class="sub">Name and mobile number are used to fill and send every message.</p>
+      </div>
+      <div class="toolbar">
+        <input class="search-box" id="custSearch" type="text" placeholder="🔍 Search by name or mobile…">
+        <select class="search-box" id="custSort" style="max-width:190px;">
+          <option value="name-asc">Sort: Name (A–Z)</option>
+          <option value="name-desc">Sort: Name (Z–A)</option>
+        </select>
+        <button class="btn secondary" id="btnImportCustomers">⬆ Import from Tally JSON</button>
+        <input type="file" id="custImportFile" accept=".json,application/json" style="display:none">
+        <button class="btn ghost" id="btnFindDupCustomers">⚠ Find Duplicates</button>
+        <button class="btn" id="btnAddCustomer">+ Add Customer</button>
+      </div>
+      <div id="custTableWrap"></div>
+    </section>
+
+    <!-- PRODUCTS -->
+    <section class="view" id="view-products">
+      <div class="view-head">
+        <p class="eyebrow">Product Master</p>
+        <h1 class="title">Products</h1>
+        <p class="sub">Name and price are used to fill every Stock Update message.</p>
+      </div>
+      <div class="toolbar">
+        <input class="search-box" id="prodSearch" type="text" placeholder="🔍 Search by product or category…">
+        <select class="search-box" id="prodCategoryFilter" style="max-width:180px;">
+          <option value="">All Categories</option>
+        </select>
+        <select class="search-box" id="prodSort" style="max-width:190px;">
+          <option value="name-asc">Sort: Name (A–Z)</option>
+          <option value="name-desc">Sort: Name (Z–A)</option>
+          <option value="price-asc">Sort: Price (Low–High)</option>
+          <option value="price-desc">Sort: Price (High–Low)</option>
+          <option value="category-asc">Sort: Category (A–Z)</option>
+        </select>
+        <button class="btn secondary" id="btnImportStockDb">⬆ Import from Tally JSON</button>
+        <input type="file" id="stockDbImportFile" accept=".json,application/json" style="display:none">
+        <button class="btn ghost" id="btnFindDupProducts">⚠ Find Duplicates</button>
+        <button class="btn" id="btnAddProduct">+ Add Product</button>
+      </div>
+      <div id="prodTableWrap"></div>
+    </section>
+
+    <!-- PAYMENT UPDATED -->
+    <section class="view" id="view-payment-updated">
+      <div class="view-head">
+        <p class="eyebrow">Payment Updated</p>
+        <h1 class="title">Payment Updated</h1>
+        <p class="sub">Acknowledge a payment and share the updated outstanding balance.</p>
+      </div>
+      <div class="card">
+        <div class="field"><label>Customer</label><div class="picker" id="pu-picker"></div></div>
+        <div class="row2">
+          <div class="field"><label>Payment Mode</label><select id="pu-mode"></select></div>
+          <div class="field"><label>Date</label><input type="date" id="pu-date"></div>
+        </div>
+        <p style="font-size:12px; color:var(--ink-soft); margin:0 0 10px;">Enter an amount against either account, or both if the payment was split across the two.</p>
+        <div class="row2">
+          <div class="field"><label id="lbl-pu-eprev">Business Previous Balance (₹)</label><input type="number" id="pu-eprev" placeholder="0"></div>
+          <div class="field"><label id="lbl-pu-eamt">Business Amount Received (₹)</label><input type="number" id="pu-eamt" placeholder="0"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Cash Previous Balance (₹)</label><input type="number" id="pu-cprev" placeholder="0"></div>
+          <div class="field"><label>Cash Amount Received (₹)</label><input type="number" id="pu-camt" placeholder="0"></div>
+        </div>
+        <div class="total-box"><span class="lab" id="lbl-pu-efinal">Business Final Balance</span><span class="val" id="pu-efinal">₹0</span></div>
+        <div class="total-box"><span class="lab">Cash Final Balance</span><span class="val" id="pu-cfinal">₹0</span></div>
+        <div class="total-box"><span class="lab">Total Outstanding</span><span class="val" id="pu-total">₹0</span></div>
+        <div class="btnrow">
+          <button class="btn" data-generate="payment-updated">Generate</button>
+          <button class="btn secondary" data-copy="pu-preview">Copy <span class="copied-flag" id="pu-copied">Copied</span></button>
+          <button class="btn wa" data-wa="pu-picker" data-wa-src="pu-preview">📲 Copy &amp; Open WhatsApp</button>
+        </div>
+        <div class="preview-wrap">
+          <div class="preview-head"><span class="stamp-badge">Payment</span></div>
+          <div class="preview" id="pu-preview"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BALANCE CONFIRMATION -->
+    <section class="view" id="view-balance-confirmation">
+      <div class="view-head">
+        <p class="eyebrow">Balance Confirmation</p>
+        <h1 class="title">Balance Confirmation</h1>
+        <p class="sub">Share the current balance for the customer to confirm against their own books.</p>
+      </div>
+      <div class="card">
+        <div class="field"><label>Customer</label><div class="picker" id="bc-picker"></div></div>
+        <div class="row2">
+          <div class="field"><label>For Month/Year</label><input type="month" id="bc-month"></div>
+          <div class="field"><label>Date</label><input type="date" id="bc-date"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label id="lbl-bc-eb">Enterprise Balance (₹)</label><input type="number" id="bc-eb" placeholder="0"></div>
+          <div class="field"><label>Cash Balance (₹)</label><input type="number" id="bc-cb" placeholder="0"></div>
+        </div>
+        <div class="total-box"><span class="lab">Total Outstanding</span><span class="val" id="bc-total">₹0</span></div>
+        <div class="btnrow">
+          <button class="btn" data-generate="balance-confirmation">Generate</button>
+          <button class="btn secondary" data-copy="bc-preview">Copy <span class="copied-flag" id="bc-copied">Copied</span></button>
+          <button class="btn wa" data-wa="bc-picker" data-wa-src="bc-preview">📲 Copy &amp; Open WhatsApp</button>
+        </div>
+        <div class="preview-wrap">
+          <div class="preview-head"><span class="stamp-badge">Balance</span></div>
+          <div class="preview" id="bc-preview"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PAYMENT REMINDER (combined with Outstanding) -->
+    <section class="view" id="view-payment-reminder">
+      <div class="view-head">
+        <p class="eyebrow">Payment Reminder</p>
+        <h1 class="title">Payment Reminder</h1>
+        <p class="sub">Outstanding balance, days pending, and your payment details — all in one message.</p>
+      </div>
+      <div class="card">
+        <div class="field"><label>Customer</label><div class="picker" id="pr-picker"></div></div>
+        <div class="field" style="max-width:220px;"><label>Date</label><input type="date" id="pr-date"></div>
+        <div class="row2">
+          <div class="field"><label id="lbl-pr-eb">Enterprise Outstanding (₹)</label><input type="number" id="pr-eb" placeholder="0"></div>
+          <div class="field"><label id="lbl-pr-ed">Enterprise Pending (days)</label><input type="number" id="pr-ed" placeholder="0"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Cash Outstanding (₹)</label><input type="number" id="pr-cb" placeholder="0"></div>
+          <div class="field"><label>Cash Pending (days)</label><input type="number" id="pr-cd" placeholder="0"></div>
+        </div>
+        <div class="total-box"><span class="lab">Total Outstanding</span><span class="val" id="pr-total">₹0</span></div>
+        <div class="btnrow">
+          <button class="btn" data-generate="payment-reminder">Generate</button>
+          <button class="btn secondary" data-copy="pr-preview">Copy <span class="copied-flag" id="pr-copied">Copied</span></button>
+          <button class="btn wa" data-wa="pr-picker" data-wa-src="pr-preview">📲 Copy &amp; Open WhatsApp</button>
+        </div>
+        <div class="preview-wrap">
+          <div class="preview-head"><span class="stamp-badge">Reminder</span></div>
+          <div class="preview" id="pr-preview"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DISPATCH CONFIRMATION -->
+    <section class="view" id="view-dispatch-confirmation">
+      <div class="view-head">
+        <p class="eyebrow">Dispatch Confirmation</p>
+        <h1 class="title">Dispatch Confirmation</h1>
+        <p class="sub">Let a customer know their order has left the warehouse.</p>
+      </div>
+      <div class="card">
+        <div class="field"><label>Customer</label><div class="picker" id="dc-picker"></div></div>
+        <div class="row3">
+          <div class="field"><label>Date</label><input type="date" id="dc-date"></div>
+          <div class="field"><label>Invoice No.(s)</label><input type="text" id="dc-invoice" placeholder="e.g. RP/12-2026/27, HR/24-2026/27"></div>
+          <div class="field"><label>Transport</label><input type="text" id="dc-transport" placeholder="e.g. VRL Logistics"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>No. of Boxes</label><input type="number" id="dc-boxes" placeholder="0"></div>
+          <div class="field"><label>No. of Items</label><input type="text" id="dc-items" placeholder="e.g. 17pcs"></div>
+        </div>
+        <div class="btnrow">
+          <button class="btn" data-generate="dispatch-confirmation">Generate</button>
+          <button class="btn secondary" data-copy="dc-preview">Copy <span class="copied-flag" id="dc-copied">Copied</span></button>
+          <button class="btn wa" data-wa="dc-picker" data-wa-src="dc-preview">📲 Copy &amp; Open WhatsApp</button>
+        </div>
+        <div class="preview-wrap">
+          <div class="preview-head"><span class="stamp-badge">Dispatch</span></div>
+          <div class="preview" id="dc-preview"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STOCK UPDATE -->
+    <section class="view" id="view-stock-update">
+      <div class="view-head">
+        <p class="eyebrow">Stock Update</p>
+        <h1 class="title">Stock Availability Update</h1>
+        <p class="sub">Announce newly available products with their prices.</p>
+      </div>
+      <div class="card">
+        <div class="field"><label>Customer</label><div class="picker" id="su-picker"></div></div>
+        <div class="field">
+          <label>Add Products from Database</label>
+          <div class="picker" id="su-db-picker"></div>
+        </div>
+        <div class="field">
+          <label>Message Items</label>
+          <div id="su-products"></div>
+          <button class="btn ghost" id="su-add-product" type="button">+ Add One-Off Item</button>
+        </div>
+        <div class="btnrow">
+          <button class="btn" data-generate="stock-update">Generate</button>
+          <button class="btn secondary" data-copy="su-preview">Copy <span class="copied-flag" id="su-copied">Copied</span></button>
+          <button class="btn wa" data-wa="su-picker" data-wa-src="su-preview">📲 Copy &amp; Open WhatsApp</button>
+        </div>
+        <div class="preview-wrap">
+          <div class="preview-head"><span class="stamp-badge">Stock</span></div>
+          <div class="preview" id="su-preview"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="view" id="view-settings">
+      <div class="view-head">
+        <p class="eyebrow">Settings</p>
+        <h1 class="title">Business Details</h1>
+        <p class="sub">Set these once — every message will use them automatically.</p>
+      </div>
+      <div class="card">
+        <div class="row2">
+          <div class="field"><label>Business Name</label><input type="text" id="st-name"></div>
+          <div class="field"><label>Address</label><input type="text" id="st-address"></div>
+        </div>
+        <div class="field">
+          <label>UPI IDs</label>
+          <div id="st-upi-list"></div>
+          <button class="btn ghost" id="st-add-upi" type="button">+ Add UPI ID</button>
+        </div>
+        <div class="field">
+          <label>Bank Accounts</label>
+          <div id="st-bank-list"></div>
+          <button class="btn ghost" id="st-add-bank" type="button">+ Add Bank Account</button>
+        </div>
+        <div class="field">
+          <label>Default Payment Modes</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="st-mode-input" placeholder="e.g. UPI — press Enter to add" style="flex:1;">
+          </div>
+          <div class="modes-list" id="st-modes-list"></div>
+        </div>
+        <div class="btnrow">
+          <button class="btn" id="btnSaveSettings">Save Details</button>
+          <span class="save-flag" id="settingsSaved">Saved</span>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="view-head" style="margin-bottom:16px;">
+          <p class="eyebrow">Backup &amp; Restore</p>
+          <h1 class="title" style="font-size:19px;">Keep a Safe Copy</h1>
+          <p class="sub">Everything here lives only in this browser. Export a backup after adding customers or products — especially after a Tally import — so you never lose it if you switch devices or clear browser data.</p>
+        </div>
+        <div class="btnrow">
+          <button class="btn" id="btnExportBackup">⬇ Export Backup</button>
+          <button class="btn secondary" id="btnRestoreBackup">⬆ Restore from Backup</button>
+          <input type="file" id="restoreBackupFile" accept=".json,application/json" style="display:none">
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Add/Edit customer modal -->
+<div class="modal-overlay" id="custModalOverlay">
+  <div class="modal">
+    <h3 id="custModalTitle">Add Customer</h3>
+    <div class="field"><label>Customer Name</label><input type="text" id="cm-name"></div>
+    <div class="field"><label>Mobile Number</label><input type="tel" id="cm-mobile" placeholder="10-digit mobile"></div>
+    <div class="btnrow">
+      <button class="btn" id="cm-save">Save</button>
+      <button class="btn ghost" id="cm-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete confirm modal -->
+<div class="modal-overlay" id="delModalOverlay">
+  <div class="modal">
+    <h3>Remove Customer?</h3>
+    <p style="font-size:14px; color:var(--ink-soft); margin-top:-10px;" id="delModalText">This can't be undone.</p>
+    <div class="btnrow">
+      <button class="btn danger" id="del-confirm">Remove</button>
+      <button class="btn ghost" id="del-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit product modal -->
+<div class="modal-overlay" id="prodModalOverlay">
+  <div class="modal">
+    <h3 id="prodModalTitle">Add Product</h3>
+    <div class="field"><label>Product Name</label><input type="text" id="pm-name"></div>
+    <div class="field"><label>Category (optional)</label><input type="text" id="pm-category" placeholder="e.g. Accessories, Wallmount"></div>
+    <div class="field"><label>Price (₹)</label><input type="number" id="pm-price" placeholder="0"></div>
+    <div class="btnrow">
+      <button class="btn" id="pm-save">Save</button>
+      <button class="btn ghost" id="pm-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete product confirm modal -->
+<div class="modal-overlay" id="prodDelModalOverlay">
+  <div class="modal">
+    <h3>Remove Product?</h3>
+    <p style="font-size:14px; color:var(--ink-soft); margin-top:-10px;" id="prodDelModalText">This can't be undone.</p>
+    <div class="btnrow">
+      <button class="btn danger" id="proddel-confirm">Remove</button>
+      <button class="btn ghost" id="proddel-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Duplicate finder modal (shared by Customers and Products) -->
+<div class="modal-overlay" id="dupModalOverlay">
+  <div class="modal" style="max-width:480px; max-height:72vh; overflow-y:auto;">
+    <h3 id="dupModalTitle">Duplicates</h3>
+    <div id="dupModalBody"></div>
+    <div class="btnrow">
+      <button class="btn ghost" id="dupModalClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/01-core.js"></script>
+<script src="js/02-nav.js"></script>
+<script src="js/03-registry.js"></script>
+<script src="js/04-customers.js"></script>
+<script src="js/05-products.js"></script>
+<script src="js/06-duplicates.js"></script>
+<script src="js/07-settings.js"></script>
+<script src="js/08-payment-updated.js"></script>
+<script src="js/09-balance-confirmation.js"></script>
+<script src="js/10-payment-reminder.js"></script>
+<script src="js/11-dispatch-confirmation.js"></script>
+<script src="js/12-stock-update.js"></script>
+<script src="js/13-init.js"></script>
+</body>
+</html>
