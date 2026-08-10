@@ -192,7 +192,10 @@
       </div>
       <div class="card">
         <div class="field"><label>Customer</label><div class="picker" id="pr-picker"></div></div>
-        <div class="field" style="max-width:220px;"><label>Date</label><input type="date" id="pr-date"></div>
+        <div class="row2">
+          <div class="field" style="max-width:220px;"><label>Date</label><input type="date" id="pr-date"></div>
+          <div class="field" style="max-width:220px;"><label>Upcoming Due Date (optional)</label><input type="date" id="pr-duedate"></div>
+        </div>
         <div class="row2">
           <div class="field"><label id="lbl-pr-eb">Enterprise Outstanding (₹)</label><input type="number" id="pr-eb" placeholder="0"></div>
           <div class="field"><label id="lbl-pr-ed">Enterprise Pending (days)</label><input type="number" id="pr-ed" placeholder="0"></div>
@@ -202,6 +205,11 @@
           <div class="field"><label>Cash Pending (days)</label><input type="number" id="pr-cd" placeholder="0"></div>
         </div>
         <div class="total-box"><span class="lab">Total Outstanding</span><span class="val" id="pr-total">₹0</span></div>
+        <div class="field">
+          <label>Invoices with individual due dates (optional)</label>
+          <div id="pr-invoices"></div>
+          <button class="btn ghost" id="pr-add-invoice" type="button">+ Add Invoice</button>
+        </div>
         <div class="btnrow">
           <button class="btn" data-generate="payment-reminder">Generate</button>
           <button class="btn secondary" data-copy="pr-preview">Copy <span class="copied-flag" id="pr-copied">Copied</span></button>

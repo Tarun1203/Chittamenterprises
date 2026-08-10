@@ -376,6 +376,32 @@
   .product-row .row-del:hover{ border-color:var(--stamp); color:var(--stamp); }
   @media(max-width:560px){ .product-row{ grid-template-columns:1fr 90px 34px; } }
 
+  .invoice-row{
+    display:grid;
+    grid-template-columns:1fr 100px 130px 120px 34px;
+    gap:10px;
+    align-items:center;
+    margin-bottom:10px;
+  }
+  .invoice-row input, .invoice-row select{
+    border:1.5px solid var(--rule);
+    border-radius:6px;
+    background:var(--white);
+    padding:8px 10px;
+    font-size:14px;
+    color:var(--ink);
+    outline:none;
+    width:100%;
+  }
+  .invoice-row input:focus, .invoice-row select:focus{ border-color:var(--stamp); }
+  .invoice-row .row-del{
+    width:34px; height:34px;
+    border:1.5px solid var(--rule); border-radius:6px; background:var(--white);
+    color:var(--ink-soft); font-size:13px; display:flex; align-items:center; justify-content:center;
+  }
+  .invoice-row .row-del:hover{ border-color:var(--stamp); color:var(--stamp); }
+  @media(max-width:720px){ .invoice-row{ grid-template-columns:1fr 1fr; } .invoice-row .row-del{ grid-column:2/3; justify-self:end; } }
+
   .upi-row{
     display:grid;
     grid-template-columns:1fr 1fr 80px 34px;
