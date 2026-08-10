@@ -75,6 +75,15 @@
     saveCustomers(existing);
     return {added: added, updated: updated, skippedBank: skippedBank, total: rows.length};
   }
+  function importLedgerObj(obj){
+    var rows = obj.ledgercontactdetails && obj.ledgercontactdetails.ledgercontactdetails;
+    if(!rows || !rows.length){ throw new Error('empty'); }
+    var result = importCustomersFromTally(rows);
+    renderCustomerTable();
+    refreshAllPickers();
+    showToast('Imported ' + result.added + ' new, updated ' + result.updated + ' (skipped ' + result.skippedBank + ' bank ledgers).');
+  }
+
   document.getElementById('btnImportCustomers').addEventListener('click', function(){
     document.getElementById('custImportFile').click();
   });
@@ -85,19 +94,38 @@
     reader.onload = function(ev){
       try{
         var text = decodeFileText(ev.target.result);
-        var obj = JSON.parse(text);
-        var rows = obj.ledgercontactdetails && obj.ledgercontactdetails.ledgercontactdetails;
-        if(!rows || !rows.length){ throw new Error('empty'); }
-        var result = importCustomersFromTally(rows);
-        renderCustomerTable();
-        refreshAllPickers();
-        showToast('Imported ' + result.added + ' new, updated ' + result.updated + ' (skipped ' + result.skippedBank + ' bank ledgers).');
+        importLedgerObj(JSON.parse(text));
       }catch(err){
         showToast("Couldn't read that file — make sure it's a Tally ledger contacts JSON export.");
       }
       e.target.value = '';
     };
     reader.readAsArrayBuffer(file);
+  });
+
+  /* -- import from a GitHub raw JSON URL -- */
+  function toGithubRawUrlCust(url){
+    var m = url.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/(.+)$/);
+    if(m){ return 'https://raw.githubusercontent.com/' + m[1] + '/' + m[2] + '/' + m[3]; }
+    return url;
+  }
+  document.getElementById('btnImportCustomersGithub').addEventListener('click', function(){
+    var raw = document.getElementById('custGithubUrl').value.trim();
+    if(!raw){ showToast('Paste a GitHub raw JSON URL first.'); return; }
+    var url = toGithubRawUrlCust(raw);
+    showToast('Fetching…');
+    fetch(url)
+      .then(function(res){
+        if(!res.ok){ throw new Error('HTTP ' + res.status); }
+        return res.arrayBuffer();
+      })
+      .then(function(buf){
+        var text = decodeFileText(buf);
+        importLedgerObj(JSON.parse(text));
+      })
+      .catch(function(err){
+        showToast("Couldn't fetch or read that URL — make sure it's a public raw JSON link.");
+      });
   });
 
   document.getElementById('btnAddCustomer').addEventListener('click', function(){

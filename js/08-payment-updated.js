@@ -55,15 +55,16 @@ document.getElementById('pu-date').value = todayISO();
         "Previous Balance: " + inr(eprev) + "\n" +
         "Amount Received: " + inr(eamt) + "\n" +
         "*Final Balance: " + inr(efinal) + "*\n\n";
+    }else{
+      msg += name + " A/C: " + inr(efinal) + "\n";
     }
     if(camt > 0){
       msg += "📊 *Cash Ledger*\n" +
         "Previous Balance: " + inr(cprev) + "\n" +
         "Amount Received: " + inr(camt) + "\n" +
         "*Final Balance: " + inr(cfinal) + "*\n\n";
-    }
-    if(eamt === 0 && camt === 0){
-      msg += name + " A/C: " + inr(efinal) + "\n" + "Cash A/C: " + inr(cfinal) + "\n\n";
+    }else{
+      msg += "Cash A/C: " + inr(cfinal) + "\n\n";
     }
 
     msg += "*Total Outstanding: " + inr(total) + "*\n\n" +

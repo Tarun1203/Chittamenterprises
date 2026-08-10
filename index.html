@@ -78,6 +78,10 @@
         <button class="btn ghost" id="btnFindDupCustomers">⚠ Find Duplicates</button>
         <button class="btn" id="btnAddCustomer">+ Add Customer</button>
       </div>
+      <div class="toolbar" style="margin-top:-8px;">
+        <input class="search-box" id="custGithubUrl" type="text" placeholder="or paste a GitHub raw JSON URL (raw.githubusercontent.com/…)" style="flex:1;">
+        <button class="btn ghost" id="btnImportCustomersGithub">⬇ Fetch &amp; Import</button>
+      </div>
       <div id="custTableWrap"></div>
     </section>
 
@@ -104,6 +108,10 @@
         <input type="file" id="stockDbImportFile" accept=".json,application/json" style="display:none">
         <button class="btn ghost" id="btnFindDupProducts">⚠ Find Duplicates</button>
         <button class="btn" id="btnAddProduct">+ Add Product</button>
+      </div>
+      <div class="toolbar" style="margin-top:-8px;">
+        <input class="search-box" id="prodGithubUrl" type="text" placeholder="or paste a GitHub raw JSON URL (raw.githubusercontent.com/…)" style="flex:1;">
+        <button class="btn ghost" id="btnImportStockGithub">⬇ Fetch &amp; Import</button>
       </div>
       <div id="prodTableWrap"></div>
     </section>
@@ -311,6 +319,20 @@
           <button class="btn" id="btnExportBackup">⬇ Export Backup</button>
           <button class="btn secondary" id="btnRestoreBackup">⬆ Restore from Backup</button>
           <input type="file" id="restoreBackupFile" accept=".json,application/json" style="display:none">
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="view-head" style="margin-bottom:16px;">
+          <p class="eyebrow">Cloud Sync (optional)</p>
+          <h1 class="title" style="font-size:19px;">Share Data Across Devices</h1>
+          <p class="sub">Point this at a Google Sheet (set up once — see the included setup guide) to move customers, products, and settings between your phone and laptop. Pull replaces what's on this device with the Sheet's data; Push replaces the Sheet's data with what's on this device.</p>
+        </div>
+        <div class="field"><label>Google Sheet Web App URL</label><input type="text" id="cloud-url" placeholder="https://script.google.com/macros/s/…/exec"></div>
+        <div class="btnrow">
+          <button class="btn" id="btnCloudPush">☁ Push to Sheet</button>
+          <button class="btn secondary" id="btnCloudPull">☁ Pull from Sheet</button>
+          <span class="save-flag" id="cloudSyncStatus"></span>
         </div>
       </div>
     </section>

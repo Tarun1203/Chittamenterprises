@@ -136,6 +136,38 @@
     });
     return items;
   }
+  function importStockObj(obj){
+    var lines = obj.dspaccbody && obj.dspaccbody.dspaccline;
+    if(!lines || !lines.length){ throw new Error('empty'); }
+    var flat = flattenStockLines(lines);
+    var usable = flat.filter(function(it){ return it.name && it.name.trim(); });
+    if(usable.length === 0){ showToast('No named items found in that file.'); return; }
+    var existing = getProducts();
+    var byNameLower = {};
+    existing.forEach(function(p){ byNameLower[p.name.trim().toLowerCase()] = p; });
+    var added = 0, updated = 0, noPriceCount = 0;
+    usable.forEach(function(it){
+      var key = it.name.trim().toLowerCase();
+      var hasPrice = it.rate && parseFloat(it.rate) > 0;
+      var price = hasPrice ? parseFloat(it.rate) : 0;
+      if(!hasPrice) noPriceCount++;
+      var match = byNameLower[key];
+      if(match){
+        if(hasPrice && match.price !== price){ match.price = price; updated++; }
+        if(it.category && !match.category){ match.category = it.category; }
+      }else{
+        var p = {id: uid(), name: it.name, category: it.category || '', price: price};
+        existing.push(p);
+        byNameLower[key] = p;
+        added++;
+      }
+    });
+    saveProducts(existing);
+    renderProductTable();
+    refreshSuDbPicker();
+    showToast('Imported ' + added + ' new, updated ' + updated + ' prices' + (noPriceCount ? ' (' + noPriceCount + ' had no price — set to ₹0, edit as needed)' : '') + '.');
+  }
+
   document.getElementById('btnImportStockDb').addEventListener('click', function(){
     document.getElementById('stockDbImportFile').click();
   });
@@ -146,41 +178,38 @@
     reader.onload = function(ev){
       try{
         var text = decodeFileText(ev.target.result);
-        var obj = JSON.parse(text);
-        var lines = obj.dspaccbody && obj.dspaccbody.dspaccline;
-        if(!lines || !lines.length){ throw new Error('empty'); }
-        var flat = flattenStockLines(lines);
-        var usable = flat.filter(function(it){ return it.name && it.name.trim(); });
-        if(usable.length === 0){ showToast('No named items found in that file.'); return; }
-        var existing = getProducts();
-        var byNameLower = {};
-        existing.forEach(function(p){ byNameLower[p.name.trim().toLowerCase()] = p; });
-        var added = 0, updated = 0, noPriceCount = 0;
-        usable.forEach(function(it){
-          var key = it.name.trim().toLowerCase();
-          var hasPrice = it.rate && parseFloat(it.rate) > 0;
-          var price = hasPrice ? parseFloat(it.rate) : 0;
-          if(!hasPrice) noPriceCount++;
-          var match = byNameLower[key];
-          if(match){
-            if(hasPrice && match.price !== price){ match.price = price; updated++; }
-            if(it.category && !match.category){ match.category = it.category; }
-          }else{
-            var p = {id: uid(), name: it.name, category: it.category || '', price: price};
-            existing.push(p);
-            byNameLower[key] = p;
-            added++;
-          }
-        });
-        saveProducts(existing);
-        renderProductTable();
-        refreshSuDbPicker();
-        showToast('Imported ' + added + ' new, updated ' + updated + ' prices' + (noPriceCount ? ' (' + noPriceCount + ' had no price — set to ₹0, edit as needed)' : '') + '.');
+        importStockObj(JSON.parse(text));
       }catch(err){
         showToast("Couldn't read that file — make sure it's a Tally stock summary JSON export.");
       }
       e.target.value = '';
     };
     reader.readAsArrayBuffer(file);
+  });
+
+  /* -- import from a GitHub raw JSON URL -- */
+  function toGithubRawUrl(url){
+    // Convert a normal "github.com/.../blob/..." link into its raw form automatically.
+    var m = url.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/(.+)$/);
+    if(m){ return 'https://raw.githubusercontent.com/' + m[1] + '/' + m[2] + '/' + m[3]; }
+    return url;
+  }
+  document.getElementById('btnImportStockGithub').addEventListener('click', function(){
+    var raw = document.getElementById('prodGithubUrl').value.trim();
+    if(!raw){ showToast('Paste a GitHub raw JSON URL first.'); return; }
+    var url = toGithubRawUrl(raw);
+    showToast('Fetching…');
+    fetch(url)
+      .then(function(res){
+        if(!res.ok){ throw new Error('HTTP ' + res.status); }
+        return res.arrayBuffer();
+      })
+      .then(function(buf){
+        var text = decodeFileText(buf);
+        importStockObj(JSON.parse(text));
+      })
+      .catch(function(err){
+        showToast("Couldn't fetch or read that URL — make sure it's a public raw JSON link.");
+      });
   });
 
