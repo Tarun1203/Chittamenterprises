@@ -46,26 +46,23 @@ document.getElementById('pu-date').value = todayISO();
       creditLine = "credited to your *" + name + "* account";
     }
 
+    function ledgerBlock(label, prev, amt, finalBal){
+      if(amt > 0){
+        return "📊 *" + label + " Ledger*\n" +
+          "Previous Balance: " + inr(prev) + "\n" +
+          "Amount Received: " + inr(amt) + "\n" +
+          "*Final Balance: " + inr(finalBal) + "*\n\n";
+      }
+      return "📊 *" + label + " Ledger*\n" +
+        "*Balance: " + inr(finalBal) + "*\n\n";
+    }
+
     var msg = "✅ *Payment Received – " + name + "*\n\n" +
       "Dear " + c.name + ",\n\n" +
       "We have received your payment of " + inr(totalReceived) + " via " + mode + " on " + date + ", " + creditLine + ". Thank you.\n\n";
 
-    if(eamt > 0){
-      msg += "📊 *" + name + " Ledger*\n" +
-        "Previous Balance: " + inr(eprev) + "\n" +
-        "Amount Received: " + inr(eamt) + "\n" +
-        "*Final Balance: " + inr(efinal) + "*\n\n";
-    }else{
-      msg += name + " A/C: " + inr(efinal) + "\n";
-    }
-    if(camt > 0){
-      msg += "📊 *Cash Ledger*\n" +
-        "Previous Balance: " + inr(cprev) + "\n" +
-        "Amount Received: " + inr(camt) + "\n" +
-        "*Final Balance: " + inr(cfinal) + "*\n\n";
-    }else{
-      msg += "Cash A/C: " + inr(cfinal) + "\n\n";
-    }
+    msg += ledgerBlock(name, eprev, eamt, efinal);
+    msg += ledgerBlock('Cash', cprev, camt, cfinal);
 
     msg += "*Total Outstanding: " + inr(total) + "*\n\n" +
       "Regards,\n" + name + (s.address ? "\n" + s.address : "");
