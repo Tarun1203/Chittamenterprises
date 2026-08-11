@@ -19,13 +19,14 @@ document.getElementById('pr-date').value = todayISO();
     var label = days + " Day" + (days === 1 ? "" : "s");
     var years = Math.floor(days/365);
     if(years >= 1) label += " (" + years + " Year" + (years > 1 ? "s" : "") + ")";
+    if(days > 30) label += " 🔴";
     return label;
   }
 
   /* -- invoice rows with individual due dates -- */
   var prInvoiceRows = [];
   var prInvoiceSeq = 0;
-  function prAddInvoiceRow(invoiceNo, amount, dueDate, account){
+  function prAddInvoiceRow(invoiceNo, amount, billDate, dueDate, account){
     var id = 'inv' + (prInvoiceSeq++);
     prInvoiceRows.push(id);
     var wrap = document.getElementById('pr-invoices');
@@ -35,8 +36,9 @@ document.getElementById('pr-date').value = todayISO();
     row.dataset.rowId = id;
     row.innerHTML =
       '<input type="text" class="inv-no" placeholder="Invoice No." value="' + escapeHtml(invoiceNo||'') + '">' +
-      '<input type="number" class="inv-amt" placeholder="Amount (₹)" value="' + (amount !== undefined && amount !== null ? amount : '') + '">' +
+      '<input type="date" class="inv-bill-date" value="' + (billDate || '') + '">' +
       '<input type="date" class="inv-due" value="' + (dueDate || '') + '">' +
+      '<input type="number" class="inv-amt" placeholder="Amount (₹)" value="' + (amount !== undefined && amount !== null ? amount : '') + '">' +
       '<select class="inv-account">' +
         '<option value="business"' + (account !== 'cash' ? ' selected' : '') + '>' + escapeHtml(name) + '</option>' +
         '<option value="cash"' + (account === 'cash' ? ' selected' : '') + '>Cash</option>' +
@@ -55,9 +57,22 @@ document.getElementById('pr-date').value = todayISO();
     var today = new Date(todayISO() + 'T00:00:00');
     var due = new Date(dueIso + 'T00:00:00');
     var diffDays = Math.round((due - today) / 86400000);
-    if(diffDays < 0) return '⚠️ Overdue by ' + Math.abs(diffDays) + ' day' + (Math.abs(diffDays) === 1 ? '' : 's');
+    if(diffDays < -30) return '🔴 Severely Overdue by ' + Math.abs(diffDays) + ' days';
+    if(diffDays < 0)   return '⚠️ Overdue by ' + Math.abs(diffDays) + ' day' + (Math.abs(diffDays) === 1 ? '' : 's');
     if(diffDays === 0) return '📌 Due today';
     return '🕒 Due in ' + diffDays + ' day' + (diffDays === 1 ? '' : 's');
+  }
+
+  function worstOverdueDays(invoices){
+    var worst = 0;
+    var today = new Date(todayISO() + 'T00:00:00');
+    invoices.forEach(function(inv){
+      if(!inv.due) return;
+      var due = new Date(inv.due + 'T00:00:00');
+      var overdue = Math.round((today - due) / 86400000);
+      if(overdue > worst) worst = overdue;
+    });
+    return worst;
   }
 
   function generatePaymentReminder(){
@@ -74,12 +89,14 @@ document.getElementById('pr-date').value = todayISO();
 
     var invoiceRows = document.querySelectorAll('#pr-invoices .invoice-row');
     var invoices = [];
+    var urgencyBlock = '';
     invoiceRows.forEach(function(row){
       var no = row.querySelector('.inv-no').value.trim();
       var amt = Number(row.querySelector('.inv-amt').value)||0;
+      var billDate = row.querySelector('.inv-bill-date').value;
       var due = row.querySelector('.inv-due').value;
       var account = row.querySelector('.inv-account').value;
-      if(no || due || amt){ invoices.push({no: no, amt: amt, due: due, account: account}); }
+      if(no || due || amt || billDate){ invoices.push({no: no, amt: amt, billDate: billDate, due: due, account: account}); }
     });
     var invoiceBlock = '';
     if(invoices.length){
@@ -95,6 +112,7 @@ document.getElementById('pr-date').value = todayISO();
         g.items.forEach(function(inv){
           var parts = [];
           if(inv.amt) parts.push(inr(inv.amt));
+          if(inv.billDate) parts.push('Bill ' + formatDateForMsg(inv.billDate));
           if(inv.due){
             parts.push('Due ' + formatDateForMsg(inv.due) + ' (' + invoiceStatus(inv.due) + ')');
           }
@@ -107,6 +125,20 @@ document.getElementById('pr-date').value = todayISO();
     var clearLine = dueDate
       ? ("Kindly clear the payment by *" + dueDate + "*.")
       : "Kindly clear the payment at the earliest.";
+
+    var worst = worstOverdueDays(invoices);
+    var urgencyBlock = '';
+    if(worst >= 30){
+      urgencyBlock =
+        "🚨 *URGENT — Immediate Action Required*\n" +
+        "Your account has invoices that are *" + worst + " days overdue*. " +
+        "This is seriously affecting our business operations. " +
+        "Failure to clear the dues immediately may result in *suspension of supply* and *legal recovery action*.\n\n" +
+        "We request you to make full payment *today* or contact us immediately to discuss a resolution.\n\n";
+      clearLine = "⛔ *Please clear all outstanding dues immediately.*";
+    } else if(worst > 0){
+      clearLine = "Kindly clear the overdue amount at the earliest to avoid disruption in supply.";
+    }
     var msg = "💳 *Payment Reminder*\n" +
       "*Namaste Anna/Sir* 🙏\n" +
       "As per our records, the following amount is pending as on *" + date + "*.\n\n" +
@@ -118,7 +150,8 @@ document.getElementById('pr-date').value = todayISO();
       "📅 *Pending:* *" + pendingDaysLabel(cd) + "*\n\n" +
       "🔹 *Total Outstanding:* " + inr(total) + "\n\n" +
       invoiceBlock +
-      clearLine + " We are currently placing orders for the upcoming season, and your timely payment will help us ensure uninterrupted supply and better service.\n\n";
+      urgencyBlock +
+      clearLine + (worst >= 30 ? "\n\n" : " We are currently placing orders for the upcoming season, and your timely payment will help us ensure uninterrupted supply and better service.\n\n");
     if(s.upiList && s.upiList.length){
       var upiSorted = onlyDefaultOrAll(s.upiList);
       msg += "📲 *UPI (GPay/PhonePe):*\n" + upiSorted.map(function(u){
