@@ -133,7 +133,7 @@ document.getElementById('pr-date').value = todayISO();
         "🚨 *URGENT — Immediate Action Required*\n" +
         "Your account has invoices that are *" + worst + " days overdue*. " +
         "This is seriously affecting our business operations. " +
-        "Failure to clear the dues immediately may result in *suspension of supply* and *legal recovery action*.\n\n" +
+        "Failure to clear the dues immediately may result in *suspension of supply*.\n\n" +
         "We request you to make full payment *today* or contact us immediately to discuss a resolution.\n\n";
       clearLine = "⛔ *Please clear all outstanding dues immediately.*";
     } else if(worst > 0){
