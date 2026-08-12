@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chittam Enterprises — Message Generator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
 
 </head>
@@ -14,19 +14,34 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
-      <div class="mark">Ledger &amp; Dispatch</div>
-      <div class="name" id="sbBusinessName">Chittam Enterprises</div>
+      <div class="mark">CE</div>
+      <div class="name"><span id="sbBusinessName">Chittam Enterprises</span>
+        <small>Business Dashboard</small>
+      </div>
     </div>
     <nav class="navlist" id="navlist">
-      <button class="navbtn" data-view="dashboard"><span class="ic">🏠</span> Dashboard</button>
-      <button class="navbtn" data-view="customers"><span class="ic">👥</span> Customers</button>
-      <button class="navbtn" data-view="products"><span class="ic">🏷️</span> Product Database</button>
-      <button class="navbtn" data-view="payment-updated"><span class="ic">💰</span> Payment Updated</button>
-      <button class="navbtn" data-view="balance-confirmation"><span class="ic">📋</span> Balance Confirmation</button>
-      <button class="navbtn" data-view="payment-reminder"><span class="ic">💳</span> Payment Reminder</button>
-      <button class="navbtn" data-view="dispatch-confirmation"><span class="ic">🚚</span> Dispatch Confirmation</button>
-      <button class="navbtn" data-view="stock-update"><span class="ic">📦</span> Stock Update</button>
-      <button class="navbtn" data-view="settings"><span class="ic">⚙️</span> Settings</button>
+      <div class="nav-group">
+        <p class="nav-group-label">Overview</p>
+        <button class="navbtn" data-view="dashboard"><span class="ic">🏠</span> Dashboard</button>
+      </div>
+      <div class="nav-group">
+        <p class="nav-group-label">Messaging</p>
+        <button class="navbtn" data-view="payment-reminder"><span class="ic">💳</span> Payment Reminder</button>
+        <button class="navbtn" data-view="payment-updated"><span class="ic">💰</span> Payment Updated</button>
+        <button class="navbtn" data-view="balance-confirmation"><span class="ic">📋</span> Balance Confirmation</button>
+        <button class="navbtn" data-view="stock-update"><span class="ic">📦</span> Stock Update</button>
+        <button class="navbtn" data-view="service-material"><span class="ic">🔧</span> Service Material</button>
+      </div>
+      <div class="nav-group">
+        <p class="nav-group-label">Movement</p>
+        <button class="navbtn" data-view="dispatch-confirmation"><span class="ic">🚚</span> Dispatch Confirmation</button>
+      </div>
+      <div class="nav-group">
+        <p class="nav-group-label">Masters</p>
+        <button class="navbtn" data-view="customers"><span class="ic">👥</span> Customers</button>
+        <button class="navbtn" data-view="products"><span class="ic">🏷️</span> Product Database</button>
+        <button class="navbtn" data-view="settings"><span class="ic">⚙️</span> Settings</button>
+      </div>
     </nav>
     <div class="sidebar-foot">Stored only on this device.<br>No server, no account.</div>
   </aside>
@@ -54,6 +69,7 @@
         <button class="tile" data-view="balance-confirmation"><div class="ic">📋</div><div class="t">Balance Confirmation</div><div class="d">Share today's outstanding for the customer to confirm.</div></button>
         <button class="tile" data-view="payment-reminder"><div class="ic">💳</div><div class="t">Payment Reminder</div><div class="d">Outstanding by account, days pending, and how to pay.</div></button>
         <button class="tile" data-view="dispatch-confirmation"><div class="ic">🚚</div><div class="t">Dispatch Confirmation</div><div class="d">Let a customer know their order is on the way.</div></button>
+        <button class="tile" data-view="service-material"><div class="ic">🔧</div><div class="t">Service Material</div><div class="d">Send service stock details to a dealer with items, serial nos, and charges.</div></button>
         <button class="tile" data-view="stock-update"><div class="ic">📦</div><div class="t">Stock Update</div><div class="d">Announce newly available products and prices.</div></button>
         <button class="tile" data-view="customers"><div class="ic">👥</div><div class="t">Manage Customers</div><div class="d">Add, edit or remove customers stored on this device.</div></button>
         <button class="tile" data-view="products"><div class="ic">🏷️</div><div class="t">Product Database</div><div class="d">Manage products and prices used in Stock Update.</div></button>
@@ -260,6 +276,50 @@
       </div>
     </section>
 
+    <!-- SERVICE MATERIAL -->
+    <section class="view" id="view-service-material">
+      <div class="view-head">
+        <p class="eyebrow">Service Material</p>
+        <h1 class="title">Service Material Dispatch</h1>
+        <p class="sub">Send service stock details to a dealer — items, serial numbers, issues, charges, and timelines.</p>
+      </div>
+      <div class="card">
+        <div class="field"><label>Dealer</label><div class="picker" id="sm-picker"></div></div>
+        <div class="row3">
+          <div class="field"><label>Date</label><input type="date" id="sm-date"></div>
+          <div class="field"><label>Transport</label><input type="text" id="sm-transport" placeholder="e.g. VRL Logistics"></div>
+          <div class="field"><label>Expected Delivery Date</label><input type="date" id="sm-delivery-date"></div>
+        </div>
+        <div class="field"><label>Service / Repair Timeline</label><input type="text" id="sm-timeline" placeholder="e.g. 3–5 working days"></div>
+
+        <div class="field">
+          <label>Service Items</label>
+          <div class="invoice-row" style="margin-bottom:4px;">
+            <span style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);font-weight:600;">Product Name</span>
+            <span style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);font-weight:600;">Qty</span>
+            <span style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);font-weight:600;">Serial No.</span>
+            <span style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);font-weight:600;">Issue</span>
+            <span style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);font-weight:600;">Charges (₹)</span>
+            <span></span>
+          </div>
+          <div id="sm-items"></div>
+          <button class="btn ghost" id="sm-add-item" type="button">+ Add Item</button>
+        </div>
+
+        <div class="field"><label>Additional Notes (optional)</label><input type="text" id="sm-notes" placeholder="e.g. Handle with care, fragile items"></div>
+
+        <div class="btnrow">
+          <button class="btn" data-generate="service-material">Generate</button>
+          <button class="btn secondary" data-copy="sm-preview">Copy <span class="copied-flag" id="sm-copied">Copied</span></button>
+          <button class="btn wa" data-wa="sm-picker" data-wa-src="sm-preview">📲 Copy &amp; Open WhatsApp</button>
+        </div>
+        <div class="preview-wrap">
+          <div class="preview-head"><span class="stamp-badge">Service</span></div>
+          <div class="preview" id="sm-preview"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- STOCK UPDATE -->
     <section class="view" id="view-stock-update">
       <div class="view-head">
@@ -433,5 +493,6 @@
 <script src="js/11-dispatch-confirmation.js"></script>
 <script src="js/12-stock-update.js"></script>
 <script src="js/13-init.js"></script>
+<script src="js/14-service-material.js"></script>
 </body>
 </html>

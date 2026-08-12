@@ -13,8 +13,7 @@
     });
     if(name === 'customers') renderCustomerTable();
     if(name === 'products') renderProductTable();
-    if(name === 'dashboard') renderDashboard();
-    window.scrollTo(0,0);
+    if(name === 'dashboard') renderDashboard();    window.scrollTo(0,0);
   }
   navButtons.forEach(function(btn){
     btn.addEventListener('click', function(){ showView(btn.dataset.view); });
