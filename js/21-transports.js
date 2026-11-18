@@ -104,6 +104,34 @@
     renderTransports();
   });
 
+  /* ---------------- transport charges (freight) ---------------- */
+  // terms: 'to-pay' = customer pays the transporter on delivery,
+  //        'paid'   = already paid, nothing to pay on delivery,
+  //        'refund' = we paid it and the customer refunds it to us
+  function freightOptions(){
+    var biz = getSettings().businessName || 'Chittam Enterprises';
+    return [['', '— Not set —'], ['to-pay', 'To Pay (customer pays transporter)'], ['paid', 'Paid'], ['refund', 'Paid by ' + biz + ' — refund to us']];
+  }
+  function fillFreightSelects(){
+    document.querySelectorAll('select.freight-terms').forEach(function(sel){
+      var cur = sel.value;
+      sel.innerHTML = freightOptions().map(function(o){ return '<option value="' + o[0] + '">' + escapeHtml(o[1]) + '</option>'; }).join('');
+      sel.value = cur;
+    });
+  }
+  // amount the customer has to give back to us for freight
+  function freightRefund(terms, amount){ return terms === 'refund' ? (Number(amount) || 0) : 0; }
+  function freightLine(terms, amount){
+    var biz = getSettings().businessName || 'Chittam Enterprises';
+    amount = Number(amount) || 0;
+    if(terms === 'to-pay') return "🚚 Transport Charges: *To Pay*" + (amount ? " " + inr(amount) : "") + "\n   Please pay the transporter at the time of delivery.";
+    if(terms === 'paid') return "🚚 Transport Charges: *Paid*" + (amount ? " (" + inr(amount) + ")" : "") + " — nothing to pay on delivery.";
+    if(terms === 'refund') return "🚚 Transport Charges: " + (amount ? inr(amount) + " " : "") + "*paid by " + biz + "*" +
+      "\n   Kindly refund " + (amount ? "this amount" : "the transport charges") + " to " + biz + " along with your payment.";
+    return "";
+  }
+  fillFreightSelects();
+
   /* every transport input in the app suggests names from this list */
   ['dc-transport', 'sm-transport', 'sv-in-transport', 'sv-out-transport', 'or-transport'].forEach(function(id){
     var el = document.getElementById(id);

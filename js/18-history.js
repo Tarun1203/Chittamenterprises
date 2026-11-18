@@ -74,7 +74,8 @@
   var HIST_FIELD_LABELS = {
     replSerial: 'new S/N', replProduct: 'replacement', serial: 'S/N', qty: 'qty', totalCharges: 'total charges',
     sentDate: 'sent back', receivedDate: 'received', deliveryDate: 'delivery', outTransport: 'return transport',
-    inTransport: 'received via', customerName: 'customer', transportPhone: 'transport phone', contactPerson: 'contact person', orderNo: 'order no.', jobNo: 'job no.',
+    inTransport: 'received via', customerName: 'customer', transportPhone: 'transport phone', contactPerson: 'contact person',
+    freightTerms: 'transport charges', freight: 'transport charges ₹', orderNo: 'order no.', jobNo: 'job no.',
     businessName: 'business name', upiList: 'UPI IDs', bankList: 'bank accounts', paymentModes: 'payment modes'
   };
   function histLabel(k){ return HIST_FIELD_LABELS[k] || k; }

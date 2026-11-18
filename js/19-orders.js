@@ -135,11 +135,14 @@ pickers['or-picker'] = buildPicker('or-picker');
   function orUpdateTotals(){
     var total = orItems().reduce(function(s, i){ return s + i.amount; }, 0);
     var adv = Number(document.getElementById('or-advance').value) || 0;
+    var refund = freightRefund(document.getElementById('or-freight-terms').value, document.getElementById('or-freight').value);
     document.getElementById('or-total').textContent = inr(total);
-    document.getElementById('or-balance').textContent = inr(Math.max(0, total - adv));
+    document.getElementById('or-freight-note').innerHTML = refund ? ' · Transport refund: <strong>' + inr(refund) + '</strong>' : '';
+    document.getElementById('or-balance').textContent = inr(Math.max(0, total + refund - adv));
     return total;
   }
-  document.getElementById('or-advance').addEventListener('input', orUpdateTotals);
+  ['or-advance', 'or-freight'].forEach(function(id){ document.getElementById(id).addEventListener('input', orUpdateTotals); });
+  document.getElementById('or-freight-terms').addEventListener('change', orUpdateTotals);
 
   /* ---------------- editor: open / save ---------------- */
   function openOrderEditor(o){
@@ -154,6 +157,8 @@ pickers['or-picker'] = buildPicker('or-picker');
     document.getElementById('or-delivery').value = o ? (o.deliveryDate || '') : '';
     document.getElementById('or-transport').value = o ? (o.transport || '') : '';
     document.getElementById('or-transport-phone').value = o ? (o.transportPhone || '') : '';
+    document.getElementById('or-freight-terms').value = o ? (o.freightTerms || '') : '';
+    document.getElementById('or-freight').value = o && o.freight ? o.freight : '';
     document.getElementById('or-status').value = o ? (o.status || 'Pending') : 'Pending';
     document.getElementById('or-advance').value = o && o.advance ? o.advance : '';
     document.getElementById('or-notes').value = o ? (o.notes || '') : '';
@@ -205,6 +210,8 @@ pickers['or-picker'] = buildPicker('or-picker');
       deliveryDate: document.getElementById('or-delivery').value,
       transport: document.getElementById('or-transport').value.trim(),
       transportPhone: document.getElementById('or-transport-phone').value.trim(),
+      freightTerms: document.getElementById('or-freight-terms').value,
+      freight: Number(document.getElementById('or-freight').value) || 0,
       customerId: c.id, customerName: c.name, mobile: c.mobile || '',
       status: document.getElementById('or-status').value,
       advance: Number(document.getElementById('or-advance').value) || 0,
@@ -241,7 +248,9 @@ pickers['or-picker'] = buildPicker('or-picker');
     var lines = o.items.map(function(i){
       return "• " + i.name + (i.qty ? " × " + i.qty : "") + (i.rate ? " @ " + inr(i.rate) : "") + (i.amount ? " = " + inr(i.amount) : "");
     }).join("\n");
-    var balance = Math.max(0, o.total - o.advance);
+    var refund = freightRefund(o.freightTerms, o.freight);
+    var balance = Math.max(0, o.total + refund - o.advance);
+    var freight = freightLine(o.freightTerms, o.freight);
     var signOff = s.businessName + (s.address ? ", " + s.address : "") + ",";
     return "🧾 *Order Confirmation*\n\n" +
       "Namaste Anna/Sir 🙏\n" +
@@ -250,10 +259,13 @@ pickers['or-picker'] = buildPicker('or-picker');
       "📅 Order Date: " + formatDateForMsg(o.date) + "\n" +
       (o.deliveryDate ? "🚚 Expected Delivery: " + formatDateForMsg(o.deliveryDate) + "\n" : "") +
       (o.transport ? "🚛 Transport: " + transportLine(o.transport, o.transportPhone) + "\n" : "") +
+      (freight ? freight + "\n" : "") +
       "📌 Status: " + o.status + "\n\n" +
       "*Items:*\n" + lines + "\n\n" +
       "💰 *Order Total: " + inr(o.total) + "*\n" +
-      (o.advance ? "✅ Advance Received: " + inr(o.advance) + "\n🔖 Balance: " + inr(balance) + "\n" : "") +
+      (refund ? "🚚 Transport Charges to Refund: " + inr(refund) + "\n" : "") +
+      (o.advance ? "✅ Advance Received: " + inr(o.advance) + "\n" : "") +
+      (o.advance || refund ? "🔖 *Balance Payable: " + inr(balance) + "*" + (refund ? " (incl. transport charges)" : "") + "\n" : "") +
       (o.notes ? "\n📝 " + o.notes + "\n" : "") +
       "\nPlease check the items and quantities, and let us know if anything needs to change.\n\n" +
       "Thank you for your business. 🙏\n" +

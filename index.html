@@ -272,6 +272,10 @@
           <div class="field"><label>No. of Boxes</label><input type="number" id="dc-boxes" placeholder="0"></div>
           <div class="field"><label>No. of Items</label><input type="text" id="dc-items" placeholder="e.g. 17pcs"></div>
         </div>
+        <div class="row2">
+          <div class="field"><label>Transport Charges</label><select id="dc-freight-terms" class="freight-terms"></select></div>
+          <div class="field"><label>Transport Charges Amount (₹)</label><input type="number" id="dc-freight" placeholder="0"></div>
+        </div>
         <div class="btnrow">
           <button class="btn" data-generate="dispatch-confirmation">Generate</button>
           <button class="btn secondary" data-copy="dc-preview">Copy <span class="copied-flag" id="dc-copied">Copied</span></button>
@@ -397,11 +401,15 @@
           <div id="or-items"></div>
           <datalist id="or-product-list"></datalist>
           <button class="btn ghost" id="or-add-item" type="button">+ Add Item</button>
-          <div class="or-totals">Total: <strong id="or-total">₹0</strong> · Balance: <strong id="or-balance">₹0</strong></div>
+          <div class="or-totals">Total: <strong id="or-total">₹0</strong><span id="or-freight-note"></span> · Balance: <strong id="or-balance">₹0</strong></div>
         </div>
         <div class="row2">
           <div class="field"><label>Transport</label><input type="text" id="or-transport" placeholder="e.g. VRL Logistics (pick or type)"></div>
           <div class="field"><label>Transport Contact No.</label><input type="tel" id="or-transport-phone" placeholder="Filled in from Transports"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Transport Charges</label><select id="or-freight-terms" class="freight-terms"></select></div>
+          <div class="field"><label>Transport Charges Amount (₹)</label><input type="number" id="or-freight" placeholder="0"></div>
         </div>
         <div class="field"><label>Notes (optional)</label><input type="text" id="or-notes" placeholder="e.g. Call before dispatch"></div>
         <div class="btnrow">

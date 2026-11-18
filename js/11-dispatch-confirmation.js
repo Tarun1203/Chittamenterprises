@@ -14,6 +14,7 @@ document.getElementById('dc-date').value = todayISO();
     var transport = transportLine(document.getElementById('dc-transport').value) || '—';
     var boxes = document.getElementById('dc-boxes').value || '0';
     var items = document.getElementById('dc-items').value.trim() || '—';
+    var freight = freightLine(document.getElementById('dc-freight-terms').value, document.getElementById('dc-freight').value);
     var signOff = s.businessName + (s.address ? ", " + s.address : "") + ",";
     return "🚚 *Dispatch & Delivery Confirmation*\n\n" +
       "Namaste Anna/Sir 🙏\n" +
@@ -22,7 +23,8 @@ document.getElementById('dc-date').value = todayISO();
       "🧾 Invoice No.(s): " + invoice + "\n" +
       "🚛 Transport: " + transport + "\n" +
       "📦 No. of Boxes: " + boxes + "\n" +
-      "📦 No. of Items: " + items + "\n\n" +
+      "📦 No. of Items: " + items + "\n" +
+      (freight ? freight + "\n" : "") + "\n" +
       "Once the shipment reaches you, kindly confirm:\n" +
       "✅ Stock Received\n" +
       "✅ Quantity Verified\n" +

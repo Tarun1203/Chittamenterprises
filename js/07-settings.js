@@ -125,6 +125,7 @@
     document.getElementById('sbBusinessName').textContent = s.businessName;
     populatePaymentModeSelect();
     refreshBusinessLabels();
+    if(typeof fillFreightSelects === 'function') fillFreightSelects();
     var flag = document.getElementById('settingsSaved');
     flag.classList.add('show');
     setTimeout(function(){ flag.classList.remove('show'); }, 1800);
