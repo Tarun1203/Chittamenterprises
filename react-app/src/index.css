@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --color-brand-50: #eef4ff;
+  --color-brand-100: #dbe6fe;
+  --color-brand-200: #bfd3fe;
+  --color-brand-500: #3b74f0;
+  --color-brand-600: #2463eb;
+  --color-brand-700: #1d4fd1;
+  --color-brand-900: #172a63;
+
+  --animate-float: float 6s ease-in-out infinite;
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotate(-3deg); }
+    50% { transform: translateY(-8px) rotate(3deg); }
+  }
+}
+
+html, body, #root { height: 100%; }
+html, body { overflow-x: clip; }
+body {
+  @apply bg-neutral-50 font-sans text-neutral-900 antialiased;
+  letter-spacing: -0.005em;
+}
+::selection { background: var(--color-brand-100); }
+
+/* one slim scroll bar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(15, 15, 20, 0.16); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* calm focus: no heavy ring after a click, a soft one for keyboard use */
+button:focus, a:focus { outline: none; }
+button:focus-visible, a:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(36, 99, 235, 0.3); }
+
+/* inputs */
+.field-input {
+  @apply w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-[15px] text-neutral-900 shadow-sm transition outline-none placeholder:text-neutral-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
