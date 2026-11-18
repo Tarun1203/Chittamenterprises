@@ -25,7 +25,7 @@
 <title>Chittam Enterprises — Message Generator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/app.css?v=20261118g">
+<link rel="stylesheet" href="css/app.css?v=20261118h">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#2463EB">
 <meta name="mobile-web-app-capable" content="yes">
@@ -185,7 +185,7 @@
         <p class="sub">Acknowledge a payment and share the updated outstanding balance.</p>
       </div>
       <div class="card">
-        <div class="field"><label>Customer</label><div class="picker" id="pu-picker"></div></div>
+        <div class="field"><label>Customer</label><div class="picker" id="pu-picker"></div><p class="bal-note" id="pu-bal-note"></p></div>
         <div class="row2">
           <div class="field"><label>Payment Mode</label><select id="pu-mode"></select></div>
           <div class="field"><label>Date</label><input type="date" id="pu-date"></div>
@@ -243,7 +243,7 @@
         <p class="sub">Share the current balance for the customer to confirm against their own books.</p>
       </div>
       <div class="card">
-        <div class="field"><label>Customer</label><div class="picker" id="bc-picker"></div></div>
+        <div class="field"><label>Customer</label><div class="picker" id="bc-picker"></div><p class="bal-note" id="bc-bal-note"></p></div>
         <div class="row2">
           <div class="field"><label>For Month/Year</label><input type="month" id="bc-month"></div>
           <div class="field"><label>Date</label><input type="date" id="bc-date"></div>
@@ -273,7 +273,7 @@
         <p class="sub">Outstanding balance, days pending, and your payment details — all in one message.</p>
       </div>
       <div class="card">
-        <div class="field"><label>Customer</label><div class="picker" id="pr-picker"></div></div>
+        <div class="field"><label>Customer</label><div class="picker" id="pr-picker"></div><p class="bal-note" id="pr-bal-note"></p></div>
         <div class="row2">
           <div class="field" style="max-width:220px;"><label>Date</label><input type="date" id="pr-date"></div>
           <div class="field" style="max-width:220px;"><label>Upcoming Due Date (optional)</label><input type="date" id="pr-duedate"></div>
@@ -692,6 +692,30 @@
       </div>
 
       <div class="card" style="margin-top:20px;">
+        <div class="view-head" style="margin-bottom:14px;">
+          <p class="eyebrow">Tally</p>
+          <h1 class="title" style="font-size:19px;">Customer Balances from Tally</h1>
+          <p class="sub">Import each company's closing balances. Payment Updated, Payment Reminder and Balance Confirmation then fill in both balances when you pick a customer, on every device.</p>
+        </div>
+        <ol class="bal-steps">
+          <li>In Tally, open the company and go to <b>Display More Reports → Account Books → Group Summary → Sundry Debtors</b>.</li>
+          <li>Press <b>Alt+F5</b> (Detailed) so every customer is listed.</li>
+          <li>Press <b>Ctrl+E</b> (Export) → File Format <b>JSON</b> (or XML) → Export.</li>
+          <li>Import that file below for the same company, then repeat for the other company (<b>F3</b> to change company).</li>
+        </ol>
+        <div class="bal-row">
+          <div><div class="bal-co" id="balLabelBiz">Chittam Enterprises</div><div class="bal-status" id="balStatusBiz">Not imported yet.</div></div>
+          <button class="btn secondary" id="btnImportBalBiz" type="button">⬆ Import file</button>
+          <input type="file" id="balFileBiz" accept=".json,.xml,application/json,text/xml" style="display:none">
+        </div>
+        <div class="bal-row">
+          <div><div class="bal-co">Cash Bill</div><div class="bal-status" id="balStatusCash">Not imported yet.</div></div>
+          <button class="btn secondary" id="btnImportBalCash" type="button">⬆ Import file</button>
+          <input type="file" id="balFileCash" accept=".json,.xml,application/json,text/xml" style="display:none">
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
         <div class="view-head" style="margin-bottom:12px;">
           <p class="eyebrow">About</p>
           <h1 class="title" style="font-size:19px;">This App</h1>
@@ -856,30 +880,31 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="js/firebase-config.js?v=20261118g"></script>
-<script src="js/01-core.js?v=20261118g"></script>
-<script src="js/01b-database.js?v=20261118g"></script>
-<script src="js/02-nav.js?v=20261118g"></script>
-<script src="js/03-registry.js?v=20261118g"></script>
-<script src="js/04-customers.js?v=20261118g"></script>
-<script src="js/05-products.js?v=20261118g"></script>
-<script src="js/06-duplicates.js?v=20261118g"></script>
-<script src="js/07-settings.js?v=20261118g"></script>
-<script src="js/08-payment-updated.js?v=20261118g"></script>
-<script src="js/09-balance-confirmation.js?v=20261118g"></script>
-<script src="js/10-payment-reminder.js?v=20261118g"></script>
-<script src="js/11-dispatch-confirmation.js?v=20261118g"></script>
-<script src="js/12-stock-update.js?v=20261118g"></script>
-<script src="js/13-init.js?v=20261118g"></script>
-<script src="js/14-service-material.js?v=20261118g"></script>
-<script src="js/16-stock-return.js?v=20261118g"></script>
-<script src="js/18-history.js?v=20261118g"></script>
-<script src="js/19-orders.js?v=20261118g"></script>
-<script src="js/20-service-jobs.js?v=20261118g"></script>
-<script src="js/21-transports.js?v=20261118g"></script>
-<script src="js/22-app-install.js?v=20261118g"></script>
-<script src="js/24-receipts.js?v=20261118g"></script>
-<script src="js/25-picklist.js?v=20261118g"></script>
-<script src="js/23-mobile.js?v=20261118g"></script>
+<script src="js/firebase-config.js?v=20261118h"></script>
+<script src="js/01-core.js?v=20261118h"></script>
+<script src="js/01b-database.js?v=20261118h"></script>
+<script src="js/02-nav.js?v=20261118h"></script>
+<script src="js/03-registry.js?v=20261118h"></script>
+<script src="js/04-customers.js?v=20261118h"></script>
+<script src="js/05-products.js?v=20261118h"></script>
+<script src="js/06-duplicates.js?v=20261118h"></script>
+<script src="js/07-settings.js?v=20261118h"></script>
+<script src="js/08-payment-updated.js?v=20261118h"></script>
+<script src="js/09-balance-confirmation.js?v=20261118h"></script>
+<script src="js/10-payment-reminder.js?v=20261118h"></script>
+<script src="js/11-dispatch-confirmation.js?v=20261118h"></script>
+<script src="js/12-stock-update.js?v=20261118h"></script>
+<script src="js/13-init.js?v=20261118h"></script>
+<script src="js/14-service-material.js?v=20261118h"></script>
+<script src="js/16-stock-return.js?v=20261118h"></script>
+<script src="js/18-history.js?v=20261118h"></script>
+<script src="js/19-orders.js?v=20261118h"></script>
+<script src="js/20-service-jobs.js?v=20261118h"></script>
+<script src="js/21-transports.js?v=20261118h"></script>
+<script src="js/22-app-install.js?v=20261118h"></script>
+<script src="js/24-receipts.js?v=20261118h"></script>
+<script src="js/25-picklist.js?v=20261118h"></script>
+<script src="js/26-tally-balances.js?v=20261118h"></script>
+<script src="js/23-mobile.js?v=20261118h"></script>
 </body>
 </html>

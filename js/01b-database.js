@@ -177,6 +177,12 @@
         localStorage.setItem(LS_PRODUCTS, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
         dbRefreshUi('products');
       }, dbReadError),
+      db.collection('balances').onSnapshot(function(snap){
+        var all = {};
+        snap.docs.forEach(function(d){ all[d.id] = dbStrip(d.data()); delete all[d.id].at; delete all[d.id].by; });
+        localStorage.setItem('cem_balances', JSON.stringify(all));
+        if(typeof renderBalanceStatus === 'function') renderBalanceStatus();
+      }, dbReadError),
       db.collection('receipts').onSnapshot(function(snap){
         localStorage.setItem(LS_RECEIPTS, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
         dbRefreshUi('receipts');

@@ -502,6 +502,16 @@
   .install-btn{ white-space:nowrap; flex-shrink:0; margin:8px 18px; padding:9px 12px; border:1.5px solid var(--stamp); border-radius:8px; background:var(--stamp-soft); color:var(--stamp); font-weight:600; font-size:13px; }
   .install-btn:hover{ background:var(--stamp); color:#fff; }
 
+  /* ---------- Tally balances ---------- */
+  .bal-note{ font-size:12.5px; color:var(--money); margin:6px 0 0; min-height:0; }
+  .bal-note:empty{ display:none; }
+  .bal-steps{ margin:0 0 14px; padding-left:20px; font-size:13.5px; color:var(--ink-soft); line-height:1.6; }
+  .bal-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-top:1px solid var(--rule); }
+  .bal-co{ font-weight:700; font-size:14.5px; }
+  .bal-status{ font-size:12.5px; color:var(--ink-soft); margin-top:2px; }
+  .bal-status summary{ cursor:pointer; margin-top:4px; }
+  .bal-unmatched{ font-size:12px; margin-top:4px; max-height:140px; overflow-y:auto; }
+
   /* ---------- Receipts ---------- */
   .rc-date{ display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-soft); font-weight:600; }
   .rc-date .search-box{ min-width:0; max-width:170px; }

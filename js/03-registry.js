@@ -52,6 +52,8 @@
         selected = c;
         input.value = c.name;
         list.classList.remove('show');
+        // lets a page react to the choice (e.g. fill in Tally balances)
+        container.dispatchEvent(new CustomEvent('pick', {detail: c}));
       }
     });
 

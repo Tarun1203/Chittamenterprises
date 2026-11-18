@@ -33,6 +33,7 @@
     'catalog-copy': 'Catalog copied',
     'catalog-share': 'Catalog shared',
     'app-installed': 'App installed',
+    'balances-imported': 'Tally balances imported',
     'picklist-copied': 'Pick list copied',
     'picklist-printed': 'Pick list printed',
     'receipts-report-copied': 'Payments report copied',
@@ -55,6 +56,7 @@
       case 'sheet-pull': return d.customers + ' customers, ' + d.products + ' products';
       case 'backup-restore': return (d.file ? d.file + ' — ' : '') + d.customers + ' customers, ' + d.products + ' products';
       case 'sheet-url-changed': return d.url || '(cleared)';
+      case 'balances-imported': return (d.file ? d.file + ' — ' : '') + d.matched + ' customers matched' + (d.unmatched ? ', ' + d.unmatched + ' other names' : '');
       case 'catalog-copy':
       case 'catalog-share': return (d.products || []).join(', ');
       default: return '';
