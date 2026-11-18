@@ -68,11 +68,11 @@ pickers['or-picker'] = buildPicker('or-picker');
       list.map(function(o){
         var items = (o.items || []).map(function(i){ return i.name + (i.qty ? ' × ' + i.qty : ''); }).join(', ');
         return '<tr>' +
-          '<td style="font-family:\'IBM Plex Mono\',monospace;">' + escapeHtml(o.orderNo || '') + '</td>' +
+          '<td style="font-variant-numeric:tabular-nums;">' + escapeHtml(o.orderNo || '') + '</td>' +
           '<td style="white-space:nowrap;">' + escapeHtml(formatDateForMsg(o.date)) + '</td>' +
           '<td>' + escapeHtml(o.customerName || '—') + '</td>' +
           '<td style="font-size:12.5px; color:var(--ink-soft);">' + escapeHtml(items) + '</td>' +
-          '<td style="text-align:right; font-family:\'IBM Plex Mono\',monospace; white-space:nowrap;">' + inr(o.total) + '</td>' +
+          '<td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">' + inr(o.total) + '</td>' +
           '<td>' + orStatusBadge(o.status) + '</td>' +
           '<td><div class="row-actions"><button class="icon-btn" data-order-edit="' + o.id + '">Open</button></div></td>' +
         '</tr>';

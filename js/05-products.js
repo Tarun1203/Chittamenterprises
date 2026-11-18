@@ -44,7 +44,7 @@
       return '<tr>' +
         '<td>' + escapeHtml(p.name) + '</td>' +
         '<td>' + (p.category ? escapeHtml(p.category) : '<span style="color:var(--ink-soft);">—</span>') + '</td>' +
-        '<td style="font-family:\'IBM Plex Mono\',monospace;">' + inr(p.price) + '</td>' +
+        '<td style="font-variant-numeric:tabular-nums;">' + inr(p.price) + '</td>' +
         '<td><div class="row-actions">' +
           '<button class="icon-btn" data-edit="' + p.id + '">Edit</button>' +
         '</div></td>' +

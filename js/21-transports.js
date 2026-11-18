@@ -52,7 +52,7 @@
     wrap.innerHTML = '<table class="cust-table"><thead><tr><th>Transport</th><th>Contact Person</th><th>Phone</th><th>Branch / Area</th><th></th></tr></thead><tbody>' +
       list.map(function(t){
         return '<tr><td>' + escapeHtml(t.name) + '</td><td>' + escapeHtml(t.contactPerson || '—') + '</td>' +
-          '<td style="font-family:\'IBM Plex Mono\',monospace;">' + escapeHtml(t.phone || '—') + '</td>' +
+          '<td style="font-variant-numeric:tabular-nums;">' + escapeHtml(t.phone || '—') + '</td>' +
           '<td>' + escapeHtml(t.branch || '—') + '</td>' +
           '<td><div class="row-actions"><button class="icon-btn" data-tr-edit="' + t.id + '">Edit</button></div></td></tr>';
       }).join('') + '</tbody></table>';

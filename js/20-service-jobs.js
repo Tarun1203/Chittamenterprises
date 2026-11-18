@@ -81,7 +81,7 @@ pickers['sv-picker'] = buildPicker('sv-picker');
     wrap.innerHTML = '<div style="overflow-x:auto;"><table class="cust-table"><thead><tr><th>Job No.</th><th>Received</th><th>Dealer</th><th>Products</th><th>Sent Back</th><th>Status</th><th></th></tr></thead><tbody>' +
       list.map(function(j){
         return '<tr>' +
-          '<td style="font-family:\'IBM Plex Mono\',monospace; white-space:nowrap;">' + escapeHtml(j.jobNo || '') + '</td>' +
+          '<td style="font-variant-numeric:tabular-nums; white-space:nowrap;">' + escapeHtml(j.jobNo || '') + '</td>' +
           '<td style="white-space:nowrap;">' + escapeHtml(formatDateForMsg(j.receivedDate)) + '</td>' +
           '<td>' + escapeHtml(j.customerName || '—') + '</td>' +
           '<td style="font-size:12.5px; color:var(--ink-soft);">' + (j.items || []).map(function(it){ return escapeHtml(svItemSummary(it)); }).join('<br>') + '</td>' +

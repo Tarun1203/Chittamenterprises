@@ -24,7 +24,7 @@
     var rows = filtered.map(function(c){
       return '<tr>' +
         '<td>' + escapeHtml(c.name) + '</td>' +
-        '<td style="font-family:\'IBM Plex Mono\',monospace;">' + escapeHtml(c.mobile||"—") + '</td>' +
+        '<td style="font-variant-numeric:tabular-nums;">' + escapeHtml(c.mobile||"—") + '</td>' +
         '<td><div class="row-actions">' +
           '<button class="icon-btn" data-edit="' + c.id + '">Edit</button>' +
         '</div></td>' +
