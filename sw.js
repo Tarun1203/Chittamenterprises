@@ -4,7 +4,7 @@
    are served from the cache. Firestore / sign-in requests are never touched
    here — Firestore keeps its own offline copy of the data. */
 
-var CACHE = 'chittam-v2';
+var CACHE = 'chittam-v3';
 var APP_FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/favicon-32.png',
@@ -33,7 +33,8 @@ self.addEventListener('fetch', function(e){
 
   // our own files: network first so updates show at once, cache when offline
   if(url.origin === self.location.origin){
-    e.respondWith(fetch(req).then(function(res){
+    // no-cache: always check GitHub for a newer copy instead of the phone's HTTP cache
+    e.respondWith(fetch(req, {cache: 'no-cache'}).then(function(res){
       if(res.ok){ var copy = res.clone(); caches.open(CACHE).then(function(c){ c.put(req, copy); }); }
       return res;
     }).catch(function(){
