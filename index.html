@@ -43,6 +43,7 @@
         <p class="nav-group-label">Masters</p>
         <button class="navbtn" data-view="customers"><span class="ic">👥</span> Customers</button>
         <button class="navbtn" data-view="products"><span class="ic">🏷️</span> Product Database</button>
+        <button class="navbtn" data-view="transports"><span class="ic">🚛</span> Transports</button>
         <button class="navbtn" data-view="history"><span class="ic">🕘</span> History</button>
         <button class="navbtn" data-view="settings"><span class="ic">⚙️</span> Settings</button>
       </div>
@@ -398,7 +399,11 @@
           <button class="btn ghost" id="or-add-item" type="button">+ Add Item</button>
           <div class="or-totals">Total: <strong id="or-total">₹0</strong> · Balance: <strong id="or-balance">₹0</strong></div>
         </div>
-        <div class="field"><label>Notes (optional)</label><input type="text" id="or-notes" placeholder="e.g. Deliver via VRL, call before dispatch"></div>
+        <div class="row2">
+          <div class="field"><label>Transport</label><input type="text" id="or-transport" placeholder="e.g. VRL Logistics (pick or type)"></div>
+          <div class="field"><label>Transport Contact No.</label><input type="tel" id="or-transport-phone" placeholder="Filled in from Transports"></div>
+        </div>
+        <div class="field"><label>Notes (optional)</label><input type="text" id="or-notes" placeholder="e.g. Call before dispatch"></div>
         <div class="btnrow">
           <button class="btn" id="btnSaveOrder">💾 Save Order</button>
           <button class="btn ghost" id="btnCloseOrder" type="button">← Back to Orders</button>
@@ -486,6 +491,20 @@
           <div class="preview" id="sv-preview"></div>
         </div>
       </div>
+    </section>
+
+    <!-- TRANSPORTS -->
+    <section class="view" id="view-transports">
+      <div class="view-head">
+        <p class="eyebrow">Transport Master</p>
+        <h1 class="title">Transports</h1>
+        <p class="sub">Transporters with their contact details. Pick them on Orders, Dispatch and Service Jobs — the contact number goes into the message automatically.</p>
+      </div>
+      <div class="toolbar">
+        <input class="search-box" id="trSearch" type="text" placeholder="🔍 Search transport, contact, phone or branch…">
+        <button class="btn" id="btnAddTransport">+ Add Transport</button>
+      </div>
+      <div id="trTableWrap"></div>
     </section>
 
     <!-- STOCK RETURN -->
@@ -662,6 +681,23 @@
   </form>
 </div>
 
+<!-- Add/Edit transport modal -->
+<div class="modal-overlay" id="trModalOverlay">
+  <div class="modal">
+    <h3 id="trModalTitle">Add Transport</h3>
+    <div class="field"><label>Transport Name</label><input type="text" id="tm-name" placeholder="e.g. VRL Logistics"></div>
+    <div class="field"><label>Contact Person (optional)</label><input type="text" id="tm-person" placeholder="e.g. Ramesh (booking office)"></div>
+    <div class="field"><label>Phone</label><input type="tel" id="tm-phone" placeholder="10-digit mobile / landline"></div>
+    <div class="field"><label>Branch / Area (optional)</label><input type="text" id="tm-branch" placeholder="e.g. Raichur, Station Road"></div>
+    <div class="btnrow">
+      <button class="btn" id="tm-save">Save</button>
+      <button class="btn ghost" id="tm-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<datalist id="transport-list"></datalist>
+
 <!-- Add/Edit product modal -->
 <div class="modal-overlay" id="prodModalOverlay">
   <div class="modal">
@@ -712,5 +748,6 @@
 <script src="js/18-history.js"></script>
 <script src="js/19-orders.js"></script>
 <script src="js/20-service-jobs.js"></script>
+<script src="js/21-transports.js"></script>
 </body>
 </html>

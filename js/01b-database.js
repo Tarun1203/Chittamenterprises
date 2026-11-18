@@ -141,6 +141,8 @@
       if(window.ChittamCatalog && document.getElementById('ce-grid')) window.ChittamCatalog.render();
     }else if(kind === 'orders'){
       if(typeof renderOrders === 'function') renderOrders();
+    }else if(kind === 'transports'){
+      if(typeof renderTransports === 'function') renderTransports();
     }else if(kind === 'services'){
       if(typeof renderServiceJobs === 'function') renderServiceJobs();
     }else if(kind === 'settings'){
@@ -173,6 +175,10 @@
         localStorage.setItem(LS_PRODUCTS, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
         dbRefreshUi('products');
       }, dbReadError),
+      db.collection('transports').onSnapshot(function(snap){
+        localStorage.setItem(LS_TRANSPORTS, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
+        dbRefreshUi('transports');
+      }, dbReadError),
       db.collection('services').onSnapshot(function(snap){
         localStorage.setItem(LS_SERVICES, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
         dbRefreshUi('services');
@@ -200,10 +206,12 @@
     return Promise.all([
       db.collection('customers').get(),
       db.collection('products').get(),
+      db.collection('transports').get(),
       db.collection('settings').doc('main').get()
     ]).then(function(res){
       var writes = [];
-      [['customers', res[0], getCustomers()], ['products', res[1], getProducts()]].forEach(function(t){
+      var settingsDoc = res.pop();
+      [['customers', res[0], getCustomers()], ['products', res[1], getProducts()], ['transports', res[2], getTransports()]].forEach(function(t){
         var ids = {}, names = {};
         t[1].docs.forEach(function(d){ ids[d.id] = true; names[normalizeName(d.data().name)] = true; });
         t[2].forEach(function(item){
@@ -212,7 +220,7 @@
           writes.push({coll: t[0], id: item.id, data: dbStrip(item), action: 'create', before: null});
         });
       });
-      if(!res[2].exists && localStorage.getItem(LS_SETTINGS)){
+      if(!settingsDoc.exists && localStorage.getItem(LS_SETTINGS)){
         writes.push({coll: 'settings', id: 'main', data: getSettings(), action: 'create', before: null});
       }
       return dbCommit(writes).then(function(){

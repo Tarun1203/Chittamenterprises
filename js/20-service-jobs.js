@@ -270,7 +270,7 @@ pickers['sv-picker'] = buildPicker('sv-picker');
         "We have received the following products from you for service.\n\n" +
         "🧾 Service Job No.: " + j.jobNo + "\n" +
         "📅 Received On: " + formatDateForMsg(j.receivedDate) + "\n" +
-        (j.inTransport ? "🚛 Received Via: " + j.inTransport + "\n" : "") +
+        (j.inTransport ? "🚛 Received Via: " + transportLine(j.inTransport) + "\n" : "") +
         "\n*Products:*\n" + lines + "\n\n" +
         (j.timeline ? "⏳ Expected service time: " + j.timeline + "\n\n" : "") +
         "We will update you once the service is completed. Please quote the Job No. for any follow-up.\n\n" +
@@ -300,7 +300,7 @@ pickers['sv-picker'] = buildPicker('sv-picker');
       "🧾 Service Job No.: " + j.jobNo + "\n" +
       "📅 Received On: " + formatDateForMsg(j.receivedDate) + "\n" +
       (j.sentDate ? "📦 Sent Back On: " + formatDateForMsg(j.sentDate) + "\n" : "") +
-      (j.outTransport ? "🚛 Transport: " + j.outTransport + "\n" : "") +
+      (j.outTransport ? "🚛 Transport: " + transportLine(j.outTransport) + "\n" : "") +
       "\n*Products:*\n" + out + "\n" +
       (j.totalCharges ? "\n💰 *Total Service Charges: " + inr(j.totalCharges) + "*\n" : "") +
       (j.notes ? "\n📝 " + j.notes + "\n" : "") +

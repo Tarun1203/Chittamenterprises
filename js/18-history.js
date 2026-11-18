@@ -74,7 +74,7 @@
   var HIST_FIELD_LABELS = {
     replSerial: 'new S/N', replProduct: 'replacement', serial: 'S/N', qty: 'qty', totalCharges: 'total charges',
     sentDate: 'sent back', receivedDate: 'received', deliveryDate: 'delivery', outTransport: 'return transport',
-    inTransport: 'received via', customerName: 'customer', orderNo: 'order no.', jobNo: 'job no.',
+    inTransport: 'received via', customerName: 'customer', transportPhone: 'transport phone', contactPerson: 'contact person', orderNo: 'order no.', jobNo: 'job no.',
     businessName: 'business name', upiList: 'UPI IDs', bankList: 'bank accounts', paymentModes: 'payment modes'
   };
   function histLabel(k){ return HIST_FIELD_LABELS[k] || k; }
@@ -130,7 +130,7 @@
           escapeHtml(r.name || '') + '</div><div class="who">' + histWhen(r.at) + ' · ' + escapeHtml(r.by || '') + '</div></div>' +
           (info ? '<div class="hist-diff">' + escapeHtml(info) + '</div>' : '') + '</div>';
       }
-      var what = {customers: 'Customer', products: 'Product', settings: 'Settings', orders: 'Order', services: 'Service job'}[r.collection] || r.collection;
+      var what = {customers: 'Customer', products: 'Product', settings: 'Settings', orders: 'Order', services: 'Service job', transports: 'Transport'}[r.collection] || r.collection;
       var diff = histDiff(r.before, r.after || {});
       return '<div class="hist-item"><div class="hist-top"><div><span class="hist-tag">' + escapeHtml(what) + ' ' + (r.action === 'create' ? 'added' : 'edited') + '</span>' +
         escapeHtml(r.name || '') + '</div><div class="who">' + histWhen(r.at) + ' · ' + escapeHtml(r.by || '') + '</div></div>' +

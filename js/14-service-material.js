@@ -43,7 +43,7 @@ function generateServiceMaterial(){
   var c = requireCustomer('sm-picker'); if(!c) return null;
   var s = getSettings();
   var date = formatDateForMsg(document.getElementById('sm-date').value);
-  var transport = document.getElementById('sm-transport').value.trim() || '—';
+  var transport = transportLine(document.getElementById('sm-transport').value) || '—';
   var deliveryDate = formatDateForMsg(document.getElementById('sm-delivery-date').value);
   var timeline = document.getElementById('sm-timeline').value.trim();
   var notes = document.getElementById('sm-notes').value.trim();

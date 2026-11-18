@@ -152,6 +152,8 @@ pickers['or-picker'] = buildPicker('or-picker');
     document.getElementById('or-no').value = o ? (o.orderNo || '') : nextOrderNo(todayISO());
     document.getElementById('or-date').value = o ? (o.date || '') : todayISO();
     document.getElementById('or-delivery').value = o ? (o.deliveryDate || '') : '';
+    document.getElementById('or-transport').value = o ? (o.transport || '') : '';
+    document.getElementById('or-transport-phone').value = o ? (o.transportPhone || '') : '';
     document.getElementById('or-status').value = o ? (o.status || 'Pending') : 'Pending';
     document.getElementById('or-advance').value = o && o.advance ? o.advance : '';
     document.getElementById('or-notes').value = o ? (o.notes || '') : '';
@@ -176,6 +178,12 @@ pickers['or-picker'] = buildPicker('or-picker');
     if(!noEl.value || /^\d{2}\/\d{2}-\d+$/.test(noEl.value)) noEl.value = nextOrderNo(this.value || todayISO());
   });
 
+  // picking a transport on file fills in its contact number
+  document.getElementById('or-transport').addEventListener('change', function(){
+    var t = typeof findTransport === 'function' ? findTransport(this.value) : null;
+    if(t && t.phone) document.getElementById('or-transport-phone').value = t.phone;
+  });
+
   document.getElementById('btnNewOrder').addEventListener('click', function(){ openOrderEditor(null); });
   document.getElementById('btnCloseOrder').addEventListener('click', closeOrderEditor);
 
@@ -195,6 +203,8 @@ pickers['or-picker'] = buildPicker('or-picker');
       orderNo: orderNo,
       date: date,
       deliveryDate: document.getElementById('or-delivery').value,
+      transport: document.getElementById('or-transport').value.trim(),
+      transportPhone: document.getElementById('or-transport-phone').value.trim(),
       customerId: c.id, customerName: c.name, mobile: c.mobile || '',
       status: document.getElementById('or-status').value,
       advance: Number(document.getElementById('or-advance').value) || 0,
@@ -215,6 +225,7 @@ pickers['or-picker'] = buildPicker('or-picker');
       list.push(Object.assign({id: editingOrderId}, data));
     }
     saveOrders(list);
+    if(typeof rememberTransport === 'function') rememberTransport(data.transport, data.transportPhone);
     document.getElementById('or-editor-eyebrow').textContent = 'Order ' + data.orderNo;
     document.getElementById('or-editor-title').textContent = data.customerName;
     var flag = document.getElementById('orSaved');
@@ -238,6 +249,7 @@ pickers['or-picker'] = buildPicker('or-picker');
       "🧾 Order No.: " + o.orderNo + "\n" +
       "📅 Order Date: " + formatDateForMsg(o.date) + "\n" +
       (o.deliveryDate ? "🚚 Expected Delivery: " + formatDateForMsg(o.deliveryDate) + "\n" : "") +
+      (o.transport ? "🚛 Transport: " + transportLine(o.transport, o.transportPhone) + "\n" : "") +
       "📌 Status: " + o.status + "\n\n" +
       "*Items:*\n" + lines + "\n\n" +
       "💰 *Order Total: " + inr(o.total) + "*\n" +
