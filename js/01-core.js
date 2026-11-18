@@ -75,7 +75,11 @@
   }
 
   function uid(){ return 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  // local date (toISOString would give yesterday's date in India before 5:30 am)
+  function todayISO(){
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
   function formatDateForMsg(iso){
     if(!iso) return "";
     var d = new Date(iso + "T00:00:00");

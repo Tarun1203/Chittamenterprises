@@ -19,13 +19,21 @@ pickers['or-picker'] = buildPicker('or-picker');
     return '<span class="or-status s-' + String(s || 'pending').toLowerCase() + '">' + escapeHtml(s || 'Pending') + '</span>';
   }
 
-  function nextOrderNo(){
+  // Order No. = DD/MM-serial, e.g. 18/11-01; the serial restarts at 01 every
+  // day (counted among orders of that same date, so other years never clash)
+  function orderNoPrefix(iso){
+    var p = (iso || todayISO()).split('-');
+    return p[2] + '/' + p[1];
+  }
+  function nextOrderNo(iso){
+    iso = iso || todayISO();
+    var prefix = orderNoPrefix(iso) + '-';
     var max = 0;
     getOrders().forEach(function(o){
-      var m = String(o.orderNo || '').match(/(\d+)\s*$/);
-      if(m) max = Math.max(max, Number(m[1]));
+      if(o.date !== iso || String(o.orderNo || '').indexOf(prefix) !== 0) return;
+      max = Math.max(max, Number(String(o.orderNo).slice(prefix.length)) || 0);
     });
-    return 'ORD-' + String(max + 1).padStart(4, '0');
+    return prefix + String(max + 1).padStart(2, '0');
   }
 
   /* ---------------- list ---------------- */
@@ -141,7 +149,7 @@ pickers['or-picker'] = buildPicker('or-picker');
     document.getElementById('or-editor-title').textContent = o ? (o.customerName || 'Order') : 'New Order';
     var c = o ? getCustomers().find(function(x){ return x.id === o.customerId; }) : null;
     pickers['or-picker'].select(c || (o ? {id: o.customerId, name: o.customerName, mobile: o.mobile} : null));
-    document.getElementById('or-no').value = o ? (o.orderNo || '') : nextOrderNo();
+    document.getElementById('or-no').value = o ? (o.orderNo || '') : nextOrderNo(todayISO());
     document.getElementById('or-date').value = o ? (o.date || '') : todayISO();
     document.getElementById('or-delivery').value = o ? (o.deliveryDate || '') : '';
     document.getElementById('or-status').value = o ? (o.status || 'Pending') : 'Pending';
@@ -160,6 +168,14 @@ pickers['or-picker'] = buildPicker('or-picker');
     document.getElementById('or-list-wrap').style.display = '';
     renderOrders();
   }
+  // new order: changing the date re-numbers it for that day, unless the
+  // number was typed in by hand
+  document.getElementById('or-date').addEventListener('change', function(){
+    if(editingOrderId) return;
+    var noEl = document.getElementById('or-no');
+    if(!noEl.value || /^\d{2}\/\d{2}-\d+$/.test(noEl.value)) noEl.value = nextOrderNo(this.value || todayISO());
+  });
+
   document.getElementById('btnNewOrder').addEventListener('click', function(){ openOrderEditor(null); });
   document.getElementById('btnCloseOrder').addEventListener('click', closeOrderEditor);
 
@@ -168,12 +184,16 @@ pickers['or-picker'] = buildPicker('or-picker');
     if(!c){ showToast('Please select a customer first.'); return null; }
     var items = orItems();
     if(items.length === 0){ showToast('Add at least one item with a product name.'); return null; }
-    var orderNo = document.getElementById('or-no').value.trim() || nextOrderNo();
-    var clash = getOrders().find(function(o){ return o.orderNo === orderNo && o.id !== editingOrderId; });
+    var date = document.getElementById('or-date').value || todayISO();
+    var orderNo = document.getElementById('or-no').value.trim() || nextOrderNo(date);
+    // the same DD/MM-serial comes round again next year, so only that year counts as a clash
+    var clash = getOrders().find(function(o){
+      return o.orderNo === orderNo && o.id !== editingOrderId && String(o.date || '').slice(0, 4) === date.slice(0, 4);
+    });
     if(clash){ showToast('Order No. ' + orderNo + ' is already used — change it.'); return null; }
     return {
       orderNo: orderNo,
-      date: document.getElementById('or-date').value || todayISO(),
+      date: date,
       deliveryDate: document.getElementById('or-delivery').value,
       customerId: c.id, customerName: c.name, mobile: c.mobile || '',
       status: document.getElementById('or-status').value,
