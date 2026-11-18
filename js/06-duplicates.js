@@ -1,6 +1,7 @@
 "use strict";
 
-/* Duplicate finder shared by the Customers and Product Database pages. */
+/* Duplicate finder shared by the Customers and Product Database pages.
+   Records can't be deleted, so it only lists matches. */
 
 
   function findDuplicateCustomers(){
@@ -47,11 +48,10 @@
     body.innerHTML = groups.map(function(g){
       var itemsHtml = g.items.map(function(item){
         var sub = kind === 'customer' ? (item.mobile || 'no mobile') : inr(item.price);
-        return '<div class="dup-item"><span>' + escapeHtml(item.name) + ' <span class="dup-sub">(' + escapeHtml(sub) + ')</span></span>' +
-          '<button class="icon-btn del" data-dup-del="' + item.id + '">Delete</button></div>';
+        return '<div class="dup-item"><span>' + escapeHtml(item.name) + ' <span class="dup-sub">(' + escapeHtml(sub) + ')</span></span>' + '</div>';
       }).join('');
       return '<div class="dup-group"><div class="dup-group-label">' + g.label + '</div>' + itemsHtml + '</div>';
-    }).join('');
+    }).join('') + '<p style="font-size:12.5px; color:var(--ink-soft);">Records can\'t be deleted — edit one of each pair (e.g. add the town to the name) to tell them apart.</p>';
     dupModal.classList.add('show');
   }
 
@@ -59,19 +59,3 @@
   document.getElementById('btnFindDupProducts').addEventListener('click', function(){ renderDupModal('product'); });
   document.getElementById('dupModalClose').addEventListener('click', function(){ dupModal.classList.remove('show'); });
   dupModal.addEventListener('click', function(e){ if(e.target === dupModal) dupModal.classList.remove('show'); });
-
-  document.getElementById('dupModalBody').addEventListener('click', function(e){
-    var delId = e.target.dataset.dupDel;
-    if(!delId) return;
-    if(currentDupKind === 'customer'){
-      saveCustomers(getCustomers().filter(function(c){ return c.id !== delId; }));
-      renderCustomerTable();
-      refreshAllPickers();
-    }else{
-      saveProducts(getProducts().filter(function(p){ return p.id !== delId; }));
-      renderProductTable();
-      refreshSuDbPicker();
-    }
-    renderDupModal(currentDupKind);
-  });
-

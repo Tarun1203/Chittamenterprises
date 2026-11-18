@@ -21,12 +21,21 @@
   function getCustomers(){
     try{ return JSON.parse(localStorage.getItem(LS_CUST)) || []; }catch(e){ return []; }
   }
-  function saveCustomers(list){ localStorage.setItem(LS_CUST, JSON.stringify(list)); }
+  // every save also goes to the Firebase database when it's connected (js/01b-database.js)
+  function saveCustomers(list){
+    var prev = getCustomers();
+    localStorage.setItem(LS_CUST, JSON.stringify(list));
+    if(typeof dbSaveList === 'function') dbSaveList('customers', prev, list);
+  }
 
   function getProducts(){
     try{ return JSON.parse(localStorage.getItem(LS_PRODUCTS)) || []; }catch(e){ return []; }
   }
-  function saveProducts(list){ localStorage.setItem(LS_PRODUCTS, JSON.stringify(list)); }
+  function saveProducts(list){
+    var prev = getProducts();
+    localStorage.setItem(LS_PRODUCTS, JSON.stringify(list));
+    if(typeof dbSaveList === 'function') dbSaveList('products', prev, list);
+  }
 
   function getSettings(){
     var defaults = {
@@ -49,7 +58,11 @@
       return merged;
     }catch(e){ return defaults; }
   }
-  function saveSettings(s){ localStorage.setItem(LS_SETTINGS, JSON.stringify(s)); }
+  function saveSettings(s){
+    var prev = getSettings();
+    localStorage.setItem(LS_SETTINGS, JSON.stringify(s));
+    if(typeof dbSaveSettings === 'function') dbSaveSettings(prev, s);
+  }
 
   function uid(){ return 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
   function todayISO(){ return new Date().toISOString().slice(0,10); }

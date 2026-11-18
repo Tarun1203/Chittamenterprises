@@ -1,0 +1,43 @@
+rules_version = '2';
+
+// Chittam Enterprises — Firestore security rules.
+// Paste into Firebase console → Firestore Database → Rules → Publish.
+//
+// - Only signed-in users can read or write.
+// - Customers, products and settings can be added and edited, never deleted.
+// - Message history and the change log can only be added to — never edited
+//   or deleted — and each entry must carry the signed-in user's email.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function stampedBySelf() {
+      return request.resource.data.by == request.auth.token.email;
+    }
+
+    match /customers/{id} {
+      allow read, create, update: if signedIn();
+      allow delete: if false;
+    }
+    match /products/{id} {
+      allow read, create, update: if signedIn();
+      allow delete: if false;
+    }
+    match /settings/{id} {
+      allow read, create, update: if signedIn();
+      allow delete: if false;
+    }
+
+    match /messages/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && stampedBySelf();
+      allow update, delete: if false;
+    }
+    match /activity/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && stampedBySelf();
+      allow update, delete: if false;
+    }
+  }
+}

@@ -98,6 +98,10 @@ var generators = {};
       var msg = g.fn();
       if(msg === null) return;
       document.getElementById(g.previewId).textContent = msg;
+      // save a copy of every generated message to the database history
+      var waBtn = document.querySelector('[data-wa-src="' + g.previewId + '"]');
+      var customer = waBtn && pickers[waBtn.dataset.wa] ? pickers[waBtn.dataset.wa].getSelected() : null;
+      if(typeof dbLogMessage === 'function') dbLogMessage(key, customer, msg);
     });
   });
 

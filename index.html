@@ -41,10 +41,11 @@
         <p class="nav-group-label">Masters</p>
         <button class="navbtn" data-view="customers"><span class="ic">👥</span> Customers</button>
         <button class="navbtn" data-view="products"><span class="ic">🏷️</span> Product Database</button>
+        <button class="navbtn" data-view="history"><span class="ic">🕘</span> History</button>
         <button class="navbtn" data-view="settings"><span class="ic">⚙️</span> Settings</button>
       </div>
     </nav>
-    <div class="sidebar-foot">Stored only on this device.<br>No server, no account.</div>
+    <div class="sidebar-foot" id="dbStatus">Stored only on this device.<br>No server, no account.</div>
   </aside>
 
   <main class="main">
@@ -405,6 +406,24 @@
       </div>
     </section>
 
+    <!-- HISTORY -->
+    <section class="view" id="view-history">
+      <div class="view-head">
+        <p class="eyebrow">Database</p>
+        <h1 class="title">History</h1>
+        <p class="sub">Every message generated and every customer, product and settings change, saved in the database. Nothing here can be deleted.</p>
+      </div>
+      <div class="toolbar">
+        <select class="search-box" id="histKind" style="max-width:200px;">
+          <option value="messages">Messages sent</option>
+          <option value="activity">Changes</option>
+        </select>
+        <input class="search-box" id="histSearch" type="text" placeholder="🔍 Search customer, product or text…">
+        <button class="btn secondary" id="btnHistRefresh">⟳ Refresh</button>
+      </div>
+      <div id="histWrap"></div>
+    </section>
+
     <!-- SETTINGS -->
     <section class="view" id="view-settings">
       <div class="view-head">
@@ -437,6 +456,18 @@
         <div class="btnrow">
           <button class="btn" id="btnSaveSettings">Save Details</button>
           <span class="save-flag" id="settingsSaved">Saved</span>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="view-head" style="margin-bottom:16px;">
+          <p class="eyebrow">Database</p>
+          <h1 class="title" style="font-size:19px;">Firebase Database</h1>
+          <p class="sub">When connected, every add and edit is saved to the cloud and shows up on every signed-in device within seconds. Records can't be deleted.</p>
+        </div>
+        <p class="db-status" id="dbSettingsStatus">Stored only on this device.</p>
+        <div class="btnrow">
+          <button class="btn secondary" id="btnDbUpload">⬆ Upload this device's data to the database</button>
         </div>
       </div>
 
@@ -484,16 +515,16 @@
   </div>
 </div>
 
-<!-- Delete confirm modal -->
-<div class="modal-overlay" id="delModalOverlay">
-  <div class="modal">
-    <h3>Remove Customer?</h3>
-    <p style="font-size:14px; color:var(--ink-soft); margin-top:-10px;" id="delModalText">This can't be undone.</p>
-    <div class="btnrow">
-      <button class="btn danger" id="del-confirm">Remove</button>
-      <button class="btn ghost" id="del-cancel">Cancel</button>
-    </div>
-  </div>
+<!-- Database sign-in (shown only when Firebase is configured) -->
+<div class="modal-overlay auth-overlay" id="authOverlay">
+  <form class="modal" id="auth-form">
+    <h3>Sign in to Chittam Enterprises</h3>
+    <p style="font-size:13.5px; color:var(--ink-soft); margin-top:-10px;">Use the email and password added for you in Firebase. You stay signed in on this device.</p>
+    <div class="field"><label>Email</label><input type="email" id="auth-email" autocomplete="username" required></div>
+    <div class="field"><label>Password</label><input type="password" id="auth-password" autocomplete="current-password" required></div>
+    <p class="auth-error" id="auth-error"></p>
+    <div class="btnrow"><button class="btn" type="submit">Sign in</button></div>
+  </form>
 </div>
 
 <!-- Add/Edit product modal -->
@@ -506,18 +537,6 @@
     <div class="btnrow">
       <button class="btn" id="pm-save">Save</button>
       <button class="btn ghost" id="pm-cancel">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- Delete product confirm modal -->
-<div class="modal-overlay" id="prodDelModalOverlay">
-  <div class="modal">
-    <h3>Remove Product?</h3>
-    <p style="font-size:14px; color:var(--ink-soft); margin-top:-10px;" id="prodDelModalText">This can't be undone.</p>
-    <div class="btnrow">
-      <button class="btn danger" id="proddel-confirm">Remove</button>
-      <button class="btn ghost" id="proddel-cancel">Cancel</button>
     </div>
   </div>
 </div>
@@ -535,7 +554,12 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
 <script src="js/01-core.js"></script>
+<script src="js/01b-database.js"></script>
 <script src="js/02-nav.js"></script>
 <script src="js/03-registry.js"></script>
 <script src="js/04-customers.js"></script>
@@ -550,5 +574,6 @@
 <script src="js/13-init.js"></script>
 <script src="js/14-service-material.js"></script>
 <script src="js/16-stock-return.js"></script>
+<script src="js/18-history.js"></script>
 </body>
 </html>

@@ -1,10 +1,9 @@
 "use strict";
 
-/* Product Database: list, search, sort, category filter, add/edit/delete,
+/* Product Database: list, search, sort, category filter, add/edit (no delete),
    and import from a Tally stock-summary JSON export. */
 
   var editingProductId = null;
-  var deletingProductId = null;
 
   function populateCategoryFilter(){
     var sel = document.getElementById('prodCategoryFilter');
@@ -48,7 +47,6 @@
         '<td style="font-family:\'IBM Plex Mono\',monospace;">' + inr(p.price) + '</td>' +
         '<td><div class="row-actions">' +
           '<button class="icon-btn" data-edit="' + p.id + '">Edit</button>' +
-          '<button class="icon-btn del" data-del="' + p.id + '">Delete</button>' +
         '</div></td>' +
       '</tr>';
     }).join('');
@@ -90,7 +88,6 @@
 
   document.getElementById('prodTableWrap').addEventListener('click', function(e){
     var editId = e.target.dataset.edit;
-    var delId = e.target.dataset.del;
     if(editId){
       var p = getProducts().find(function(x){ return x.id === editId; });
       if(!p) return;
@@ -100,24 +97,7 @@
       document.getElementById('pm-category').value = p.category || '';
       document.getElementById('pm-price').value = p.price;
       prodModal.classList.add('show');
-    }else if(delId){
-      deletingProductId = delId;
-      var prod = getProducts().find(function(x){ return x.id === delId; });
-      document.getElementById('prodDelModalText').textContent = 'Remove ' + (prod ? prod.name : 'this product') + '? This can\'t be undone.';
-      document.getElementById('prodDelModalOverlay').classList.add('show');
     }
-  });
-
-  var prodDelModal = document.getElementById('prodDelModalOverlay');
-  document.getElementById('proddel-cancel').addEventListener('click', function(){ prodDelModal.classList.remove('show'); });
-  prodDelModal.addEventListener('click', function(e){ if(e.target === prodDelModal) prodDelModal.classList.remove('show'); });
-  document.getElementById('proddel-confirm').addEventListener('click', function(){
-    var list = getProducts().filter(function(p){ return p.id !== deletingProductId; });
-    saveProducts(list);
-    deletingProductId = null;
-    prodDelModal.classList.remove('show');
-    renderProductTable();
-    refreshSuDbPicker();
   });
 
   /* ---------------- import products from Tally stock summary JSON ---------------- */
