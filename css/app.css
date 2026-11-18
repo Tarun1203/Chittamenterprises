@@ -448,6 +448,27 @@
   .return-row .row-del:hover{ border-color:var(--danger); color:var(--danger); }
   @media(max-width:560px){ .return-row{ grid-template-columns:1fr 1fr; } .return-row .sr-name{ grid-column:1/3; } .return-row .row-del{ grid-column:2/3; justify-self:end; } }
 
+  /* ---------- Orders ---------- */
+  .order-row{ display:grid; grid-template-columns:1fr 90px 120px 110px 34px; gap:10px; align-items:center; margin-bottom:10px; }
+  .order-row input{ border:1.5px solid var(--rule); border-radius:6px; background:var(--white); padding:8px 10px; font-size:14px; color:var(--ink); outline:none; width:100%; }
+  .order-row input:focus{ border-color:var(--stamp); }
+  .order-row .or-amount{ font-family:'IBM Plex Mono', monospace; font-size:13.5px; text-align:right; }
+  .order-row .row-del{ width:34px; height:34px; border:1.5px solid var(--rule); border-radius:6px; background:var(--white); color:var(--ink-soft); font-size:13px; display:flex; align-items:center; justify-content:center; }
+  .order-row .row-del:hover{ border-color:var(--danger); color:var(--danger); }
+  .order-row-head span{ font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); font-weight:600; }
+  .or-totals{ margin-top:8px; font-size:13.5px; color:var(--ink-soft); }
+  .or-summary{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+  .or-chip{ background:var(--white); border:1px solid var(--rule); border-radius:999px; padding:5px 12px; font-size:12.5px; }
+  .or-chip strong{ margin-left:4px; }
+  .or-status{ display:inline-block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; border-radius:999px; padding:3px 9px; background:var(--paper-dark); color:var(--ink-soft); white-space:nowrap; }
+  .or-status.s-pending{ background:#fff4d6; color:#8a5a00; }
+  .or-status.s-confirmed{ background:var(--stamp-soft); color:var(--stamp); }
+  .or-status.s-packed{ background:#ece6ff; color:#5b3fc4; }
+  .or-status.s-dispatched{ background:#e2f1ff; color:#1f5fa8; }
+  .or-status.s-delivered{ background:rgba(22,130,80,0.12); color:var(--money); }
+  .or-status.s-cancelled{ background:#fde8e8; color:var(--danger); }
+  @media(max-width:680px){ .order-row{ grid-template-columns:1fr 1fr 34px; } .order-row .or-name{ grid-column:1/-1; } .order-row .or-amount{ grid-column:1/3; text-align:left; } .order-row-head{ display:none; } }
+
   /* ---------- Database / History ---------- */
   .auth-overlay{ z-index:150; background:rgba(15,15,20,0.7); }
   .auth-error{ color:var(--danger); font-size:13px; min-height:18px; margin:0 0 6px; }

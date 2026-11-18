@@ -13,7 +13,8 @@
     'dispatch-confirmation': 'Dispatch',
     'stock-update': 'Stock Update',
     'service-material': 'Service Material',
-    'stock-return': 'Stock Return'
+    'stock-return': 'Stock Return',
+    'order-confirmation': 'Order Confirmation'
   };
 
   var HIST_EVENT_LABELS = {
@@ -98,7 +99,7 @@
           escapeHtml(r.name || '') + '</div><div class="who">' + histWhen(r.at) + ' · ' + escapeHtml(r.by || '') + '</div></div>' +
           (info ? '<div class="hist-diff">' + escapeHtml(info) + '</div>' : '') + '</div>';
       }
-      var what = {customers: 'Customer', products: 'Product', settings: 'Settings'}[r.collection] || r.collection;
+      var what = {customers: 'Customer', products: 'Product', settings: 'Settings', orders: 'Order'}[r.collection] || r.collection;
       var diff = histDiff(r.before, r.after || {});
       return '<div class="hist-item"><div class="hist-top"><div><span class="hist-tag">' + escapeHtml(what) + ' ' + (r.action === 'create' ? 'added' : 'edited') + '</span>' +
         escapeHtml(r.name || '') + '</div><div class="who">' + histWhen(r.at) + ' · ' + escapeHtml(r.by || '') + '</div></div>' +

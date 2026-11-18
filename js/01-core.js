@@ -17,6 +17,7 @@
   var LS_CUST = "cem_customers";
   var LS_PRODUCTS = "cem_products";
   var LS_SETTINGS = "cem_settings";
+  var LS_ORDERS = "cem_orders";
 
   function getCustomers(){
     try{ return JSON.parse(localStorage.getItem(LS_CUST)) || []; }catch(e){ return []; }
@@ -35,6 +36,15 @@
     var prev = getProducts();
     localStorage.setItem(LS_PRODUCTS, JSON.stringify(list));
     if(typeof dbSaveList === 'function') dbSaveList('products', prev, list);
+  }
+
+  function getOrders(){
+    try{ return JSON.parse(localStorage.getItem(LS_ORDERS)) || []; }catch(e){ return []; }
+  }
+  function saveOrders(list){
+    var prev = getOrders();
+    localStorage.setItem(LS_ORDERS, JSON.stringify(list));
+    if(typeof dbSaveList === 'function') dbSaveList('orders', prev, list);
   }
 
   function getSettings(){

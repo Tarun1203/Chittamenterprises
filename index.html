@@ -34,6 +34,7 @@
       </div>
       <div class="nav-group">
         <p class="nav-group-label">Movement</p>
+        <button class="navbtn" data-view="orders"><span class="ic">🧾</span> Orders</button>
         <button class="navbtn" data-view="dispatch-confirmation"><span class="ic">🚚</span> Dispatch Confirmation</button>
         <button class="navbtn" data-view="stock-return"><span class="ic">↩️</span> Stock Return</button>
       </div>
@@ -70,6 +71,7 @@
         <button class="tile" data-view="payment-updated"><div class="ic">💰</div><div class="t">Payment Updated</div><div class="d">Confirm a payment received and show the new balance.</div></button>
         <button class="tile" data-view="balance-confirmation"><div class="ic">📋</div><div class="t">Balance Confirmation</div><div class="d">Share today's outstanding for the customer to confirm.</div></button>
         <button class="tile" data-view="payment-reminder"><div class="ic">💳</div><div class="t">Payment Reminder</div><div class="d">Outstanding by account, days pending, and how to pay.</div></button>
+        <button class="tile" data-view="orders"><div class="ic">🧾</div><div class="t">Orders</div><div class="d">Take customer orders, track status, and send an order confirmation.</div></button>
         <button class="tile" data-view="dispatch-confirmation"><div class="ic">🚚</div><div class="t">Dispatch Confirmation</div><div class="d">Let a customer know their order is on the way.</div></button>
         <button class="tile" data-view="stock-return"><div class="ic">↩️</div><div class="t">Stock Return</div><div class="d">Acknowledge goods returned by a customer and the credit given.</div></button>
         <button class="tile" data-view="service-material"><div class="ic">🔧</div><div class="t">Service Material</div><div class="d">Send service stock details to a dealer with items, serial nos, and charges.</div></button>
@@ -353,6 +355,65 @@
       </div>
     </section>
 
+    <!-- ORDERS -->
+    <section class="view" id="view-orders">
+      <div class="view-head">
+        <p class="eyebrow">Orders</p>
+        <h1 class="title">Orders</h1>
+        <p class="sub">Every order is saved in the database and visible on every device. Orders can't be deleted — set the status to Cancelled instead.</p>
+      </div>
+
+      <div id="or-list-wrap">
+        <div class="toolbar">
+          <input class="search-box" id="orSearch" type="text" placeholder="🔍 Search order no., customer or product…">
+          <select class="search-box" id="orStatusFilter" style="max-width:180px;"><option value="">All Statuses</option></select>
+          <button class="btn" id="btnNewOrder">+ New Order</button>
+        </div>
+        <div class="or-summary" id="orSummary"></div>
+        <div id="orTableWrap"></div>
+      </div>
+
+      <div class="card" id="or-editor" style="display:none;">
+        <div class="view-head" style="margin-bottom:14px;">
+          <p class="eyebrow" id="or-editor-eyebrow">New Order</p>
+          <h1 class="title" style="font-size:19px;" id="or-editor-title">New Order</h1>
+        </div>
+        <div class="field"><label>Customer</label><div class="picker" id="or-picker"></div></div>
+        <div class="row3">
+          <div class="field"><label>Order No.</label><input type="text" id="or-no"></div>
+          <div class="field"><label>Order Date</label><input type="date" id="or-date"></div>
+          <div class="field"><label>Expected Delivery</label><input type="date" id="or-delivery"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Status</label><select id="or-status"></select></div>
+          <div class="field"><label>Advance Paid (₹)</label><input type="number" id="or-advance" placeholder="0"></div>
+        </div>
+        <div class="field">
+          <label>Items</label>
+          <div class="order-row order-row-head"><span>Product</span><span>Qty</span><span>Rate (₹)</span><span>Amount</span><span></span></div>
+          <div id="or-items"></div>
+          <datalist id="or-product-list"></datalist>
+          <button class="btn ghost" id="or-add-item" type="button">+ Add Item</button>
+          <div class="or-totals">Total: <strong id="or-total">₹0</strong> · Balance: <strong id="or-balance">₹0</strong></div>
+        </div>
+        <div class="field"><label>Notes (optional)</label><input type="text" id="or-notes" placeholder="e.g. Deliver via VRL, call before dispatch"></div>
+        <div class="btnrow">
+          <button class="btn" id="btnSaveOrder">💾 Save Order</button>
+          <button class="btn ghost" id="btnCloseOrder" type="button">← Back to Orders</button>
+          <span class="save-flag" id="orSaved">Saved</span>
+        </div>
+        <div class="btnrow" style="margin-top:6px;">
+          <button class="btn secondary" data-generate="order-confirmation">Generate Confirmation</button>
+          <button class="btn secondary" data-copy="or-preview">Copy <span class="copied-flag">Copied</span></button>
+          <button class="btn wa" data-wa="or-picker" data-wa-src="or-preview">📲 Copy &amp; Open WhatsApp</button>
+        </div>
+        <div class="preview-wrap">
+          <div class="preview-head"><span class="stamp-badge">Order</span></div>
+          <div class="preview" id="or-preview"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- STOCK RETURN -->
     <section class="view" id="view-stock-return">
       <div class="view-head">
@@ -575,5 +636,6 @@
 <script src="js/14-service-material.js"></script>
 <script src="js/16-stock-return.js"></script>
 <script src="js/18-history.js"></script>
+<script src="js/19-orders.js"></script>
 </body>
 </html>

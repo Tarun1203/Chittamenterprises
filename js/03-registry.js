@@ -57,6 +57,7 @@
 
     return {
       getSelected: function(){ return selected; },
+      select: function(c){ selected = c; input.value = c ? c.name : ''; },
       refresh: function(){ render(input.value); }
     };
   }
@@ -88,6 +89,28 @@ function refreshAllPickers(){
     return c;
   }
 
+  // every field on a template page: inputs with an id by id, repeated
+  // row inputs (items, invoices…) as one list per row
+  function collectFormInputs(view){
+    var out = {};
+    if(!view) return out;
+    view.querySelectorAll('input[id], select[id], textarea[id]').forEach(function(el){
+      if(el.type === 'file' || el.closest('.picker') || el.closest('.toolbar')) return;
+      out[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+    var rows = [];
+    view.querySelectorAll('.product-row, .invoice-row, .return-row, .order-row').forEach(function(row){
+      var vals = {};
+      row.querySelectorAll('input, select').forEach(function(el, i){
+        var k = (el.className || '').split(' ')[0] || ('f' + i);
+        vals[k] = el.value;
+      });
+      if(Object.keys(vals).some(function(k){ return vals[k] !== ''; })) rows.push(vals);
+    });
+    if(rows.length) out.rows = rows;
+    return out;
+  }
+
 /* filled in by each template file, e.g. generators['payment-updated'] = {...} */
 var generators = {};
 
@@ -101,7 +124,7 @@ var generators = {};
       // save a copy of every generated message to the database history
       var waBtn = document.querySelector('[data-wa-src="' + g.previewId + '"]');
       var customer = waBtn && pickers[waBtn.dataset.wa] ? pickers[waBtn.dataset.wa].getSelected() : null;
-      if(typeof dbLogMessage === 'function') dbLogMessage(key, customer, msg);
+      if(typeof dbLogMessage === 'function') dbLogMessage(key, customer, msg, collectFormInputs(btn.closest('.view')));
     });
   });
 

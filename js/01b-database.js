@@ -54,7 +54,7 @@
         batch.set(db.collection(w.coll).doc(w.id), doc, {merge: w.coll !== 'settings'});
         batch.set(db.collection('activity').doc(), {
           collection: w.coll, docId: w.id, action: w.action,
-          name: data.name || data.businessName || '',
+          name: data.name || data.businessName || (data.orderNo ? data.orderNo + (data.customerName ? ' — ' + data.customerName : '') : ''),
           before: w.before ? dbStable(w.before) : null, after: data,
           at: dbNow(), by: dbUser.email
         });
@@ -87,7 +87,7 @@
   }
 
   var dbLastMessage = {};
-  function dbLogMessage(type, customer, text){
+  function dbLogMessage(type, customer, text, inputs){
     if(!dbReady() || dbLastMessage[type] === text) return; // pressing Generate twice saves once
     dbLastMessage[type] = text;
     var batch = db.batch();
@@ -97,7 +97,8 @@
       customerName: customer ? customer.name : '',
       mobile: customer ? (customer.mobile || '') : ''
     };
-    batch.set(msgRef, Object.assign({type: type, text: text, at: dbNow(), by: dbUser.email}, who));
+    // inputs = every field filled in on the form, so the entry itself is kept, not just the text
+    batch.set(msgRef, Object.assign({type: type, text: text, inputs: dbStable(inputs || {}), at: dbNow(), by: dbUser.email}, who));
     // also in the activity log, so it shows everything in one place
     batch.set(db.collection('activity').doc(), {
       collection: 'app', action: 'message-generated', name: who.customerName,
@@ -138,6 +139,8 @@
       if(typeof renderProductTable === 'function') renderProductTable();
       if(typeof refreshSuDbPicker === 'function') refreshSuDbPicker();
       if(window.ChittamCatalog && document.getElementById('ce-grid')) window.ChittamCatalog.render();
+    }else if(kind === 'orders'){
+      if(typeof renderOrders === 'function') renderOrders();
     }else if(kind === 'settings'){
       if(typeof loadSettingsIntoForm === 'function') loadSettingsIntoForm();
       if(typeof populatePaymentModeSelect === 'function') populatePaymentModeSelect();
@@ -167,6 +170,10 @@
       db.collection('products').onSnapshot(function(snap){
         localStorage.setItem(LS_PRODUCTS, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
         dbRefreshUi('products');
+      }, dbReadError),
+      db.collection('orders').onSnapshot(function(snap){
+        localStorage.setItem(LS_ORDERS, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
+        dbRefreshUi('orders');
       }, dbReadError),
       db.collection('settings').doc('main').onSnapshot(function(doc){
         if(!doc.exists) return;
