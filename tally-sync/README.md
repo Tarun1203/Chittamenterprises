@@ -1,40 +1,46 @@
-# Tally → app balance sync
+# Chittam Tally Sync (Windows app)
 
-Runs on the PC where Tally is open. Every 30 minutes it reads both companies'
-**Sundry Debtors** closing balances from Tally and saves them to the app's
-database. Payment Updated, Payment Reminder and Balance Confirmation then fill
-balances in on every phone, so there's no manual import.
+A small Windows program for the PC where Tally is open. Every 30 minutes (you
+can change this) it reads both companies' **Sundry Debtors** closing balances
+from Tally and saves them to the app's database. Payment Updated, Payment
+Reminder and Balance Confirmation then fill balances in on every phone, so
+there's no daily import.
 
-- **Business company** (Chittam Enterprises) → business balance
-- **Cash company** (Cash Bill) → cash balance
-- Uploads only when balances changed; each upload shows in the app's History
+- **Business company** (e.g. *Chittam Enterprises - 2026*) → business balance
+- **Cash company** (*Cash*) → cash balance
+- Uploads only when balances changed, and each upload shows in the app's History
 - A company not open in Tally is skipped, and its last balances stay
+- Runs in the system tray (near the clock). Closing the window keeps it
+  syncing; right-click the icon → **Exit** to stop it.
 
-## One-time setup
+## Setup
 
-1. **Tally:** both companies must be open (loaded) when the PC is on, with
-   Tally's server on port 9000 (*F1 Help → Settings → Connectivity → Client/Server
-   configuration → TallyPrime acts as Both / Server*).
-2. **Login for the helper:** in the [Firebase console → Authentication → Users](https://console.firebase.google.com/project/chittam-enterprises/authentication/users)
-   click **Add user**. Use any email, e.g. `tally-sync@chittamenterprises.in`, and
-   a strong password.
-3. **Settings file:** copy `tally-sync.config.example.json` to
-   `tally-sync.config.json` and fill in that **email** and **password**. Check
-   the two company names match Tally exactly (*Chittam Enterprises - 2026*,
-   *Cash*). This file is git-ignored, so it is never uploaded.
-4. **Test:** in this folder run
-   ```
-   powershell -ExecutionPolicy Bypass -File .\tally-balances-sync.ps1 -DryRun
-   ```
-   then without `-DryRun` once, and open the app → Settings → Customer
-   Balances from Tally to see the new time.
-5. **Schedule it:**
-   ```
-   powershell -ExecutionPolicy Bypass -File .\install-task.ps1
-   ```
+1. **Tally:** keep both companies open, with Tally's server on port 9000
+   (*F1 Help → Settings → Connectivity → TallyPrime acts as Both / Server*).
+2. **A login for this PC:** in the
+   [Firebase console → Authentication → Users](https://console.firebase.google.com/project/chittam-enterprises/authentication/users)
+   click **Add user**. Use any email (e.g. `tally-sync@chittamenterprises.in`)
+   and a strong password.
+3. **Open `Chittam Tally Sync.exe`** (in this folder) and fill in:
+   - **Email / Password:** the login from step 2. The password is stored
+     encrypted for your Windows account.
+   - **Business / Cash:** click *Load company names from Tally* and pick
+     them.
+   - Tick **Start with Windows**.
+4. Click **Save**. It syncs straight away; the status lines show the last
+   upload, and the app's Settings → *Customer Balances from Tally* shows
+   "Synced automatically from Tally".
 
 ## Every year
-When you start the new financial year company in Tally (e.g. *Chittam
-Enterprises - 2027*), change `businessCompany` in `tally-sync.config.json`.
+When you start the new year's company in Tally (e.g. *Chittam Enterprises -
+2027*), open the program, pick the new company under **Business** and click
+**Save**.
 
-Log: `tally-sync.log` in this folder.
+## Rebuilding the program
+The `.exe` is built on this PC from `ChittamTallySync.cs` (it isn't stored in
+git). To rebuild it, run from this folder:
+```
+powershell -ExecutionPolicy Bypass -File .\build.ps1
+```
+
+Settings and the log are kept in `%APPDATA%\ChittamTallySync\`.

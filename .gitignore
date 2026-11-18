@@ -1,3 +1,2 @@
-tally-sync/tally-sync.config.json
-tally-sync/tally-sync.state.json
-tally-sync/tally-sync.log
+# built locally with tally-sync/build.ps1
+tally-sync/*.exe
