@@ -23,6 +23,7 @@
       <div class="nav-group">
         <p class="nav-group-label">Overview</p>
         <button class="navbtn" data-view="dashboard"><span class="ic">🏠</span> Dashboard</button>
+        <button class="navbtn" data-view="transactions"><span class="ic">📊</span> Daily Transactions</button>
       </div>
       <div class="nav-group">
         <p class="nav-group-label">Messaging</p>
@@ -35,6 +36,7 @@
       <div class="nav-group">
         <p class="nav-group-label">Movement</p>
         <button class="navbtn" data-view="dispatch-confirmation"><span class="ic">🚚</span> Dispatch Confirmation</button>
+        <button class="navbtn" data-view="stock-return"><span class="ic">↩️</span> Stock Return</button>
       </div>
       <div class="nav-group">
         <p class="nav-group-label">Masters</p>
@@ -69,6 +71,8 @@
         <button class="tile" data-view="balance-confirmation"><div class="ic">📋</div><div class="t">Balance Confirmation</div><div class="d">Share today's outstanding for the customer to confirm.</div></button>
         <button class="tile" data-view="payment-reminder"><div class="ic">💳</div><div class="t">Payment Reminder</div><div class="d">Outstanding by account, days pending, and how to pay.</div></button>
         <button class="tile" data-view="dispatch-confirmation"><div class="ic">🚚</div><div class="t">Dispatch Confirmation</div><div class="d">Let a customer know their order is on the way.</div></button>
+        <button class="tile" data-view="stock-return"><div class="ic">↩️</div><div class="t">Stock Return</div><div class="d">Acknowledge goods returned by a customer and the credit given.</div></button>
+        <button class="tile" data-view="transactions"><div class="ic">📊</div><div class="t">Daily Transactions</div><div class="d">Today's Tally vouchers — sales, receipts, returns — from any device.</div></button>
         <button class="tile" data-view="service-material"><div class="ic">🔧</div><div class="t">Service Material</div><div class="d">Send service stock details to a dealer with items, serial nos, and charges.</div></button>
         <button class="tile" data-view="stock-update"><div class="ic">📦</div><div class="t">Stock Update</div><div class="d">Announce newly available products and prices.</div></button>
         <button class="tile" data-view="customers"><div class="ic">👥</div><div class="t">Manage Customers</div><div class="d">Add, edit or remove customers stored on this device.</div></button>
@@ -350,6 +354,77 @@
       </div>
     </section>
 
+    <!-- STOCK RETURN -->
+    <section class="view" id="view-stock-return">
+      <div class="view-head">
+        <p class="eyebrow">Stock Return</p>
+        <h1 class="title">Stock Return Acknowledgement</h1>
+        <p class="sub">Confirm goods a customer sent back, the reason, and how it has been settled.</p>
+      </div>
+      <div class="card">
+        <div class="field"><label>Customer</label><div class="picker" id="sr-picker"></div></div>
+        <div class="row3">
+          <div class="field"><label>Return Date</label><input type="date" id="sr-date"></div>
+          <div class="field"><label>Credit Note No. (optional)</label><input type="text" id="sr-cn" placeholder="e.g. CN/14/2026-27"></div>
+          <div class="field"><label>Against Invoice No. (optional)</label><input type="text" id="sr-invoice" placeholder="e.g. RP/12-2026/27"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Reason</label>
+            <select id="sr-reason">
+              <option>Damaged in transit</option>
+              <option>Manufacturing defect</option>
+              <option>Wrong item supplied</option>
+              <option>Excess quantity</option>
+              <option>Unsold stock</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="field"><label>Status</label>
+            <select id="sr-status">
+              <option value="credited">Received &amp; credited to account</option>
+              <option value="inspection">Received — under inspection</option>
+              <option value="replacement">Received — replacement to be sent</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Returned Items</label>
+          <div id="sr-items"></div>
+          <button class="btn ghost" id="sr-add-item" type="button">+ Add Item</button>
+          <div style="margin-top:8px; font-size:13px; color:var(--ink-soft);">Total return value: <strong id="sr-total">₹0</strong></div>
+        </div>
+        <div class="field"><label>Credit Amount incl. GST (₹, optional — defaults to total return value)</label><input type="number" id="sr-credit" placeholder="e.g. 14356"></div>
+        <div class="field"><label>Additional Notes (optional)</label><input type="text" id="sr-notes" placeholder="e.g. Credit will reflect in your next statement"></div>
+        <div class="btnrow">
+          <button class="btn" data-generate="stock-return">Generate</button>
+          <button class="btn secondary" data-copy="sr-preview">Copy <span class="copied-flag">Copied</span></button>
+          <button class="btn wa" data-wa="sr-picker" data-wa-src="sr-preview">📲 Copy &amp; Open WhatsApp</button>
+        </div>
+        <div class="preview-wrap">
+          <div class="preview-head"><span class="stamp-badge">Return</span></div>
+          <div class="preview" id="sr-preview"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DAILY TRANSACTIONS (TALLY) -->
+    <section class="view" id="view-transactions">
+      <div class="view-head">
+        <p class="eyebrow">Tally Sync</p>
+        <h1 class="title">Daily Transactions</h1>
+        <p class="sub">Vouchers sent from Tally by the bridge script on your Tally PC. Open this page from any phone or laptop that has the Cloud Sync URL set in Settings.</p>
+      </div>
+      <div class="toolbar">
+        <input class="search-box" type="date" id="tx-date" style="max-width:190px;">
+        <select class="search-box" id="tx-type" style="max-width:200px;"><option value="">All Voucher Types</option></select>
+        <input class="search-box" id="tx-search" type="text" placeholder="🔍 Search party, voucher no. or narration…">
+        <button class="btn" id="btnTxRefresh">⟳ Refresh</button>
+      </div>
+      <p class="tx-meta" id="tx-meta"></p>
+      <div class="tx-summary" id="tx-summary"></div>
+      <div class="tx-table-wrap" id="tx-table-wrap"></div>
+    </section>
+
     <!-- SETTINGS -->
     <section class="view" id="view-settings">
       <div class="view-head">
@@ -405,6 +480,7 @@
           <p class="sub">Point this at a Google Sheet (set up once — see the included setup guide) to move customers, products, and settings between your phone and laptop. Pull replaces what's on this device with the Sheet's data; Push replaces the Sheet's data with what's on this device.</p>
         </div>
         <div class="field"><label>Google Sheet Web App URL</label><input type="text" id="cloud-url" placeholder="https://script.google.com/macros/s/…/exec"></div>
+        <div class="field"><label>Access Key (for Daily Transactions)</label><input type="password" id="cloud-key" placeholder="Same ACCESS_KEY you set in Apps Script → Project Settings → Script Properties" autocomplete="off"></div>
         <div class="btnrow">
           <button class="btn" id="btnCloudPush">☁ Push to Sheet</button>
           <button class="btn secondary" id="btnCloudPull">☁ Pull from Sheet</button>
@@ -494,5 +570,7 @@
 <script src="js/12-stock-update.js"></script>
 <script src="js/13-init.js"></script>
 <script src="js/14-service-material.js"></script>
+<script src="js/16-stock-return.js"></script>
+<script src="js/17-transactions.js"></script>
 </body>
 </html>
