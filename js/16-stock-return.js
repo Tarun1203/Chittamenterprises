@@ -20,6 +20,7 @@ function srAddItemRow(name, qty, amount){
     '<button type="button" class="row-del" title="Remove">✕</button>';
   row.querySelector('.row-del').addEventListener('click', function(){ wrap.removeChild(row); srUpdateTotal(); });
   row.querySelector('.sr-amount').addEventListener('input', srUpdateTotal);
+  attachSuggest(row.querySelector('.sr-name'), productSuggestions);
   wrap.appendChild(row);
 }
 

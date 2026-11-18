@@ -32,14 +32,13 @@
     saveTransports(list);
   }
 
-  function refreshTransportList(){
-    document.getElementById('transport-list').innerHTML = getTransports().map(function(t){
-      return '<option value="' + escapeHtml(t.name) + '">' + escapeHtml([t.phone, t.branch].filter(Boolean).join(' · ')) + '</option>';
-    }).join('');
+  function transportSuggestions(){
+    return getTransports().slice().sort(function(a, b){ return a.name.localeCompare(b.name); }).map(function(t){
+      return {value: t.name, sub: [t.phone, t.branch].filter(Boolean).join(' · ')};
+    });
   }
 
   function renderTransports(){
-    refreshTransportList();
     var wrap = document.getElementById('trTableWrap');
     var q = (document.getElementById('trSearch').value || '').trim().toLowerCase();
     var all = getTransports().slice().sort(function(a, b){ return a.name.localeCompare(b.name); });
@@ -135,6 +134,5 @@
   /* every transport input in the app suggests names from this list */
   ['dc-transport', 'sm-transport', 'sv-in-transport', 'sv-out-transport', 'or-transport'].forEach(function(id){
     var el = document.getElementById(id);
-    if(el) el.setAttribute('list', 'transport-list');
+    if(el) attachSuggest(el, transportSuggestions);
   });
-  refreshTransportList();

@@ -452,6 +452,14 @@
   .order-row{ display:grid; grid-template-columns:1fr 90px 120px 110px 34px; gap:10px; align-items:center; margin-bottom:10px; }
   .order-row input{ border:1.5px solid var(--rule); border-radius:6px; background:var(--white); padding:8px 10px; font-size:14px; color:var(--ink); outline:none; width:100%; }
   .order-row input:focus{ border-color:var(--stamp); }
+  .suggest-wrap{ position:relative; display:block; min-width:0; }
+  .suggest-list{ display:none; position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:40; background:var(--white); border:1px solid var(--rule); border-radius:10px; box-shadow:var(--shadow-md); max-height:260px; overflow-y:auto; }
+  .suggest-list.show{ display:block; }
+  .suggest-item{ padding:9px 12px; cursor:pointer; border-bottom:1px solid var(--paper-dark); }
+  .suggest-item:last-child{ border-bottom:none; }
+  .suggest-item:hover, .suggest-item:active{ background:var(--stamp-soft); }
+  .suggest-item .nm{ font-size:14px; font-weight:600; color:var(--ink); }
+  .suggest-item .mb{ font-size:12px; color:var(--ink-soft); margin-top:1px; }
   .order-row .or-amount{ font-family:'IBM Plex Mono', monospace; font-size:13.5px; text-align:right; }
   .order-row .row-del{ width:34px; height:34px; border:1.5px solid var(--rule); border-radius:6px; background:var(--white); color:var(--ink-soft); font-size:13px; display:flex; align-items:center; justify-content:center; }
   .order-row .row-del:hover{ border-color:var(--danger); color:var(--danger); }
@@ -467,7 +475,7 @@
   .or-status.s-dispatched{ background:#e2f1ff; color:#1f5fa8; }
   .or-status.s-delivered{ background:rgba(22,130,80,0.12); color:var(--money); }
   .or-status.s-cancelled{ background:#fde8e8; color:var(--danger); }
-  @media(max-width:680px){ .order-row{ grid-template-columns:1fr 1fr 34px; } .order-row .or-name{ grid-column:1/-1; } .order-row .or-amount{ grid-column:1/3; text-align:left; } .order-row-head{ display:none; } }
+  @media(max-width:680px){ .order-row{ grid-template-columns:1fr 1fr 34px; } .order-row .suggest-wrap{ grid-column:1/-1; } .order-row .or-amount{ grid-column:1/3; text-align:left; } .order-row-head{ display:none; } }
 
   /* ---------- Service Jobs ---------- */
   .sv-section{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); margin:18px 0 10px; padding-top:14px; border-top:1px solid var(--rule); }
@@ -657,7 +665,8 @@
      (the page can be ~980px wide in Chrome's "Desktop site" mode) */
   html.mobile-app .row2, html.mobile-app .row3{ grid-template-columns:1fr; }
   html.mobile-app .order-row{ grid-template-columns:1fr 1fr 34px; }
-  html.mobile-app .order-row .or-name{ grid-column:1/-1; }
+  html.mobile-app .order-row .suggest-wrap{ grid-column:1/-1; }
+  html.mobile-app .suggest-item{ padding:12px 14px; }
   html.mobile-app .order-row .or-amount{ grid-column:1/3; text-align:left; }
   html.mobile-app .order-row-head{ display:none; }
   html.mobile-app .sv-item .sv-grid, html.mobile-app .sv-item .sv-grid2{ grid-template-columns:1fr 1fr; }

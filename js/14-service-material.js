@@ -31,6 +31,7 @@ function smAddItemRow(product, qty, serialNo, issue, charges){
     wrap.removeChild(row);
   });
   wrap.appendChild(row);
+  attachSuggest(row.querySelector('.sm-product'), productSuggestions);
 }
 
 document.getElementById('sm-add-item').addEventListener('click', function(){ smAddItemRow(); });

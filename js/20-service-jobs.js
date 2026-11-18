@@ -111,17 +111,19 @@ pickers['sv-picker'] = buildPicker('sv-picker');
     card.innerHTML =
       '<button type="button" class="row-del" title="Remove this product from the job">✕</button>' +
       '<div class="sv-grid">' +
-        '<div><div class="sv-lbl">Product received</div><input type="text" class="sv-product" list="sv-product-list" placeholder="Product name" value="' + v(it.product) + '"></div>' +
+        '<div><div class="sv-lbl">Product received</div><input type="text" class="sv-product" placeholder="Product name" value="' + v(it.product) + '"></div>' +
         '<div><div class="sv-lbl">Qty</div><input type="number" class="sv-qty" min="1" value="' + v(it.qty || 1) + '"></div>' +
         '<div><div class="sv-lbl">Serial No.</div><input type="text" class="sv-serial" placeholder="S/N" value="' + v(it.serial) + '"></div>' +
       '</div>' +
       '<div style="margin-top:10px;"><div class="sv-lbl">Issue reported</div><input type="text" class="sv-issue" placeholder="e.g. No output, display dead" value="' + v(it.issue) + '"></div>' +
       '<div class="sv-grid2">' +
         '<div><div class="sv-lbl">Action taken</div><select class="sv-action">' + SV_ACTIONS.map(function(a){ return '<option' + (a === (it.action || 'Pending') ? ' selected' : '') + '>' + a + '</option>'; }).join('') + '</select></div>' +
-        '<div><div class="sv-lbl">Replacement product</div><input type="text" class="sv-repl-product" list="sv-product-list" placeholder="Same as received" value="' + v(it.replProduct) + '"></div>' +
+        '<div><div class="sv-lbl">Replacement product</div><input type="text" class="sv-repl-product" placeholder="Same as received" value="' + v(it.replProduct) + '"></div>' +
         '<div><div class="sv-lbl">New Serial No.</div><input type="text" class="sv-repl-serial" placeholder="S/N" value="' + v(it.replSerial) + '"></div>' +
         '<div><div class="sv-lbl">Charges (₹)</div><input type="number" class="sv-charges" placeholder="0" value="' + v(it.charges || '') + '"></div>' +
       '</div>';
+    attachSuggest(card.querySelector('.sv-product'), productSuggestions);
+    attachSuggest(card.querySelector('.sv-repl-product'), productSuggestions);
     var action = card.querySelector('.sv-action');
     function syncReplacement(){
       var on = action.value === 'Replaced';
@@ -168,7 +170,6 @@ pickers['sv-picker'] = buildPicker('sv-picker');
   /* ---------------- editor: open / save ---------------- */
   function openJobEditor(j){
     editingJobId = j ? j.id : null;
-    document.getElementById('sv-product-list').innerHTML = getProducts().map(function(p){ return '<option value="' + escapeHtml(p.name) + '">'; }).join('');
     document.getElementById('sv-editor-eyebrow').textContent = j ? 'Service Job ' + (j.jobNo || '') : 'New Service Job';
     document.getElementById('sv-editor-title').textContent = j ? (j.customerName || 'Service Job') : 'New Service Job';
     var c = j ? getCustomers().find(function(x){ return x.id === j.customerId; }) : null;

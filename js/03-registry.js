@@ -62,6 +62,61 @@
     };
   }
 
+  /* ---------------- suggestion dropdown for a plain text field ---------------- */
+  // Used for product / transport names on item rows. The browser's own
+  // <datalist> often shows nothing on Android and in the installed app, so
+  // this draws its own list under the field. source() returns
+  // [{value, sub}]; picking one fills the field and fires input + change.
+  function attachSuggest(input, source){
+    input.removeAttribute('list');
+    input.setAttribute('autocomplete', 'off');
+    var wrap = document.createElement('span');
+    wrap.className = 'suggest-wrap';
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+    var box = document.createElement('div');
+    box.className = 'suggest-list';
+    wrap.appendChild(box);
+
+    var picking = false;
+    function render(){
+      if(picking) return;
+      var words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      var items = source().filter(function(it){
+        var hay = (it.value + ' ' + (it.sub || '')).toLowerCase();
+        return words.every(function(w){ return hay.indexOf(w) > -1; });
+      }).slice(0, 40);
+      if(items.length === 0 || (items.length === 1 && items[0].value === input.value)){ box.classList.remove('show'); return; }
+      box.innerHTML = items.map(function(it, i){
+        return '<div class="suggest-item" data-i="' + i + '"><div class="nm">' + escapeHtml(it.value) + '</div>' +
+          (it.sub ? '<div class="mb">' + escapeHtml(it.sub) + '</div>' : '') + '</div>';
+      }).join('');
+      box._items = items;
+      box.classList.add('show');
+    }
+    input.addEventListener('focus', render);
+    input.addEventListener('input', render);
+    input.addEventListener('blur', function(){ setTimeout(function(){ box.classList.remove('show'); }, 150); });
+    // pointerdown fires before the field loses focus, so the tap always lands
+    box.addEventListener('pointerdown', function(e){
+      var el = e.target.closest('.suggest-item');
+      if(!el) return;
+      e.preventDefault();
+      input.value = box._items[Number(el.dataset.i)].value;
+      box.classList.remove('show');
+      picking = true;
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+      input.dispatchEvent(new Event('change', {bubbles: true}));
+      picking = false;
+    });
+  }
+
+  function productSuggestions(){
+    return getProducts().slice().sort(function(a, b){ return a.name.localeCompare(b.name); }).map(function(p){
+      return {value: p.name, sub: (p.category ? p.category + ' · ' : '') + inr(p.price)};
+    });
+  }
+
 var pickers = {};
 function refreshAllPickers(){
   Object.keys(pickers).forEach(function(k){ pickers[k].refresh(); });

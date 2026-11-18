@@ -89,24 +89,19 @@ pickers['or-picker'] = buildPicker('or-picker');
   });
 
   /* ---------------- editor: item rows ---------------- */
-  function refreshProductList(){
-    document.getElementById('or-product-list').innerHTML = getProducts().map(function(p){
-      return '<option value="' + escapeHtml(p.name) + '">' + (p.category ? escapeHtml(p.category) + ' · ' : '') + inr(p.price) + '</option>';
-    }).join('');
-  }
-
   function orAddItemRow(it){
     it = it || {};
     var wrap = document.getElementById('or-items');
     var row = document.createElement('div');
     row.className = 'order-row';
     row.innerHTML =
-      '<input type="text" class="or-name" list="or-product-list" placeholder="Product (type to search)" value="' + escapeHtml(it.name || '') + '">' +
+      '<input type="text" class="or-name" placeholder="Product (type to search)" value="' + escapeHtml(it.name || '') + '">' +
       '<input type="number" class="or-qty" placeholder="Qty" min="0" value="' + (it.qty !== undefined && it.qty !== '' ? it.qty : '') + '">' +
       '<input type="number" class="or-rate" placeholder="Rate" value="' + (it.rate !== undefined && it.rate !== '' ? it.rate : '') + '">' +
       '<span class="or-amount">₹0</span>' +
       '<button type="button" class="row-del" title="Remove this line">✕</button>';
     var name = row.querySelector('.or-name'), rate = row.querySelector('.or-rate');
+    attachSuggest(name, productSuggestions);
     name.addEventListener('change', function(){
       // picking a product from the database fills in its price
       var p = getProducts().find(function(x){ return normalizeName(x.name) === normalizeName(name.value); });
@@ -147,7 +142,6 @@ pickers['or-picker'] = buildPicker('or-picker');
   /* ---------------- editor: open / save ---------------- */
   function openOrderEditor(o){
     editingOrderId = o ? o.id : null;
-    refreshProductList();
     document.getElementById('or-editor-eyebrow').textContent = o ? 'Order ' + (o.orderNo || '') : 'New Order';
     document.getElementById('or-editor-title').textContent = o ? (o.customerName || 'Order') : 'New Order';
     var c = o ? getCustomers().find(function(x){ return x.id === o.customerId; }) : null;
