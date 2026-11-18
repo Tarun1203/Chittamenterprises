@@ -32,6 +32,7 @@
     'catalog-photo': 'Catalog photo added',
     'catalog-copy': 'Catalog copied',
     'catalog-share': 'Catalog shared',
+    'app-installed': 'App installed',
     'sign-in': 'Signed in',
     'sign-out': 'Signed out'
   };
