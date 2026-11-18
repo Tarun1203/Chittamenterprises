@@ -1,2 +1,2 @@
-# built locally with tally-sync/build.ps1
-tally-sync/*.exe
+# built locally with windows-app/build.ps1
+windows-app/dist/

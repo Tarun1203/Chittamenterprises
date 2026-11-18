@@ -4,7 +4,7 @@
    are served from the cache. Firestore / sign-in requests are never touched
    here — Firestore keeps its own offline copy of the data. */
 
-var CACHE = 'chittam-v10';
+var CACHE = 'chittam-v11';
 var APP_FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/favicon-32.png',
