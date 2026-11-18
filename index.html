@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Chittam Enterprises — Message Generator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -58,6 +58,15 @@
     <button class="install-btn" id="btnInstallApp" type="button" style="display:none;">📲 Install app</button>
     <div class="sidebar-foot" id="dbStatus">Stored only on this device.<br>No server, no account.</div>
   </aside>
+
+  <!-- phone layout: top app bar (hidden on desktop) -->
+  <header class="m-topbar">
+    <div class="m-brand">
+      <div class="mark">CE</div>
+      <div class="m-titles"><div class="m-title" id="mTitle">Chittam Enterprises</div><div class="m-sub" id="mSync">On this device</div></div>
+    </div>
+    <button class="m-icon-btn" id="mSettingsBtn" type="button" aria-label="Settings">⚙️</button>
+  </header>
 
   <main class="main">
 
@@ -685,6 +694,22 @@
   </div>
 </div>
 
+<!-- phone layout: bottom tab bar + menu sheet (hidden on desktop) -->
+<nav class="m-tabbar" id="mTabbar">
+  <button class="m-tab" data-tab="dashboard" type="button"><span class="ic">🏠</span><span>Home</span></button>
+  <button class="m-tab" data-tab="orders" type="button"><span class="ic">🧾</span><span>Orders</span></button>
+  <button class="m-tab" data-tab="service-jobs" type="button"><span class="ic">🛠️</span><span>Service</span></button>
+  <button class="m-tab" data-tab="messages" type="button"><span class="ic">💬</span><span>Messages</span></button>
+  <button class="m-tab" data-tab="more" type="button"><span class="ic">☰</span><span>More</span></button>
+</nav>
+<div class="m-sheet-backdrop" id="mSheetBackdrop">
+  <div class="m-sheet">
+    <div class="m-sheet-handle"></div>
+    <h3 id="mSheetTitle">Menu</h3>
+    <div class="m-sheet-grid" id="mSheetGrid"></div>
+  </div>
+</div>
+
 <!-- Database sign-in (shown only when Firebase is configured) -->
 <div class="modal-overlay auth-overlay" id="authOverlay">
   <form class="modal" id="auth-form">
@@ -766,5 +791,6 @@
 <script src="js/20-service-jobs.js"></script>
 <script src="js/21-transports.js"></script>
 <script src="js/22-app-install.js"></script>
+<script src="js/23-mobile.js"></script>
 </body>
 </html>

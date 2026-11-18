@@ -4,7 +4,7 @@
    are served from the cache. Firestore / sign-in requests are never touched
    here — Firestore keeps its own offline copy of the data. */
 
-var CACHE = 'chittam-v1';
+var CACHE = 'chittam-v2';
 var APP_FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/favicon-32.png',
@@ -13,7 +13,7 @@ var APP_FILES = [
   'js/08-payment-updated.js', 'js/09-balance-confirmation.js', 'js/10-payment-reminder.js',
   'js/11-dispatch-confirmation.js', 'js/12-stock-update.js', 'js/13-init.js', 'js/14-service-material.js',
   'js/15-catalog.js', 'js/16-stock-return.js', 'js/18-history.js', 'js/19-orders.js',
-  'js/20-service-jobs.js', 'js/21-transports.js', 'js/22-app-install.js'
+  'js/20-service-jobs.js', 'js/21-transports.js', 'js/22-app-install.js', 'js/23-mobile.js'
 ];
 
 self.addEventListener('install', function(e){
