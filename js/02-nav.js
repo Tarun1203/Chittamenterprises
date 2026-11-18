@@ -18,6 +18,7 @@
     if(name === 'orders' && typeof renderOrders === 'function') renderOrders();
     if(name === 'service-jobs' && typeof renderServiceJobs === 'function') renderServiceJobs();
     if(name === 'transports' && typeof renderTransports === 'function') renderTransports();
+    if(name === 'receipts' && typeof renderReceipts === 'function') renderReceipts();
     window.scrollTo(0,0);
   }
   navButtons.forEach(function(btn){

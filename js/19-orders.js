@@ -227,6 +227,7 @@ pickers['or-picker'] = buildPicker('or-picker');
     }
     saveOrders(list);
     if(typeof rememberTransport === 'function') rememberTransport(data.transport, data.transportPhone);
+    if(typeof recordOrderAdvance === 'function') recordOrderAdvance(editingOrderId, data);
     document.getElementById('or-editor-eyebrow').textContent = 'Order ' + data.orderNo;
     document.getElementById('or-editor-title').textContent = data.customerName;
     var flag = document.getElementById('orSaved');

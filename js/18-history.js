@@ -33,6 +33,10 @@
     'catalog-copy': 'Catalog copied',
     'catalog-share': 'Catalog shared',
     'app-installed': 'App installed',
+    'picklist-copied': 'Pick list copied',
+    'picklist-printed': 'Pick list printed',
+    'receipts-report-copied': 'Receipts report copied',
+    'receipts-report-downloaded': 'Receipts report downloaded',
     'sign-in': 'Signed in',
     'sign-out': 'Signed out'
   };
@@ -120,8 +124,13 @@
     }
     wrap.innerHTML = rows.map(function(r){
       if(kind === 'messages'){
+        var idx = list.indexOf(r);
         return '<div class="hist-item"><div class="hist-top"><div><span class="hist-tag">' + escapeHtml(HIST_TYPE_LABELS[r.type] || r.type) + '</span>' +
           escapeHtml(r.customerName || '—') + '</div><div class="who">' + histWhen(r.at) + ' · ' + escapeHtml(r.by || '') + '</div></div>' +
+          '<div class="hist-actions">' +
+            '<button class="icon-btn" data-hist-copy="' + idx + '">📋 Copy</button>' +
+            (r.mobile ? '<button class="icon-btn" data-hist-wa="' + idx + '">📲 WhatsApp</button>' : '') +
+          '</div>' +
           '<details><summary>Show message</summary><pre>' + escapeHtml(r.text || '') + '</pre></details></div>';
       }
       if(r.collection === 'app'){
@@ -132,7 +141,7 @@
           escapeHtml(r.name || '') + '</div><div class="who">' + histWhen(r.at) + ' · ' + escapeHtml(r.by || '') + '</div></div>' +
           (info ? '<div class="hist-diff">' + escapeHtml(info) + '</div>' : '') + '</div>';
       }
-      var what = {customers: 'Customer', products: 'Product', settings: 'Settings', orders: 'Order', services: 'Service job', transports: 'Transport'}[r.collection] || r.collection;
+      var what = {customers: 'Customer', products: 'Product', settings: 'Settings', orders: 'Order', services: 'Service job', transports: 'Transport', receipts: 'Receipt'}[r.collection] || r.collection;
       var diff = histDiff(r.before, r.after || {});
       return '<div class="hist-item"><div class="hist-top"><div><span class="hist-tag">' + escapeHtml(what) + ' ' + (r.action === 'create' ? 'added' : 'edited') + '</span>' +
         escapeHtml(r.name || '') + '</div><div class="who">' + histWhen(r.at) + ' · ' + escapeHtml(r.by || '') + '</div></div>' +
@@ -161,6 +170,29 @@
 
   document.getElementById('histKind').addEventListener('change', loadHistory);
   document.getElementById('btnHistRefresh').addEventListener('click', loadHistory);
+
+  // copy a saved message again, or copy it and open that customer's WhatsApp chat
+  document.getElementById('histWrap').addEventListener('click', function(e){
+    var btn = e.target.closest('[data-hist-copy], [data-hist-wa]');
+    if(!btn || !histCache.messages) return;
+    var r = histCache.messages[Number(btn.dataset.histCopy !== undefined ? btn.dataset.histCopy : btn.dataset.histWa)];
+    if(!r) return;
+    var openChat = btn.dataset.histWa !== undefined;
+    function done(){
+      if(typeof dbLogEvent === 'function') dbLogEvent(openChat ? 'whatsapp-opened' : 'message-copied', {type: r.type, customerName: r.customerName || '', mobile: r.mobile || '', fromHistory: true});
+      if(openChat){
+        window.open('https://wa.me/' + waNumber(r.mobile), '_blank');
+        showToast('Message copied — paste it into the chat that just opened.');
+      }else{
+        showToast('Message copied.');
+      }
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(r.text || '').then(done).catch(function(){ fallbackCopy(r.text || ''); done(); });
+    }else{
+      fallbackCopy(r.text || ''); done();
+    }
+  });
   document.getElementById('histSearch').addEventListener('input', renderHistory);
 
   document.getElementById('btnDbUpload').addEventListener('click', function(){

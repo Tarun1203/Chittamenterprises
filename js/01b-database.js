@@ -54,7 +54,7 @@
         batch.set(db.collection(w.coll).doc(w.id), doc, {merge: w.coll !== 'settings'});
         batch.set(db.collection('activity').doc(), {
           collection: w.coll, docId: w.id, action: w.action,
-          name: data.name || data.businessName || ((data.orderNo || data.jobNo) ? (data.orderNo || data.jobNo) + (data.customerName ? ' — ' + data.customerName : '') : ''),
+          name: data.name || data.businessName || (w.coll === 'receipts' ? (data.customerName || '') + ' ' + inr((Number(data.business) || 0) + (Number(data.cash) || 0)) : '') || ((data.orderNo || data.jobNo) ? (data.orderNo || data.jobNo) + (data.customerName ? ' — ' + data.customerName : '') : ''),
           before: w.before ? dbStable(w.before) : null, after: data,
           at: dbNow(), by: dbUser.email
         });
@@ -141,6 +141,8 @@
       if(window.ChittamCatalog && document.getElementById('ce-grid')) window.ChittamCatalog.render();
     }else if(kind === 'orders'){
       if(typeof renderOrders === 'function') renderOrders();
+    }else if(kind === 'receipts'){
+      if(typeof renderReceipts === 'function') renderReceipts();
     }else if(kind === 'transports'){
       if(typeof renderTransports === 'function') renderTransports();
     }else if(kind === 'services'){
@@ -174,6 +176,10 @@
       db.collection('products').onSnapshot(function(snap){
         localStorage.setItem(LS_PRODUCTS, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
         dbRefreshUi('products');
+      }, dbReadError),
+      db.collection('receipts').onSnapshot(function(snap){
+        localStorage.setItem(LS_RECEIPTS, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
+        dbRefreshUi('receipts');
       }, dbReadError),
       db.collection('transports').onSnapshot(function(snap){
         localStorage.setItem(LS_TRANSPORTS, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));

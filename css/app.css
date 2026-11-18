@@ -497,6 +497,44 @@
   .install-btn{ white-space:nowrap; flex-shrink:0; margin:8px 18px; padding:9px 12px; border:1.5px solid var(--stamp); border-radius:8px; background:var(--stamp-soft); color:var(--stamp); font-weight:600; font-size:13px; }
   .install-btn:hover{ background:var(--stamp); color:#fff; }
 
+  /* ---------- Receipts ---------- */
+  .rc-date{ display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-soft); font-weight:600; }
+  .rc-date .search-box{ min-width:0; max-width:170px; }
+  .rc-day{ margin-bottom:18px; }
+  .rc-day-head{ display:flex; justify-content:space-between; align-items:center; padding:8px 4px; font-weight:700; font-size:14px; border-bottom:2px solid var(--stamp); margin-bottom:8px; }
+  .rc-day-head strong{ color:var(--money); }
+  tr.rc-cancelled td{ opacity:.5; text-decoration:line-through; }
+  tr.rc-cancelled td:last-child{ text-decoration:none; opacity:1; }
+
+  /* ---------- Pick list ---------- */
+  .pick-modal{ max-width:620px !important; max-height:88vh; overflow-y:auto; }
+  .pick-filters{ border-bottom:1px solid var(--rule); padding-bottom:10px; margin-bottom:12px; }
+  .pick-statuses{ display:flex; flex-wrap:wrap; gap:6px 14px; }
+  .pick-chk{ display:inline-flex; align-items:center; gap:6px; font-size:13.5px; }
+  .pick-head{ margin-bottom:10px; }
+  .pick-title{ font-size:18px; font-weight:800; }
+  .pick-meta{ font-size:12.5px; color:var(--ink-soft); }
+  .pick-section{ font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); margin:14px 0 6px; }
+  table.pick-table{ width:100%; border-collapse:collapse; }
+  table.pick-table th{ text-align:left; font-size:11px; text-transform:uppercase; color:var(--ink-soft); padding:6px 4px; border-bottom:1px solid var(--rule); }
+  table.pick-table td{ padding:9px 4px; border-bottom:1px solid var(--rule); font-size:14px; vertical-align:top; }
+  table.pick-table .q{ text-align:right; font-weight:800; font-size:15px; white-space:nowrap; }
+  table.pick-table .cb{ width:28px; }
+  .pick-box{ display:inline-block; width:16px; height:16px; border:2px solid var(--ink-soft); border-radius:4px; vertical-align:-3px; margin-right:8px; }
+  .pick-sub{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
+  .pick-order{ border:1px solid var(--rule); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  .pick-order-head{ font-size:13.5px; margin-bottom:6px; }
+  .pick-line{ font-size:13.5px; padding:3px 0; }
+  .pick-note{ font-size:13px; color:var(--ink-soft); }
+  .pick-actions{ margin-top:14px; }
+  @media print{
+    body.print-pick > *{ display:none !important; }
+    body.print-pick > #pickModalOverlay{ display:block !important; position:static; background:none; padding:0; }
+    body.print-pick #pickModalOverlay .modal{ box-shadow:none; max-width:none !important; max-height:none; overflow:visible; border-radius:0; padding:0; }
+    body.print-pick .pick-actions, body.print-pick #pickFilters{ display:none !important; }
+    html.mobile-app{ zoom:1 !important; }
+  }
+
   /* ---------- Database / History ---------- */
   .auth-overlay{ z-index:150; background:rgba(15,15,20,0.7); }
   .auth-error{ color:var(--danger); font-size:13px; min-height:18px; margin:0 0 6px; }
@@ -510,6 +548,7 @@
   .hist-item summary{ cursor:pointer; font-size:12.5px; color:var(--ink-soft); }
   .hist-item pre{ white-space:pre-wrap; font-family:'IBM Plex Mono', monospace; font-size:12.5px; background:var(--paper-dark); border-radius:8px; padding:10px 12px; margin:8px 0 0; }
   .hist-diff{ font-size:12.5px; color:var(--ink-soft); margin-top:6px; }
+  .hist-actions{ display:flex; gap:8px; margin-top:8px; }
   .hist-tag-event{ color:var(--money); background:rgba(22,130,80,0.10); }
 
   .upi-row{

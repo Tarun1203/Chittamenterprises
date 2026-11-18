@@ -66,6 +66,8 @@ document.getElementById('pu-date').value = todayISO();
 
     msg += "*Total Outstanding: " + inr(total) + "*\n\n" +
       "Regards,\n" + name + (s.address ? "\n" + s.address : "");
+    // every Payment Updated message is also a receipt in the Receipts report
+    if(typeof recordPaymentReceipt === 'function') recordPaymentReceipt(c, document.getElementById('pu-date').value || todayISO(), mode, eamt, camt);
     return msg;
   }
 
