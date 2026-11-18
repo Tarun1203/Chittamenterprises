@@ -9,7 +9,7 @@
 
   var M_MESSAGE_VIEWS = ['payment-reminder', 'payment-updated', 'balance-confirmation', 'stock-update', 'catalog',
     'service-material', 'dispatch-confirmation', 'stock-return'];
-  var M_MORE_VIEWS = ['receipts', 'customers', 'products', 'transports', 'history', 'settings'];
+  var M_MORE_VIEWS = ['customers', 'products', 'transports', 'history', 'settings'];
   var mCurrentView = 'dashboard';
 
   function mNavEntry(view){

@@ -1,12 +1,12 @@
 "use strict";
 
-/* Receipts: every payment received, saved in the database, with a
-   date-wise report. Entries come from
+/* Payments received (the report under the Payment Updated form): every
+   payment, saved in the database, shown date-wise. Entries come from
      - Payment Updated: generating the message records the receipt
        (one per customer per day — generating again after a correction
        updates it instead of adding a second one),
      - Orders: an advance paid on an order,
-     - "+ Add Receipt" for anything else.
+     - "+ Add Payment" for anything else.
    Receipts can be edited and cancelled, never deleted. */
 
 pickers['rc-picker'] = buildPicker('rc-picker');
@@ -22,6 +22,7 @@ pickers['rc-picker'] = buildPicker('rc-picker');
     if(i > -1) list[i] = Object.assign({}, list[i], rec);
     else list.push(rec);
     saveReceipts(list);
+    renderReceipts();
   }
 
   // called by Payment Updated when its message is generated
@@ -90,12 +91,12 @@ pickers['rc-picker'] = buildPicker('rc-picker');
       '<span class="or-chip">Total received<strong>' + inr(total) + '</strong></span>' +
       '<span class="or-chip">' + escapeHtml(biz) + ' a/c<strong>' + inr(business) + '</strong></span>' +
       '<span class="or-chip">Cash a/c<strong>' + inr(cash) + '</strong></span>' +
-      '<span class="or-chip">Receipts<strong>' + live.length + '</strong></span>' +
+      '<span class="or-chip">Payments<strong>' + live.length + '</strong></span>' +
       Object.keys(byMode).sort().map(function(m){ return '<span class="or-chip">' + escapeHtml(m) + '<strong>' + inr(byMode[m]) + '</strong></span>'; }).join('') : '';
 
     var wrap = document.getElementById('rcList');
     if(list.length === 0){
-      wrap.innerHTML = '<div class="empty-state">No receipts in this period. Receipts are added when you generate a Payment Updated message, save an order with an advance, or click "+ Add Receipt".</div>';
+      wrap.innerHTML = '<div class="empty-state">No payments in this period. A payment is added when you generate a Payment Updated message above, save an order with an advance, or click "+ Add Payment".</div>';
       return;
     }
     // group by date
@@ -131,7 +132,7 @@ pickers['rc-picker'] = buildPicker('rc-picker');
     var list = filteredReceipts().filter(function(r){ return !r.cancelled; });
     var from = document.getElementById('rcFrom').value, to = document.getElementById('rcTo').value;
     var s = getSettings();
-    var lines = ["💵 *Receipts — " + (s.businessName || 'Chittam Enterprises') + "*",
+    var lines = ["💵 *Payments Received — " + (s.businessName || 'Chittam Enterprises') + "*",
       formatDateForMsg(from) + (to && to !== from ? " to " + formatDateForMsg(to) : ""), ""];
     var grand = 0, day = null, dayTotal = 0, dayLines = [];
     function flush(){ if(day){ lines.push("📅 *" + formatDateForMsg(day) + " — " + inr(dayTotal) + "*"); lines.push.apply(lines, dayLines); lines.push(""); } }
@@ -141,12 +142,12 @@ pickers['rc-picker'] = buildPicker('rc-picker');
       dayLines.push("• " + r.customerName + " — " + inr(receiptTotal(r)) + " (" + (r.mode || '—') + ")");
     });
     flush();
-    lines.push("*Total received: " + inr(grand) + "* (" + list.length + " receipt" + (list.length === 1 ? "" : "s") + ")");
+    lines.push("*Total received: " + inr(grand) + "* (" + list.length + " payment" + (list.length === 1 ? "" : "s") + ")");
     return lines.join("\n");
   }
   document.getElementById('btnRcCopy').addEventListener('click', function(){
     var t = reportText();
-    function done(){ showToast('Receipts report copied.'); if(typeof dbLogEvent === 'function') dbLogEvent('receipts-report-copied', {}); }
+    function done(){ showToast('Payments report copied.'); if(typeof dbLogEvent === 'function') dbLogEvent('receipts-report-copied', {}); }
     if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done).catch(function(){ fallbackCopy(t); done(); });
     else { fallbackCopy(t); done(); }
   });
@@ -161,7 +162,7 @@ pickers['rc-picker'] = buildPicker('rc-picker');
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = 'receipts-' + document.getElementById('rcFrom').value + '-to-' + document.getElementById('rcTo').value + '.csv';
+    a.download = 'payments-' + document.getElementById('rcFrom').value + '-to-' + document.getElementById('rcTo').value + '.csv';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
     if(typeof dbLogEvent === 'function') dbLogEvent('receipts-report-downloaded', {rows: rows.length - 1});
@@ -171,7 +172,7 @@ pickers['rc-picker'] = buildPicker('rc-picker');
   var rcModal = document.getElementById('rcModalOverlay');
   function openReceiptModal(r){
     editingReceiptId = r ? r.id : null;
-    document.getElementById('rcModalTitle').textContent = r ? 'Edit Receipt' : 'Add Receipt';
+    document.getElementById('rcModalTitle').textContent = r ? 'Edit Payment' : 'Add Payment';
     var modes = (getSettings().paymentModes || []).slice();
     if(r && r.mode && modes.indexOf(r.mode) === -1) modes.push(r.mode);
     document.getElementById('rm-mode').innerHTML = modes.map(function(m){ return '<option>' + escapeHtml(m) + '</option>'; }).join('');
@@ -214,5 +215,5 @@ pickers['rc-picker'] = buildPicker('rc-picker');
     });
     rcModal.classList.remove('show');
     renderReceipts();
-    showToast('Receipt saved.');
+    showToast('Payment saved.');
   });

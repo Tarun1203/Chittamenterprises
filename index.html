@@ -25,7 +25,7 @@
 <title>Chittam Enterprises — Message Generator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/app.css?v=20261118e">
+<link rel="stylesheet" href="css/app.css?v=20261118f">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#2463EB">
 <meta name="mobile-web-app-capable" content="yes">
@@ -49,7 +49,6 @@
       <div class="nav-group">
         <p class="nav-group-label">Overview</p>
         <button class="navbtn" data-view="dashboard"><span class="ic">🏠</span> Dashboard</button>
-        <button class="navbtn" data-view="receipts"><span class="ic">💵</span> Receipts</button>
       </div>
       <div class="nav-group">
         <p class="nav-group-label">Messaging</p>
@@ -107,10 +106,9 @@
         </div>
       </div>
       <div class="grid-tiles" id="dashTiles">
-        <button class="tile" data-view="payment-updated"><div class="ic">💰</div><div class="t">Payment Updated</div><div class="d">Confirm a payment received and show the new balance.</div></button>
+        <button class="tile" data-view="payment-updated"><div class="ic">💰</div><div class="t">Payment Updated</div><div class="d">Confirm a payment received, and see all payments date-wise.</div></button>
         <button class="tile" data-view="balance-confirmation"><div class="ic">📋</div><div class="t">Balance Confirmation</div><div class="d">Share today's outstanding for the customer to confirm.</div></button>
         <button class="tile" data-view="payment-reminder"><div class="ic">💳</div><div class="t">Payment Reminder</div><div class="d">Outstanding by account, days pending, and how to pay.</div></button>
-        <button class="tile" data-view="receipts"><div class="ic">💵</div><div class="t">Receipts</div><div class="d">Payments received, date-wise, with totals by mode.</div></button>
         <button class="tile" data-view="service-jobs"><div class="ic">🛠️</div><div class="t">Service Jobs</div><div class="d">Products dealers send for service — repaired, replaced, and sent back.</div></button>
         <button class="tile" data-view="orders"><div class="ic">🧾</div><div class="t">Orders</div><div class="d">Take customer orders, track status, and send an order confirmation.</div></button>
         <button class="tile" data-view="dispatch-confirmation"><div class="ic">🚚</div><div class="t">Dispatch Confirmation</div><div class="d">Let a customer know their order is on the way.</div></button>
@@ -212,6 +210,27 @@
           <div class="preview-head"><span class="stamp-badge">Payment</span></div>
           <div class="preview" id="pu-preview"></div>
         </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="view-head" style="margin-bottom:14px;">
+          <p class="eyebrow">Report</p>
+          <h1 class="title" style="font-size:19px;">Payments Received</h1>
+          <p class="sub">Every payment, date-wise: saved when you generate a Payment Updated message above, plus order advances and payments added with "+ Add Payment". Entries can be edited or cancelled, not deleted.</p>
+        </div>
+        <div class="toolbar">
+          <label class="rc-date">From <input class="search-box" type="date" id="rcFrom"></label>
+          <label class="rc-date">To <input class="search-box" type="date" id="rcTo"></label>
+          <select class="search-box" id="rcMode" style="max-width:170px;"><option value="">All Modes</option></select>
+          <input class="search-box" id="rcSearch" type="text" placeholder="🔍 Search customer or note…">
+        </div>
+        <div class="toolbar" style="margin-top:-6px;">
+          <button class="btn secondary" id="btnRcCopy">📋 Copy Report</button>
+          <button class="btn secondary" id="btnRcCsv">⬇ Download (Excel)</button>
+          <button class="btn" id="btnAddReceipt">+ Add Payment</button>
+        </div>
+        <div class="or-summary" id="rcSummary"></div>
+        <div id="rcList"></div>
       </div>
     </section>
 
@@ -539,28 +558,6 @@
       </div>
     </section>
 
-    <!-- RECEIPTS -->
-    <section class="view" id="view-receipts">
-      <div class="view-head">
-        <p class="eyebrow">Report</p>
-        <h1 class="title">Receipts</h1>
-        <p class="sub">Payments received, date-wise. Added automatically from Payment Updated messages and order advances, or with "+ Add Receipt". Receipts can be edited or cancelled, not deleted.</p>
-      </div>
-      <div class="toolbar">
-        <label class="rc-date">From <input class="search-box" type="date" id="rcFrom"></label>
-        <label class="rc-date">To <input class="search-box" type="date" id="rcTo"></label>
-        <select class="search-box" id="rcMode" style="max-width:170px;"><option value="">All Modes</option></select>
-        <input class="search-box" id="rcSearch" type="text" placeholder="🔍 Search customer or note…">
-      </div>
-      <div class="toolbar" style="margin-top:-6px;">
-        <button class="btn secondary" id="btnRcCopy">📋 Copy Report</button>
-        <button class="btn secondary" id="btnRcCsv">⬇ Download (Excel)</button>
-        <button class="btn" id="btnAddReceipt">+ Add Receipt</button>
-      </div>
-      <div class="or-summary" id="rcSummary"></div>
-      <div id="rcList"></div>
-    </section>
-
     <!-- TRANSPORTS -->
     <section class="view" id="view-transports">
       <div class="view-head">
@@ -784,7 +781,7 @@
 <!-- Add/Edit receipt modal -->
 <div class="modal-overlay" id="rcModalOverlay">
   <div class="modal">
-    <h3 id="rcModalTitle">Add Receipt</h3>
+    <h3 id="rcModalTitle">Add Payment</h3>
     <div class="field"><label>Customer</label><div class="picker" id="rc-picker"></div></div>
     <div class="row2">
       <div class="field"><label>Date</label><input type="date" id="rm-date"></div>
@@ -849,30 +846,30 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="js/firebase-config.js?v=20261118e"></script>
-<script src="js/01-core.js?v=20261118e"></script>
-<script src="js/01b-database.js?v=20261118e"></script>
-<script src="js/02-nav.js?v=20261118e"></script>
-<script src="js/03-registry.js?v=20261118e"></script>
-<script src="js/04-customers.js?v=20261118e"></script>
-<script src="js/05-products.js?v=20261118e"></script>
-<script src="js/06-duplicates.js?v=20261118e"></script>
-<script src="js/07-settings.js?v=20261118e"></script>
-<script src="js/08-payment-updated.js?v=20261118e"></script>
-<script src="js/09-balance-confirmation.js?v=20261118e"></script>
-<script src="js/10-payment-reminder.js?v=20261118e"></script>
-<script src="js/11-dispatch-confirmation.js?v=20261118e"></script>
-<script src="js/12-stock-update.js?v=20261118e"></script>
-<script src="js/13-init.js?v=20261118e"></script>
-<script src="js/14-service-material.js?v=20261118e"></script>
-<script src="js/16-stock-return.js?v=20261118e"></script>
-<script src="js/18-history.js?v=20261118e"></script>
-<script src="js/19-orders.js?v=20261118e"></script>
-<script src="js/20-service-jobs.js?v=20261118e"></script>
-<script src="js/21-transports.js?v=20261118e"></script>
-<script src="js/22-app-install.js?v=20261118e"></script>
-<script src="js/24-receipts.js?v=20261118e"></script>
-<script src="js/25-picklist.js?v=20261118e"></script>
-<script src="js/23-mobile.js?v=20261118e"></script>
+<script src="js/firebase-config.js?v=20261118f"></script>
+<script src="js/01-core.js?v=20261118f"></script>
+<script src="js/01b-database.js?v=20261118f"></script>
+<script src="js/02-nav.js?v=20261118f"></script>
+<script src="js/03-registry.js?v=20261118f"></script>
+<script src="js/04-customers.js?v=20261118f"></script>
+<script src="js/05-products.js?v=20261118f"></script>
+<script src="js/06-duplicates.js?v=20261118f"></script>
+<script src="js/07-settings.js?v=20261118f"></script>
+<script src="js/08-payment-updated.js?v=20261118f"></script>
+<script src="js/09-balance-confirmation.js?v=20261118f"></script>
+<script src="js/10-payment-reminder.js?v=20261118f"></script>
+<script src="js/11-dispatch-confirmation.js?v=20261118f"></script>
+<script src="js/12-stock-update.js?v=20261118f"></script>
+<script src="js/13-init.js?v=20261118f"></script>
+<script src="js/14-service-material.js?v=20261118f"></script>
+<script src="js/16-stock-return.js?v=20261118f"></script>
+<script src="js/18-history.js?v=20261118f"></script>
+<script src="js/19-orders.js?v=20261118f"></script>
+<script src="js/20-service-jobs.js?v=20261118f"></script>
+<script src="js/21-transports.js?v=20261118f"></script>
+<script src="js/22-app-install.js?v=20261118f"></script>
+<script src="js/24-receipts.js?v=20261118f"></script>
+<script src="js/25-picklist.js?v=20261118f"></script>
+<script src="js/23-mobile.js?v=20261118f"></script>
 </body>
 </html>

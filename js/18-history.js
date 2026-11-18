@@ -35,8 +35,8 @@
     'app-installed': 'App installed',
     'picklist-copied': 'Pick list copied',
     'picklist-printed': 'Pick list printed',
-    'receipts-report-copied': 'Receipts report copied',
-    'receipts-report-downloaded': 'Receipts report downloaded',
+    'receipts-report-copied': 'Payments report copied',
+    'receipts-report-downloaded': 'Payments report downloaded',
     'sign-in': 'Signed in',
     'sign-out': 'Signed out'
   };
@@ -141,7 +141,7 @@
           escapeHtml(r.name || '') + '</div><div class="who">' + histWhen(r.at) + ' · ' + escapeHtml(r.by || '') + '</div></div>' +
           (info ? '<div class="hist-diff">' + escapeHtml(info) + '</div>' : '') + '</div>';
       }
-      var what = {customers: 'Customer', products: 'Product', settings: 'Settings', orders: 'Order', services: 'Service job', transports: 'Transport', receipts: 'Receipt'}[r.collection] || r.collection;
+      var what = {customers: 'Customer', products: 'Product', settings: 'Settings', orders: 'Order', services: 'Service job', transports: 'Transport', receipts: 'Payment'}[r.collection] || r.collection;
       var diff = histDiff(r.before, r.after || {});
       return '<div class="hist-item"><div class="hist-top"><div><span class="hist-tag">' + escapeHtml(what) + ' ' + (r.action === 'create' ? 'added' : 'edited') + '</span>' +
         escapeHtml(r.name || '') + '</div><div class="who">' + histWhen(r.at) + ' · ' + escapeHtml(r.by || '') + '</div></div>' +
