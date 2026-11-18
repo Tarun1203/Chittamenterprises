@@ -95,17 +95,18 @@
     getCustomers().forEach(function(c){ customers[normalizeName(c.name)] = c; });
     // keep every name's balance, so a customer added later still gets theirs;
     // names not (yet) in Customers are listed so they can be added
-    var map = {}, matched = 0, unmatched = [];
+    var map = {}, names = {}, matched = 0, unmatched = [];
     rows.forEach(function(r){
       var k = normalizeName(r.name);
       map[k] = r.amount;
+      names[k] = r.name;
       if(customers[k]) matched++;
       else unmatched.push(r.name);
     });
     var entry = {
       company: company, label: BAL_COMPANIES[company](), file: fileName,
       importedAt: new Date().toISOString(), importedBy: (typeof dbUser !== 'undefined' && dbUser) ? dbUser.email : '',
-      matched: matched, unmatched: unmatched.slice(0, 300), balances: map
+      matched: matched, unmatched: unmatched.slice(0, 300), balances: map, names: names
     };
     var all = getBalances();
     all[company] = entry;
@@ -142,15 +143,22 @@
 
   function renderBalanceStatus(){
     var all = getBalances();
+    var customers = {};
+    getCustomers().forEach(function(c){ customers[normalizeName(c.name)] = true; });
     document.getElementById('balLabelBiz').textContent = BAL_COMPANIES.business();
     ['business', 'cash'].forEach(function(co){
       var el = document.getElementById(co === 'business' ? 'balStatusBiz' : 'balStatusCash');
       var e = all[co];
       if(!e){ el.innerHTML = 'Not imported yet.'; return; }
+      // worked out against today's customer list, so it stays right as customers are added
+      var keys = Object.keys(e.balances || {});
+      var matched = keys.filter(function(k){ return customers[k]; }).length;
+      var unmatched = keys.filter(function(k){ return !customers[k]; }).map(function(k){ return (e.names && e.names[k]) || k; }).sort();
       var when = new Date(e.importedAt).toLocaleString('en-IN', {day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'});
-      el.innerHTML = '✓ ' + e.matched + ' customers · ' + escapeHtml(when) + (e.importedBy ? ' · ' + escapeHtml(e.importedBy) : '') +
-        (e.unmatched && e.unmatched.length ? '<details><summary>' + e.unmatched.length + ' names not in Customers (includes Tally group names) — add a customer with the same name and the balance fills in</summary><div class="bal-unmatched">' +
-          e.unmatched.map(escapeHtml).join(', ') + '</div></details>' : '');
+      var auto = /^Auto from Tally/.test(e.file || '');
+      el.innerHTML = (auto ? '🔄 Synced automatically from Tally' : '✓ Imported from file') + ' · ' + escapeHtml(when) + ' · ' + matched + ' customers' +
+        (unmatched.length ? '<details><summary>' + unmatched.length + ' names not in Customers (includes Tally group names) — add a customer with the same name and the balance fills in</summary><div class="bal-unmatched">' +
+          unmatched.map(escapeHtml).join(', ') + '</div></details>' : '');
     });
   }
 

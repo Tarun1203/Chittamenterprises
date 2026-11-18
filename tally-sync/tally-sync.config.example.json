@@ -1,0 +1,11 @@
+{
+  "tallyUrl": "http://localhost:9000",
+  "businessCompany": "Chittam Enterprises - 2026",
+  "businessLabel": "Chittam Enterprises",
+  "cashCompany": "Cash",
+  "cashLabel": "Cash Bill",
+  "projectId": "chittam-enterprises",
+  "apiKey": "AIzaSyCEk9hKMJzA05DdB0axSJ4k76-Jl9acmjc",
+  "email": "PUT-THE-TALLY-SYNC-LOGIN-EMAIL-HERE",
+  "password": "PUT-ITS-PASSWORD-HERE"
+}
