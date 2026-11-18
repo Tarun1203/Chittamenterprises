@@ -105,12 +105,20 @@ var generators = {};
     });
   });
 
+  function messageTypeFor(previewId){
+    var key = Object.keys(generators).find(function(k){ return generators[k].previewId === previewId; });
+    return key || previewId;
+  }
+
 /* ---------------- copy ---------------- */
   document.querySelectorAll('[data-copy]').forEach(function(btn){
     btn.addEventListener('click', function(){
       var previewId = btn.dataset.copy;
       var text = document.getElementById(previewId).textContent;
       if(!text){ return; }
+      var waBtn = document.querySelector('[data-wa-src="' + previewId + '"]');
+      var cust = waBtn && pickers[waBtn.dataset.wa] ? pickers[waBtn.dataset.wa].getSelected() : null;
+      if(typeof dbLogEvent === 'function') dbLogEvent('message-copied', {type: messageTypeFor(previewId), customerName: cust ? cust.name : '', mobile: cust ? (cust.mobile || '') : ''});
       var flag = btn.querySelector('.copied-flag');
       function flash(){ if(flag){ flag.classList.add('show'); setTimeout(function(){ flag.classList.remove('show'); }, 1600); } }
       if(navigator.clipboard && navigator.clipboard.writeText){
@@ -142,6 +150,7 @@ var generators = {};
       if(!text){ showToast('Click Generate first to build the message.'); return; }
       if(!c.mobile){ showToast('This customer has no mobile number saved. Add one from the Customers page.'); return; }
       function openChat(){
+        if(typeof dbLogEvent === 'function') dbLogEvent('whatsapp-opened', {type: messageTypeFor(srcId), customerName: c.name, mobile: c.mobile});
         window.open('https://wa.me/' + waNumber(c.mobile), '_blank');
         showToast('Message copied — paste it (long-press → Paste) into the chat that just opened.');
       }

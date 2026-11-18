@@ -461,6 +461,7 @@
   .hist-item summary{ cursor:pointer; font-size:12.5px; color:var(--ink-soft); }
   .hist-item pre{ white-space:pre-wrap; font-family:'IBM Plex Mono', monospace; font-size:12.5px; background:var(--paper-dark); border-radius:8px; padding:10px 12px; margin:8px 0 0; }
   .hist-diff{ font-size:12.5px; color:var(--ink-soft); margin-top:6px; }
+  .hist-tag-event{ color:var(--money); background:rgba(22,130,80,0.10); }
 
   .upi-row{
     display:grid;

@@ -140,8 +140,8 @@
 
     grid.querySelectorAll(".ce-check").forEach(x=>x.onchange=count);
     grid.querySelectorAll("[data-photo]").forEach(b=>b.onclick=()=>grid.querySelector(`[data-file="${CSS.escape(b.dataset.photo)}"]`)?.click());
-    grid.querySelectorAll("[data-file]").forEach(i=>i.onchange=async()=>{if(!i.files?.[0])return;try{const x=ph;x[i.dataset.file]=await compress(i.files[0]);savePhotos(x);render();}catch(_){alert("Could not process the image.");}});
-    grid.querySelectorAll("[data-share]").forEach(b=>b.onclick=()=>{const p=products().find(x=>x.id===b.dataset.share);if(p)share([p]);});
+    grid.querySelectorAll("[data-file]").forEach(i=>i.onchange=async()=>{if(!i.files?.[0])return;try{const x=ph;x[i.dataset.file]=await compress(i.files[0]);savePhotos(x);window.dbLogEvent?.("catalog-photo",{name:products().find(p=>p.id===i.dataset.file)?.name||""});render();}catch(_){alert("Could not process the image.");}});
+    grid.querySelectorAll("[data-share]").forEach(b=>b.onclick=()=>{const p=products().find(x=>x.id===b.dataset.share);if(p){window.dbLogEvent?.("catalog-share",{name:p.name,products:[p.name]});share([p]);}});
     count();
   }
 
@@ -164,8 +164,8 @@
     document.getElementById("ce-close").onclick=()=>b.remove();
     b.onclick=e=>{if(e.target===b)b.remove();};
     const text=message(list);
-    document.getElementById("ce-copy").onclick=async()=>{try{await navigator.clipboard.writeText(text);alert("Catalog message copied.");}catch(_){alert("Copy failed.");}};
-    document.getElementById("ce-wa").onclick=async()=>{await share(list);b.remove();};
+    document.getElementById("ce-copy").onclick=async()=>{window.dbLogEvent?.("catalog-copy",{products:list.map(p=>p.name)});try{await navigator.clipboard.writeText(text);alert("Catalog message copied.");}catch(_){alert("Copy failed.");}};
+    document.getElementById("ce-wa").onclick=async()=>{window.dbLogEvent?.("catalog-share",{products:list.map(p=>p.name)});await share(list);b.remove();};
   }
 
   async function share(list){

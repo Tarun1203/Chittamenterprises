@@ -4,7 +4,7 @@
    customers / products / settings, read from the Firebase database. The
    records are append-only — the app has no way to edit or delete them. */
 
-  var histCache = {messages: null, activity: null};
+  var histCache = {activity: null, messages: null};
 
   var HIST_TYPE_LABELS = {
     'payment-updated': 'Payment Updated',
@@ -15,6 +15,44 @@
     'service-material': 'Service Material',
     'stock-return': 'Stock Return'
   };
+
+  var HIST_EVENT_LABELS = {
+    'message-generated': 'Message generated',
+    'message-copied': 'Message copied',
+    'whatsapp-opened': 'Sent to WhatsApp',
+    'import-customers': 'Customers imported',
+    'import-products': 'Products imported',
+    'backup-export': 'Backup downloaded',
+    'backup-restore': 'Backup restored',
+    'sheet-push': 'Pushed to Sheet',
+    'sheet-pull': 'Pulled from Sheet',
+    'sheet-url-changed': 'Sheet URL changed',
+    'catalog-photo': 'Catalog photo added',
+    'catalog-copy': 'Catalog copied',
+    'catalog-share': 'Catalog shared',
+    'sign-in': 'Signed in',
+    'sign-out': 'Signed out'
+  };
+
+  // one-line summary of an event's details
+  function histEventInfo(action, d){
+    var type = d.type ? (HIST_TYPE_LABELS[d.type] || d.type) : '';
+    switch(action){
+      case 'message-generated':
+      case 'message-copied':
+      case 'whatsapp-opened': return [type, d.mobile].filter(Boolean).join(' · ');
+      case 'import-customers': return d.added + ' added, ' + d.updated + ' updated, ' + d.skippedBank + ' bank ledgers skipped';
+      case 'import-products': return d.added + ' added, ' + d.updated + ' prices updated';
+      case 'backup-export':
+      case 'sheet-push':
+      case 'sheet-pull': return d.customers + ' customers, ' + d.products + ' products';
+      case 'backup-restore': return (d.file ? d.file + ' — ' : '') + d.customers + ' customers, ' + d.products + ' products';
+      case 'sheet-url-changed': return d.url || '(cleared)';
+      case 'catalog-copy':
+      case 'catalog-share': return (d.products || []).join(', ');
+      default: return '';
+    }
+  }
 
   function histWhen(ts){
     var d = ts && ts.toDate ? ts.toDate() : null;
@@ -51,6 +89,14 @@
         return '<div class="hist-item"><div class="hist-top"><div><span class="hist-tag">' + escapeHtml(HIST_TYPE_LABELS[r.type] || r.type) + '</span>' +
           escapeHtml(r.customerName || '—') + '</div><div class="who">' + histWhen(r.at) + ' · ' + escapeHtml(r.by || '') + '</div></div>' +
           '<details><summary>Show message</summary><pre>' + escapeHtml(r.text || '') + '</pre></details></div>';
+      }
+      if(r.collection === 'app'){
+        var label = HIST_EVENT_LABELS[r.action] || r.action;
+        var d = r.details || {};
+        var info = histEventInfo(r.action, d);
+        return '<div class="hist-item"><div class="hist-top"><div><span class="hist-tag hist-tag-event">' + escapeHtml(label) + '</span>' +
+          escapeHtml(r.name || '') + '</div><div class="who">' + histWhen(r.at) + ' · ' + escapeHtml(r.by || '') + '</div></div>' +
+          (info ? '<div class="hist-diff">' + escapeHtml(info) + '</div>' : '') + '</div>';
       }
       var what = {customers: 'Customer', products: 'Product', settings: 'Settings'}[r.collection] || r.collection;
       var diff = histDiff(r.before, r.after || {});

@@ -154,6 +154,7 @@
     a.click();
     document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    if(typeof dbLogEvent === 'function') dbLogEvent('backup-export', {customers: data.customers.length, products: data.products.length});
     showToast('Backup downloaded — keep this file somewhere safe.');
   });
 
@@ -179,6 +180,7 @@
         refreshSuDbPicker();
         populatePaymentModeSelect();
         refreshBusinessLabels();
+        if(typeof dbLogEvent === 'function') dbLogEvent('backup-restore', {file: file.name, customers: (data.customers || []).length, products: (data.products || []).length});
         showToast('Backup restored — customers, products, and settings are back.');
       }catch(err){
         showToast("Couldn't read that file — make sure it's a backup exported from this app.");
@@ -211,6 +213,7 @@
   /* ---------------- cloud sync (Google Sheet via Apps Script) ---------------- */
   document.getElementById('cloud-url').addEventListener('change', function(){
     localStorage.setItem('cem_cloud_url', this.value.trim());
+    if(typeof dbLogEvent === 'function') dbLogEvent('sheet-url-changed', {url: this.value.trim()});
   });
 
   function cloudStatus(msg, isError){
@@ -237,7 +240,10 @@
     })
       .then(function(res){ return res.json(); })
       .then(function(data){
-        if(data && data.ok){ cloudStatus('Pushed to Sheet ✓'); }
+        if(data && data.ok){
+          cloudStatus('Pushed to Sheet ✓');
+          if(typeof dbLogEvent === 'function') dbLogEvent('sheet-push', {customers: payload.customers.length, products: payload.products.length});
+        }
         else{ cloudStatus('Sheet did not confirm the push — check the Apps Script setup.', true); }
       })
       .catch(function(err){
@@ -267,6 +273,7 @@
         populatePaymentModeSelect();
         refreshBusinessLabels();
         cloudStatus('Pulled from Sheet ✓ — this device now matches it.');
+        if(typeof dbLogEvent === 'function') dbLogEvent('sheet-pull', {customers: (data.customers || []).length, products: (data.products || []).length});
       })
       .catch(function(err){
         cloudStatus('Pull failed — check the URL and your internet connection.', true);

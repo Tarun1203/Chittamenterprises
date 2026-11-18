@@ -77,6 +77,7 @@
     var rows = obj.ledgercontactdetails && obj.ledgercontactdetails.ledgercontactdetails;
     if(!rows || !rows.length){ throw new Error('empty'); }
     var result = importCustomersFromTally(rows);
+    if(typeof dbLogEvent === 'function') dbLogEvent('import-customers', {added: result.added, updated: result.updated, skippedBank: result.skippedBank, rows: result.total});
     renderCustomerTable();
     refreshAllPickers();
     showToast('Imported ' + result.added + ' new, updated ' + result.updated + ' (skipped ' + result.skippedBank + ' bank ledgers).');

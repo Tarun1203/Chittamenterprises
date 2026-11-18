@@ -143,6 +143,7 @@
       }
     });
     saveProducts(existing);
+    if(typeof dbLogEvent === 'function') dbLogEvent('import-products', {added: added, updated: updated, noPrice: noPriceCount});
     renderProductTable();
     refreshSuDbPicker();
     showToast('Imported ' + added + ' new, updated ' + updated + ' prices' + (noPriceCount ? ' (' + noPriceCount + ' had no price — set to ₹0, edit as needed)' : '') + '.');

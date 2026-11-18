@@ -90,16 +90,42 @@
   function dbLogMessage(type, customer, text){
     if(!dbReady() || dbLastMessage[type] === text) return; // pressing Generate twice saves once
     dbLastMessage[type] = text;
-    db.collection('messages').add({
-      type: type,
+    var batch = db.batch();
+    var msgRef = db.collection('messages').doc();
+    var who = {
       customerId: customer ? customer.id : '',
       customerName: customer ? customer.name : '',
-      mobile: customer ? (customer.mobile || '') : '',
-      text: text,
-      at: dbNow(),
-      by: dbUser.email
-    }).catch(function(err){ showToast('Message not saved to history: ' + err.message); });
+      mobile: customer ? (customer.mobile || '') : ''
+    };
+    batch.set(msgRef, Object.assign({type: type, text: text, at: dbNow(), by: dbUser.email}, who));
+    // also in the activity log, so it shows everything in one place
+    batch.set(db.collection('activity').doc(), {
+      collection: 'app', action: 'message-generated', name: who.customerName,
+      details: Object.assign({type: type, messageId: msgRef.id}, who), at: dbNow(), by: dbUser.email
+    });
+    batch.commit().catch(function(err){ showToast('Message not saved to history: ' + err.message); });
   }
+
+  // one entry in the activity log for anything the user does that isn't a
+  // record change: copying / sending a message, imports, backups, sign-in…
+  var dbPendingEvents = [];
+  function dbLogEvent(action, details){
+    details = dbStable(details || {});
+    if(!dbReady()){
+      if(dbEnabled()) dbPendingEvents.push([action, details, new Date().toISOString()]); // e.g. before sign-in finishes
+      return;
+    }
+    db.collection('activity').add({
+      collection: 'app', action: action,
+      name: details.name || details.customerName || '',
+      details: details, at: dbNow(), by: dbUser.email
+    }).catch(function(err){ showToast('Not saved to the log: ' + err.message); });
+  }
+  function dbFlushEvents(){
+    var q = dbPendingEvents; dbPendingEvents = [];
+    q.forEach(function(e){ dbLogEvent(e[0], Object.assign({happenedAt: e[2]}, e[1])); });
+  }
+  window.dbLogEvent = dbLogEvent;
 
   /* ---------------- reads (live, every device) ---------------- */
 
@@ -215,6 +241,8 @@
         return;
       }
       dbShowAuth(false);
+      if(dbSigningIn){ dbSigningIn = false; dbLogEvent('sign-in', {name: user.email}); }
+      dbFlushEvents();
       dbMergeLocal(false)
         .then(function(n){ if(n) showToast('Uploaded ' + n + ' record' + (n === 1 ? '' : 's') + ' from this device to the database.'); })
         .catch(function(err){ showToast('Could not merge this device\'s data: ' + err.message); })
@@ -222,8 +250,10 @@
     });
   }
 
+  var dbSigningIn = false;
   document.getElementById('auth-form').addEventListener('submit', function(e){
     e.preventDefault();
+    dbSigningIn = true;
     var email = document.getElementById('auth-email').value.trim();
     var pass = document.getElementById('auth-password').value;
     var errEl = document.getElementById('auth-error');
@@ -236,7 +266,11 @@
   document.addEventListener('click', function(e){
     if(e.target.matches('[data-db-signout]')){
       e.preventDefault();
-      firebase.auth().signOut();
+      if(!dbReady()){ firebase.auth().signOut(); return; }
+      // write the sign-out entry first — once signed out the rules refuse writes
+      db.collection('activity').add({collection: 'app', action: 'sign-out', name: dbUser.email, details: {}, at: dbNow(), by: dbUser.email})
+        .catch(function(){})
+        .then(function(){ firebase.auth().signOut(); });
     }
   });
 
