@@ -25,7 +25,7 @@
 <title>Chittam Enterprises — Message Generator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/app.css?v=20261118f">
+<link rel="stylesheet" href="css/app.css?v=20261118g">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#2463EB">
 <meta name="mobile-web-app-capable" content="yes">
@@ -76,6 +76,7 @@
     </nav>
     <button class="install-btn" id="btnInstallApp" type="button" style="display:none;">📲 Install app</button>
     <div class="sidebar-foot" id="dbStatus">Stored only on this device.<br>No server, no account.</div>
+    <div class="app-version" id="appVersionSide"></div>
   </aside>
 
   <!-- phone layout: top app bar (hidden on desktop) -->
@@ -691,6 +692,14 @@
       </div>
 
       <div class="card" style="margin-top:20px;">
+        <div class="view-head" style="margin-bottom:12px;">
+          <p class="eyebrow">About</p>
+          <h1 class="title" style="font-size:19px;">This App</h1>
+        </div>
+        <div class="about-rows" id="appAbout"></div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
         <div class="view-head" style="margin-bottom:16px;">
           <p class="eyebrow">Backup &amp; Restore</p>
           <h1 class="title" style="font-size:19px;">Keep a Safe Copy</h1>
@@ -747,6 +756,7 @@
     <div class="m-sheet-handle"></div>
     <h3 id="mSheetTitle">Menu</h3>
     <div class="m-sheet-grid" id="mSheetGrid"></div>
+    <p class="app-version m-sheet-version" id="appVersionSheet"></p>
   </div>
 </div>
 
@@ -846,30 +856,30 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="js/firebase-config.js?v=20261118f"></script>
-<script src="js/01-core.js?v=20261118f"></script>
-<script src="js/01b-database.js?v=20261118f"></script>
-<script src="js/02-nav.js?v=20261118f"></script>
-<script src="js/03-registry.js?v=20261118f"></script>
-<script src="js/04-customers.js?v=20261118f"></script>
-<script src="js/05-products.js?v=20261118f"></script>
-<script src="js/06-duplicates.js?v=20261118f"></script>
-<script src="js/07-settings.js?v=20261118f"></script>
-<script src="js/08-payment-updated.js?v=20261118f"></script>
-<script src="js/09-balance-confirmation.js?v=20261118f"></script>
-<script src="js/10-payment-reminder.js?v=20261118f"></script>
-<script src="js/11-dispatch-confirmation.js?v=20261118f"></script>
-<script src="js/12-stock-update.js?v=20261118f"></script>
-<script src="js/13-init.js?v=20261118f"></script>
-<script src="js/14-service-material.js?v=20261118f"></script>
-<script src="js/16-stock-return.js?v=20261118f"></script>
-<script src="js/18-history.js?v=20261118f"></script>
-<script src="js/19-orders.js?v=20261118f"></script>
-<script src="js/20-service-jobs.js?v=20261118f"></script>
-<script src="js/21-transports.js?v=20261118f"></script>
-<script src="js/22-app-install.js?v=20261118f"></script>
-<script src="js/24-receipts.js?v=20261118f"></script>
-<script src="js/25-picklist.js?v=20261118f"></script>
-<script src="js/23-mobile.js?v=20261118f"></script>
+<script src="js/firebase-config.js?v=20261118g"></script>
+<script src="js/01-core.js?v=20261118g"></script>
+<script src="js/01b-database.js?v=20261118g"></script>
+<script src="js/02-nav.js?v=20261118g"></script>
+<script src="js/03-registry.js?v=20261118g"></script>
+<script src="js/04-customers.js?v=20261118g"></script>
+<script src="js/05-products.js?v=20261118g"></script>
+<script src="js/06-duplicates.js?v=20261118g"></script>
+<script src="js/07-settings.js?v=20261118g"></script>
+<script src="js/08-payment-updated.js?v=20261118g"></script>
+<script src="js/09-balance-confirmation.js?v=20261118g"></script>
+<script src="js/10-payment-reminder.js?v=20261118g"></script>
+<script src="js/11-dispatch-confirmation.js?v=20261118g"></script>
+<script src="js/12-stock-update.js?v=20261118g"></script>
+<script src="js/13-init.js?v=20261118g"></script>
+<script src="js/14-service-material.js?v=20261118g"></script>
+<script src="js/16-stock-return.js?v=20261118g"></script>
+<script src="js/18-history.js?v=20261118g"></script>
+<script src="js/19-orders.js?v=20261118g"></script>
+<script src="js/20-service-jobs.js?v=20261118g"></script>
+<script src="js/21-transports.js?v=20261118g"></script>
+<script src="js/22-app-install.js?v=20261118g"></script>
+<script src="js/24-receipts.js?v=20261118g"></script>
+<script src="js/25-picklist.js?v=20261118g"></script>
+<script src="js/23-mobile.js?v=20261118g"></script>
 </body>
 </html>

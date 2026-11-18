@@ -33,3 +33,23 @@
   });
 
   window.addEventListener('appinstalled', function(){ installBtn.style.display = 'none'; });
+
+  /* ---------------- version + last updated ---------------- */
+  var versionLine = 'Version ' + APP_VERSION + ' · Updated ' + formatDateForMsg(APP_UPDATED);
+  document.getElementById('appVersionSide').textContent = versionLine;
+  document.getElementById('appVersionSheet').textContent = versionLine;
+  var standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  document.getElementById('appAbout').innerHTML =
+    '<div><span>Version</span><strong>' + escapeHtml(APP_VERSION) + '</strong></div>' +
+    '<div><span>Last updated</span><strong>' + escapeHtml(formatDateForMsg(APP_UPDATED)) + '</strong></div>' +
+    '<div><span>Running as</span><strong>' + (standalone ? 'Installed app' : 'Website') + '</strong></div>' +
+    (window.FIREBASE_CONFIG ? '<div><span>Database</span><strong>' + escapeHtml(FIREBASE_CONFIG.projectId) + '</strong></div>' : '');
+
+  // tell each device once that it is now on a new version
+  try{
+    var seen = localStorage.getItem('cem_seen_version');
+    if(seen && seen !== APP_VERSION){
+      setTimeout(function(){ showToast('App updated to version ' + APP_VERSION + ' (' + formatDateForMsg(APP_UPDATED) + ')'); }, 1500);
+    }
+    localStorage.setItem('cem_seen_version', APP_VERSION);
+  }catch(e){}
