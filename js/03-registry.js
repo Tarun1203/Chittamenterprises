@@ -57,7 +57,6 @@
 
     return {
       getSelected: function(){ return selected; },
-      select: function(c){ selected = c; input.value = c ? c.name : ''; },
       refresh: function(){ render(input.value); }
     };
   }

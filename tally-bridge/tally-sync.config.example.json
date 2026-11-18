@@ -1,7 +1,0 @@
-{
-  "tallyUrl": "http://localhost:9000",
-  "company": ["Chittam", "Cash"],
-  "sheetUrl": "https://script.google.com/macros/s/PASTE-YOUR-DEPLOYMENT-ID/exec",
-  "accessKey": "PASTE-THE-SAME-ACCESS_KEY-YOU-SET-IN-APPS-SCRIPT",
-  "daysBack": 1
-}

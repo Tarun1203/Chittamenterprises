@@ -2,8 +2,7 @@
 
 /* Stock Return template — acknowledges goods a customer has sent back:
    returned items with qty and value, reason, credit note no., and whether
-   the amount has been credited to their account. Can be pre-filled from a
-   Tally Credit Note / Sales Return on the Daily Transactions page. */
+   the amount has been credited to their account. */
 
 pickers['sr-picker'] = buildPicker('sr-picker');
 
@@ -42,26 +41,6 @@ function srUpdateTotal(){
 
 document.getElementById('sr-add-item').addEventListener('click', function(){ srAddItemRow(); });
 srAddItemRow();
-
-/* fill the form from a Tally voucher (called from the Daily Transactions page) */
-function srPrefillFromVoucher(v){
-  var c = getCustomers().find(function(x){ return normalizeName(x.name) === normalizeName(v.party); });
-  if(c) pickers['sr-picker'].select(c);
-  document.getElementById('sr-date').value = v.date || todayISO();
-  document.getElementById('sr-cn').value = v.voucherNo || '';
-  document.getElementById('sr-credit').value = Math.abs(Number(v.amount)||0) || '';
-  var wrap = document.getElementById('sr-items');
-  wrap.innerHTML = '';
-  var items = v.items || [];
-  if(items.length){
-    items.forEach(function(it){ srAddItemRow(it.name, it.qty, Math.abs(Number(it.amount)||0)); });
-  }else{
-    srAddItemRow('', '', Math.abs(Number(v.amount)||0));
-  }
-  srUpdateTotal();
-  document.getElementById('sr-preview').textContent = '';
-  if(!c) showToast('"' + v.party + '" is not in your Customers list — pick the customer manually.');
-}
 
 /* ---------------- generator ---------------- */
 function generateStockReturn(){

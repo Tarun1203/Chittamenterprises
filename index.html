@@ -23,7 +23,6 @@
       <div class="nav-group">
         <p class="nav-group-label">Overview</p>
         <button class="navbtn" data-view="dashboard"><span class="ic">🏠</span> Dashboard</button>
-        <button class="navbtn" data-view="transactions"><span class="ic">📊</span> Daily Transactions</button>
       </div>
       <div class="nav-group">
         <p class="nav-group-label">Messaging</p>
@@ -72,7 +71,6 @@
         <button class="tile" data-view="payment-reminder"><div class="ic">💳</div><div class="t">Payment Reminder</div><div class="d">Outstanding by account, days pending, and how to pay.</div></button>
         <button class="tile" data-view="dispatch-confirmation"><div class="ic">🚚</div><div class="t">Dispatch Confirmation</div><div class="d">Let a customer know their order is on the way.</div></button>
         <button class="tile" data-view="stock-return"><div class="ic">↩️</div><div class="t">Stock Return</div><div class="d">Acknowledge goods returned by a customer and the credit given.</div></button>
-        <button class="tile" data-view="transactions"><div class="ic">📊</div><div class="t">Daily Transactions</div><div class="d">Today's Tally vouchers — sales, receipts, returns — from any device.</div></button>
         <button class="tile" data-view="service-material"><div class="ic">🔧</div><div class="t">Service Material</div><div class="d">Send service stock details to a dealer with items, serial nos, and charges.</div></button>
         <button class="tile" data-view="stock-update"><div class="ic">📦</div><div class="t">Stock Update</div><div class="d">Announce newly available products and prices.</div></button>
         <button class="tile" data-view="customers"><div class="ic">👥</div><div class="t">Manage Customers</div><div class="d">Add, edit or remove customers stored on this device.</div></button>
@@ -407,24 +405,6 @@
       </div>
     </section>
 
-    <!-- DAILY TRANSACTIONS (TALLY) -->
-    <section class="view" id="view-transactions">
-      <div class="view-head">
-        <p class="eyebrow">Tally Sync</p>
-        <h1 class="title">Daily Transactions</h1>
-        <p class="sub">Vouchers sent from Tally by the bridge script on your Tally PC. Open this page from any phone or laptop that has the Cloud Sync URL set in Settings.</p>
-      </div>
-      <div class="toolbar">
-        <input class="search-box" type="date" id="tx-date" style="max-width:190px;">
-        <select class="search-box" id="tx-type" style="max-width:200px;"><option value="">All Voucher Types</option></select>
-        <input class="search-box" id="tx-search" type="text" placeholder="🔍 Search party, voucher no. or narration…">
-        <button class="btn" id="btnTxRefresh">⟳ Refresh</button>
-      </div>
-      <p class="tx-meta" id="tx-meta"></p>
-      <div class="tx-summary" id="tx-summary"></div>
-      <div class="tx-table-wrap" id="tx-table-wrap"></div>
-    </section>
-
     <!-- SETTINGS -->
     <section class="view" id="view-settings">
       <div class="view-head">
@@ -480,7 +460,6 @@
           <p class="sub">Point this at a Google Sheet (set up once — see the included setup guide) to move customers, products, and settings between your phone and laptop. Pull replaces what's on this device with the Sheet's data; Push replaces the Sheet's data with what's on this device.</p>
         </div>
         <div class="field"><label>Google Sheet Web App URL</label><input type="text" id="cloud-url" placeholder="https://script.google.com/macros/s/…/exec"></div>
-        <div class="field"><label>Access Key (for Daily Transactions)</label><input type="password" id="cloud-key" placeholder="Same ACCESS_KEY you set in Apps Script → Project Settings → Script Properties" autocomplete="off"></div>
         <div class="btnrow">
           <button class="btn" id="btnCloudPush">☁ Push to Sheet</button>
           <button class="btn secondary" id="btnCloudPull">☁ Pull from Sheet</button>
@@ -571,6 +550,5 @@
 <script src="js/13-init.js"></script>
 <script src="js/14-service-material.js"></script>
 <script src="js/16-stock-return.js"></script>
-<script src="js/17-transactions.js"></script>
 </body>
 </html>
