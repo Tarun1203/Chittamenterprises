@@ -99,7 +99,7 @@ function refreshAllPickers(){
       out[el.id] = el.type === 'checkbox' ? el.checked : el.value;
     });
     var rows = [];
-    view.querySelectorAll('.product-row, .invoice-row, .return-row, .order-row').forEach(function(row){
+    view.querySelectorAll('.product-row, .invoice-row, .return-row, .order-row, .sv-item').forEach(function(row){
       var vals = {};
       row.querySelectorAll('input, select').forEach(function(el, i){
         var k = (el.className || '').split(' ')[0] || ('f' + i);

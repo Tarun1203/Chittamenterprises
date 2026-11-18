@@ -15,7 +15,9 @@
     if(name === 'products') renderProductTable();
     if(name === 'dashboard') renderDashboard();
     if(name === 'history' && typeof loadHistory === 'function') loadHistory();
-    if(name === 'orders' && typeof renderOrders === 'function') renderOrders();    window.scrollTo(0,0);
+    if(name === 'orders' && typeof renderOrders === 'function') renderOrders();
+    if(name === 'service-jobs' && typeof renderServiceJobs === 'function') renderServiceJobs();
+    window.scrollTo(0,0);
   }
   navButtons.forEach(function(btn){
     btn.addEventListener('click', function(){ showView(btn.dataset.view); });

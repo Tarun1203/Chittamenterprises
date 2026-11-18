@@ -35,6 +35,7 @@
       <div class="nav-group">
         <p class="nav-group-label">Movement</p>
         <button class="navbtn" data-view="orders"><span class="ic">🧾</span> Orders</button>
+        <button class="navbtn" data-view="service-jobs"><span class="ic">🛠️</span> Service Jobs</button>
         <button class="navbtn" data-view="dispatch-confirmation"><span class="ic">🚚</span> Dispatch Confirmation</button>
         <button class="navbtn" data-view="stock-return"><span class="ic">↩️</span> Stock Return</button>
       </div>
@@ -71,6 +72,7 @@
         <button class="tile" data-view="payment-updated"><div class="ic">💰</div><div class="t">Payment Updated</div><div class="d">Confirm a payment received and show the new balance.</div></button>
         <button class="tile" data-view="balance-confirmation"><div class="ic">📋</div><div class="t">Balance Confirmation</div><div class="d">Share today's outstanding for the customer to confirm.</div></button>
         <button class="tile" data-view="payment-reminder"><div class="ic">💳</div><div class="t">Payment Reminder</div><div class="d">Outstanding by account, days pending, and how to pay.</div></button>
+        <button class="tile" data-view="service-jobs"><div class="ic">🛠️</div><div class="t">Service Jobs</div><div class="d">Products dealers send for service — repaired, replaced, and sent back.</div></button>
         <button class="tile" data-view="orders"><div class="ic">🧾</div><div class="t">Orders</div><div class="d">Take customer orders, track status, and send an order confirmation.</div></button>
         <button class="tile" data-view="dispatch-confirmation"><div class="ic">🚚</div><div class="t">Dispatch Confirmation</div><div class="d">Let a customer know their order is on the way.</div></button>
         <button class="tile" data-view="stock-return"><div class="ic">↩️</div><div class="t">Stock Return</div><div class="d">Acknowledge goods returned by a customer and the credit given.</div></button>
@@ -414,6 +416,78 @@
       </div>
     </section>
 
+    <!-- SERVICE JOBS -->
+    <section class="view" id="view-service-jobs">
+      <div class="view-head">
+        <p class="eyebrow">Service Jobs</p>
+        <h1 class="title">Service Jobs</h1>
+        <p class="sub">Products dealers send to you for service: what came in, what was repaired or replaced (with the new serial no.), and when it went back. Saved in the database; jobs can't be deleted.</p>
+      </div>
+
+      <div id="sv-list-wrap">
+        <div class="toolbar">
+          <input class="search-box" id="svSearch" type="text" placeholder="🔍 Search job no., dealer, product or serial no.…">
+          <select class="search-box" id="svStatusFilter" style="max-width:190px;"></select>
+          <button class="btn" id="btnNewJob">+ New Service Job</button>
+        </div>
+        <div class="or-summary" id="svSummary"></div>
+        <div id="svTableWrap"></div>
+      </div>
+
+      <div class="card" id="sv-editor" style="display:none;">
+        <div class="view-head" style="margin-bottom:14px;">
+          <p class="eyebrow" id="sv-editor-eyebrow">New Service Job</p>
+          <h1 class="title" style="font-size:19px;" id="sv-editor-title">New Service Job</h1>
+        </div>
+        <div class="field"><label>Dealer</label><div class="picker" id="sv-picker"></div></div>
+
+        <p class="sv-section">📥 Received from dealer</p>
+        <div class="row3">
+          <div class="field"><label>Job No.</label><input type="text" id="sv-no"></div>
+          <div class="field"><label>Received Date</label><input type="date" id="sv-received"></div>
+          <div class="field"><label>Received Via (transport)</label><input type="text" id="sv-in-transport" placeholder="e.g. VRL / by hand"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Job Status</label><select id="sv-status"></select></div>
+          <div class="field"><label>Expected Return / Timeline</label><input type="text" id="sv-timeline" placeholder="e.g. 3–5 working days"></div>
+        </div>
+
+        <div class="field">
+          <label>Products</label>
+          <div id="sv-items"></div>
+          <datalist id="sv-product-list"></datalist>
+          <button class="btn ghost" id="sv-add-item" type="button">+ Add Product</button>
+          <div class="or-totals" id="sv-totals"></div>
+        </div>
+
+        <p class="sv-section">📤 Sent back to dealer</p>
+        <div class="row2">
+          <div class="field"><label>Sent Back Date</label><input type="date" id="sv-sent"></div>
+          <div class="field"><label>Return Transport</label><input type="text" id="sv-out-transport" placeholder="e.g. VRL Logistics, LR no."></div>
+        </div>
+        <div class="field"><label>Notes (optional)</label><input type="text" id="sv-notes" placeholder="e.g. Warranty claim filed with Makwell"></div>
+
+        <div class="btnrow">
+          <button class="btn" id="btnSaveJob">💾 Save Job</button>
+          <button class="btn ghost" id="btnCloseJob" type="button">← Back to Service Jobs</button>
+          <span class="save-flag" id="svSaved">Saved</span>
+        </div>
+        <div class="btnrow" style="margin-top:6px;">
+          <select class="search-box" id="sv-msgtype" style="max-width:240px; flex:0 1 auto;">
+            <option value="received">Message: Received for service</option>
+            <option value="returned">Message: Serviced &amp; sent back</option>
+          </select>
+          <button class="btn secondary" data-generate="service-job">Generate</button>
+          <button class="btn secondary" data-copy="sv-preview">Copy <span class="copied-flag">Copied</span></button>
+          <button class="btn wa" data-wa="sv-picker" data-wa-src="sv-preview">📲 Copy &amp; Open WhatsApp</button>
+        </div>
+        <div class="preview-wrap">
+          <div class="preview-head"><span class="stamp-badge">Service</span></div>
+          <div class="preview" id="sv-preview"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- STOCK RETURN -->
     <section class="view" id="view-stock-return">
       <div class="view-head">
@@ -637,5 +711,6 @@
 <script src="js/16-stock-return.js"></script>
 <script src="js/18-history.js"></script>
 <script src="js/19-orders.js"></script>
+<script src="js/20-service-jobs.js"></script>
 </body>
 </html>

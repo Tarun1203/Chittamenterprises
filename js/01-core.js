@@ -18,6 +18,7 @@
   var LS_PRODUCTS = "cem_products";
   var LS_SETTINGS = "cem_settings";
   var LS_ORDERS = "cem_orders";
+  var LS_SERVICES = "cem_services";
 
   function getCustomers(){
     try{ return JSON.parse(localStorage.getItem(LS_CUST)) || []; }catch(e){ return []; }
@@ -45,6 +46,15 @@
     var prev = getOrders();
     localStorage.setItem(LS_ORDERS, JSON.stringify(list));
     if(typeof dbSaveList === 'function') dbSaveList('orders', prev, list);
+  }
+
+  function getServiceJobs(){
+    try{ return JSON.parse(localStorage.getItem(LS_SERVICES)) || []; }catch(e){ return []; }
+  }
+  function saveServiceJobs(list){
+    var prev = getServiceJobs();
+    localStorage.setItem(LS_SERVICES, JSON.stringify(list));
+    if(typeof dbSaveList === 'function') dbSaveList('services', prev, list);
   }
 
   function getSettings(){

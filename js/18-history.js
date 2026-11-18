@@ -14,7 +14,8 @@
     'stock-update': 'Stock Update',
     'service-material': 'Service Material',
     'stock-return': 'Stock Return',
-    'order-confirmation': 'Order Confirmation'
+    'order-confirmation': 'Order Confirmation',
+    'service-job': 'Service Job'
   };
 
   var HIST_EVENT_LABELS = {
@@ -66,9 +67,39 @@
     if(!before) return '';
     var keys = Object.keys(Object.assign({}, before, after)).filter(function(k){ return k !== 'id'; });
     return keys.filter(function(k){ return JSON.stringify(before[k]) !== JSON.stringify(after[k]); }).map(function(k){
-      function show(v){ if(v === undefined || v === '' || v === null) return '—'; return typeof v === 'object' ? JSON.stringify(v) : String(v); }
-      return k + ': ' + show(before[k]) + ' → ' + show(after[k]);
+      if(Array.isArray(before[k]) && Array.isArray(after[k])) return histListDiff(k, before[k], after[k]);
+      return histLabel(k) + ': ' + histShow(before[k]) + ' → ' + histShow(after[k]);
     }).join(', ');
+  }
+  var HIST_FIELD_LABELS = {
+    replSerial: 'new S/N', replProduct: 'replacement', serial: 'S/N', qty: 'qty', totalCharges: 'total charges',
+    sentDate: 'sent back', receivedDate: 'received', deliveryDate: 'delivery', outTransport: 'return transport',
+    inTransport: 'received via', customerName: 'customer', orderNo: 'order no.', jobNo: 'job no.',
+    businessName: 'business name', upiList: 'UPI IDs', bankList: 'bank accounts', paymentModes: 'payment modes'
+  };
+  function histLabel(k){ return HIST_FIELD_LABELS[k] || k; }
+  function histShow(v){
+    if(v === undefined || v === '' || v === null) return '—';
+    return typeof v === 'object' ? JSON.stringify(v) : String(v);
+  }
+  // item lists (order items, service products): what changed per line,
+  // e.g. "Inverter 900VA: action Pending → Repaired, charges 0 → 350"
+  function histListDiff(key, before, after){
+    var out = [];
+    for(var i = 0; i < Math.max(before.length, after.length); i++){
+      var b = before[i], a = after[i];
+      var label = (a && (a.name || a.product)) || (b && (b.name || b.product)) || (key + ' ' + (i + 1));
+      if(!b){ out.push('added ' + label); continue; }
+      if(!a){ out.push('removed ' + label); continue; }
+      if(typeof a !== 'object' || typeof b !== 'object'){
+        if(JSON.stringify(a) !== JSON.stringify(b)) out.push(histShow(b) + ' → ' + histShow(a));
+        continue;
+      }
+      var ch = Object.keys(Object.assign({}, b, a)).filter(function(f){ return JSON.stringify(b[f]) !== JSON.stringify(a[f]); })
+        .map(function(f){ return histLabel(f) + ' ' + histShow(b[f]) + ' → ' + histShow(a[f]); });
+      if(ch.length) out.push(label + ': ' + ch.join(', '));
+    }
+    return out.join('; ');
   }
 
   function renderHistory(){
@@ -99,7 +130,7 @@
           escapeHtml(r.name || '') + '</div><div class="who">' + histWhen(r.at) + ' · ' + escapeHtml(r.by || '') + '</div></div>' +
           (info ? '<div class="hist-diff">' + escapeHtml(info) + '</div>' : '') + '</div>';
       }
-      var what = {customers: 'Customer', products: 'Product', settings: 'Settings', orders: 'Order'}[r.collection] || r.collection;
+      var what = {customers: 'Customer', products: 'Product', settings: 'Settings', orders: 'Order', services: 'Service job'}[r.collection] || r.collection;
       var diff = histDiff(r.before, r.after || {});
       return '<div class="hist-item"><div class="hist-top"><div><span class="hist-tag">' + escapeHtml(what) + ' ' + (r.action === 'create' ? 'added' : 'edited') + '</span>' +
         escapeHtml(r.name || '') + '</div><div class="who">' + histWhen(r.at) + ' · ' + escapeHtml(r.by || '') + '</div></div>' +
