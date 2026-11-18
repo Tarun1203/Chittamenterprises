@@ -53,3 +53,31 @@
     }
     localStorage.setItem('cem_seen_version', APP_VERSION);
   }catch(e){}
+
+  /* ---------------- new version available ---------------- */
+  // A window left open (the Windows app in the tray, a phone app in the
+  // background) never reloads by itself, so check the live version every
+  // 10 minutes and whenever the app comes back to the front.
+  var lastUpdateCheck = 0;
+  function checkForUpdate(){
+    if(location.protocol === 'file:' || Date.now() - lastUpdateCheck < 60000) return;
+    lastUpdateCheck = Date.now();
+    fetch('js/01-core.js?check=' + Date.now(), {cache: 'no-store'})
+      .then(function(r){ return r.ok ? r.text() : ''; })
+      .then(function(t){
+        var m = t.match(/APP_VERSION = '([0-9.]+)'/);
+        if(m && m[1] !== APP_VERSION) showUpdateBar(m[1]);
+      })
+      .catch(function(){});
+  }
+  function showUpdateBar(version){
+    var bar = document.getElementById('updateBar');
+    bar.querySelector('.ub-text').textContent = 'Version ' + version + ' is ready';
+    bar.classList.add('show');
+  }
+  document.getElementById('updateBarReload').addEventListener('click', function(){ location.reload(); });
+  document.getElementById('updateBarLater').addEventListener('click', function(){ document.getElementById('updateBar').classList.remove('show'); });
+  setInterval(checkForUpdate, 10 * 60 * 1000);
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible') checkForUpdate(); });
+  window.addEventListener('focus', checkForUpdate);
+  setTimeout(checkForUpdate, 8000);

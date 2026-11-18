@@ -16,7 +16,7 @@
   /* ---------------- app version ---------------- */
   // bump both with every release; shown in the sidebar, the phone's More
   // menu and Settings, and announced once on each device after an update
-  var APP_VERSION = '2.6';
+  var APP_VERSION = '2.7';
   var APP_UPDATED = '2026-11-18';
 
   /* ---------------- storage helpers ---------------- */
