@@ -15,12 +15,14 @@
   function mNavEntry(view){
     if(view === 'catalog'){
       var cat = document.getElementById('ce-catalog-nav');
-      return cat ? {icon: '📖', label: 'Product Catalog', el: cat} : null;
+      var catIc = cat && cat.querySelector('.ic');
+      return cat ? {iconHtml: catIc ? catIc.innerHTML : '📖', label: 'Product Catalog', el: cat} : null;
     }
     var btn = document.querySelector('.sidebar .navbtn[data-view="' + view + '"]');
     if(!btn) return null;
     var ic = btn.querySelector('.ic');
-    return {icon: ic ? ic.textContent : '•', label: btn.textContent.replace(ic ? ic.textContent : '', '').trim(), el: btn};
+    // the menu's own icon (a 3D image, or an emoji before it loads)
+    return {iconHtml: ic ? ic.innerHTML : '•', label: btn.textContent.replace(ic ? ic.textContent : '', '').trim(), el: btn};
   }
 
   /* ---------------- page switching ---------------- */
@@ -61,7 +63,7 @@
       var b = document.createElement('button');
       b.type = 'button';
       b.className = 'm-sheet-item' + (v === mCurrentView ? ' active' : '');
-      b.innerHTML = '<span class="ic">' + escapeHtml(e.icon) + '</span><span>' + escapeHtml(e.label) + '</span>';
+      b.innerHTML = '<span class="ic">' + e.iconHtml + '</span><span>' + escapeHtml(e.label) + '</span>';
       b.addEventListener('click', function(){
         mCloseSheet();
         if(v === 'catalog'){ e.el.click(); mSetCurrent('catalog'); }

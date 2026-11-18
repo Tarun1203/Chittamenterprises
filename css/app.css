@@ -741,3 +741,117 @@
   html.mobile-app .ce-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
   @keyframes mSlideUp{ from{ transform:translateY(40px); opacity:0; } to{ transform:none; opacity:1; } }
 
+  /* ================= Look: 3D icons, spotlight cards, glow buttons =================
+     Aceternity-style effects in plain CSS (see js/27-look.js for the icons
+     and the pointer spotlight). Everything here is decoration only. */
+  @property --ce-angle{ syntax:'<angle>'; initial-value:0deg; inherits:false; }
+
+  body{
+    background:
+      radial-gradient(900px 420px at 78% -8%, rgba(36,99,235,0.10), transparent 70%),
+      radial-gradient(700px 360px at 10% 110%, rgba(124,58,237,0.06), transparent 70%),
+      var(--paper);
+    background-attachment:fixed;
+  }
+
+  /* page change: rise and sharpen into place */
+  .view.active{ animation:ceViewIn .35s cubic-bezier(.2,.7,.2,1); }
+  @keyframes ceViewIn{ from{ opacity:0; transform:translateY(10px); filter:blur(4px); } to{ opacity:1; transform:none; filter:none; } }
+
+  /* 3D icons */
+  img.ic3d{ display:block; width:100%; height:100%; object-fit:contain; pointer-events:none; user-select:none; }
+  .navbtn .ic{ width:24px; height:24px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+  .navbtn .ic img.ic3d{ width:24px; height:24px; filter:drop-shadow(0 2px 3px rgba(15,15,20,0.15)); transition:transform .2s ease; }
+  .navbtn:hover .ic img.ic3d{ transform:scale(1.12) rotate(-6deg); }
+  .ce-cat-nav .ic{ width:24px; height:24px; display:inline-flex; }
+
+  /* menu: soft hover, glowing active item */
+  .navbtn{ transition:background .15s ease, color .15s ease, transform .15s ease; }
+  .navbtn:hover{ background:rgba(36,99,235,0.07); }
+  .navbtn.active{
+    background:linear-gradient(135deg, #2463EB, #4f46e5);
+    box-shadow:0 6px 18px -6px rgba(36,99,235,0.6);
+  }
+  .navbtn.active .ic img.ic3d{ filter:drop-shadow(0 2px 4px rgba(0,0,0,0.25)); }
+
+  /* dashboard heading in a gradient */
+  #view-dashboard .view-head .title{
+    font-size:30px;
+    background:linear-gradient(92deg, #0f172a 0%, #2463EB 55%, #7c3aed 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+
+  /* welcome banner: dot grid + spotlight */
+  .welcome-card{
+    position:relative; overflow:hidden; border-radius:16px;
+    background:
+      radial-gradient(circle at 1px 1px, rgba(36,99,235,0.14) 1px, transparent 0) 0 0 / 18px 18px,
+      linear-gradient(135deg, #ffffff, #f5f8ff);
+  }
+  .welcome-card .seal{ width:52px; height:52px; background:linear-gradient(135deg, #eaf1fe, #f3e8ff); border-radius:14px; padding:6px; }
+
+  /* spotlight that follows the pointer (tiles, banner, cards) */
+  .spot, .card{ position:relative; }
+  .spot::before, .card::before{
+    content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:0;
+    background:radial-gradient(420px circle at var(--mx, -999px) var(--my, -999px), rgba(36,99,235,0.10), transparent 45%);
+    opacity:0; transition:opacity .25s ease;
+  }
+  .spot:hover::before, .card:hover::before{ opacity:1; }
+  .spot > *, .card > *{ position:relative; z-index:1; }
+
+  /* dashboard tiles */
+  .tile{
+    position:relative; overflow:hidden; border-radius:16px; padding:18px;
+    transition:transform .2s cubic-bezier(.2,.7,.2,1), box-shadow .2s ease, border-color .2s ease;
+  }
+  .tile:hover{ transform:translateY(-3px); border-color:rgba(36,99,235,0.45); box-shadow:0 14px 30px -12px rgba(36,99,235,0.35); }
+  .tile .ic{ width:46px; height:46px; font-size:28px; }
+  .tile .ic img.ic3d{ filter:drop-shadow(0 6px 8px rgba(15,15,20,0.18)); transition:transform .25s cubic-bezier(.2,.7,.2,1); }
+  .tile:hover .ic img.ic3d{ transform:scale(1.12) rotate(-8deg) translateY(-2px); }
+  .tile .t{ font-weight:700; font-size:14.5px; }
+  .tiles-in .tile{ animation:ceTileIn .5s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(var(--i, 0) * 35ms); }
+  @keyframes ceTileIn{ from{ opacity:0; transform:translateY(14px) scale(.98); } to{ opacity:1; transform:none; } }
+
+  /* cards */
+  .card{ border-radius:16px; transition:box-shadow .2s ease, border-color .2s ease; }
+  .card:focus-within{ border-color:rgba(36,99,235,0.35); box-shadow:0 0 0 4px rgba(36,99,235,0.08), var(--shadow); }
+
+  /* buttons: gradient + shine; Generate gets a moving border */
+  .btn{ position:relative; overflow:hidden; border-radius:10px; transition:transform .15s ease, box-shadow .2s ease, opacity .15s ease; }
+  .btn:not(.secondary):not(.ghost):not(.danger){
+    background:linear-gradient(135deg, #2463EB, #4f46e5); border-color:transparent;
+    box-shadow:0 6px 16px -6px rgba(36,99,235,0.55);
+  }
+  .btn.wa{ background:linear-gradient(135deg, #22a45d, #128c7e) !important; box-shadow:0 6px 16px -6px rgba(18,140,126,0.55) !important; }
+  .btn:not(.secondary):not(.ghost):not(.danger):hover{ opacity:1; transform:translateY(-1px); box-shadow:0 10px 22px -8px rgba(36,99,235,0.65); }
+  .btn:not(.secondary):not(.ghost):not(.danger)::after{
+    content:""; position:absolute; top:0; left:-60%; width:45%; height:100%; pointer-events:none;
+    background:linear-gradient(110deg, transparent, rgba(255,255,255,0.35), transparent);
+    transform:skewX(-20deg); transition:left .6s ease;
+  }
+  .btn:not(.secondary):not(.ghost):not(.danger):hover::after{ left:120%; }
+  .btn.secondary:hover, .btn.ghost:hover{ border-color:rgba(36,99,235,0.45); color:var(--stamp); opacity:1; }
+  .btn[data-generate]:not(.secondary){ overflow:visible; isolation:isolate; }
+  .btn[data-generate]:not(.secondary)::before{
+    content:""; position:absolute; inset:-2px; z-index:-1; border-radius:12px;
+    background:conic-gradient(from var(--ce-angle), #2463EB, #60a5fa, #a78bfa, #2463EB);
+    animation:ceSpin 3s linear infinite;
+  }
+  .btn[data-generate]:not(.secondary)::after{ display:none; }
+  @keyframes ceSpin{ to{ --ce-angle:360deg; } }
+
+  /* message preview reads like a chat bubble */
+  .preview{ border-radius:14px; background:linear-gradient(180deg, #f6f8fc, #eef2f9); }
+
+  /* phone: gradient top bar, 3D tab and menu icons */
+  html.mobile-app .m-topbar{ background:linear-gradient(120deg, #2463EB, #4f46e5); }
+  html.mobile-app .m-tab .ic{ width:26px; height:26px; display:flex; align-items:center; justify-content:center; }
+  html.mobile-app .m-sheet-item .ic{ width:36px; height:36px; display:flex; align-items:center; justify-content:center; }
+  html.mobile-app #view-dashboard .view-head .title{ font-size:24px; }
+  html.mobile-app .tile .ic{ width:40px; height:40px; }
+
+  @media (prefers-reduced-motion: reduce){
+    .view.active, .tiles-in .tile, .btn[data-generate]:not(.secondary)::before{ animation:none !important; }
+    .tile:hover, .btn:hover{ transform:none !important; }
+  }
