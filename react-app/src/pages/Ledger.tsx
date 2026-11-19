@@ -4,7 +4,7 @@
 // WhatsApp, copy it, or print it / save it as a PDF.
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
-import { IconBrandWhatsapp, IconPrinter } from "@tabler/icons-react";
+import { IconBrandWhatsapp, IconFileTypePdf, IconLoader2, IconPrinter } from "@tabler/icons-react";
 import { Button, Card, Field, PageHeader, useToast } from "@/components/kit";
 import { CustomerPicker, MessagePanel, Text } from "@/components/forms";
 import { TallyFreshness } from "@/components/TallyFreshness";
@@ -15,7 +15,9 @@ import { msgDate } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { printHtml } from "./PickList";
-import { ledgerPdf, safeFileName, sharePdf } from "@/lib/pdf";
+import { safeFileName, sharePdf } from "@/lib/pdf";
+import { fetchVoucher, summaryVoucher, tallyLedgerPdf, voucherPdf, voucherTitle } from "@/lib/tallypdf";
+import type { LedgerRow as Row } from "@/lib/ledger";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
@@ -58,13 +60,33 @@ export function Ledger() {
     if (!customer || !parts.length) { toast("Pick a customer with Tally entries first."); return; }
     setMaking(true);
     try {
-      const blob = await ledgerPdf(settings, customer, from, to, parts);
+      const blob = await tallyLedgerPdf(settings, customer, from, to, parts);
       const r = await sharePdf(blob, safeFileName("Ledger " + customer.name + " " + from + " to " + to) + ".pdf",
         { mobile: customer.mobile, kind: "Ledgers", text: "Ledger statement – " + biz });
       if (r.message) toast(r.message);
       logEvent("ledger-pdf-shared", { customerName: customer.name, mobile: customer.mobile || "", from, to, savedTo: r.path || "" }).catch(() => {});
     } catch (e) { toast("Could not make the PDF: " + (e as Error).message); }
     finally { setMaking(false); }
+  }
+
+  // any voucher in the ledger, printed like Tally, to WhatsApp
+  const [vbusy, setVbusy] = useState("");
+  async function sendVoucher(account: "business" | "cash", r: Row) {
+    if (!customer || !r.v) return;
+    const k = account + (r.id || r.n || "") + r.d;
+    setVbusy(k);
+    try {
+      let v = null;
+      try { v = await fetchVoucher(account, r.id || "", r.d); }
+      catch (e) { toast("Couldn't read the voucher from Tally (" + (e as Error).message + ") — sending the summary."); }
+      const detail = v || summaryVoucher(r.v);
+      const blob = await voucherPdf(settings, detail);
+      const res = await sharePdf(blob, safeFileName(voucherTitle(detail) + " " + (detail.number || "") + " " + customer.name) + ".pdf",
+        { mobile: customer.mobile, kind: "Vouchers", text: voucherTitle(detail) + " " + (detail.number || "") + " – " + biz });
+      if (res.message) toast(res.message);
+      logEvent("voucher-pdf-shared", { customerName: customer.name, mobile: customer.mobile || "", company: account, voucherType: detail.type, voucherNo: detail.number || "", date: r.d, full: !!v, savedTo: res.path || "" }).catch(() => {});
+    } catch (e) { toast("Could not make the PDF: " + (e as Error).message); }
+    finally { setVbusy(""); }
   }
 
   function print() {
@@ -92,7 +114,7 @@ export function Ledger() {
 
   return (
     <div>
-      <PageHeader icon="notebook" eyebrow="Messages" title="Ledger Statement" subtitle="A customer's account in both companies — opening balance, every transaction, closing balance — to share on WhatsApp or print as a PDF."
+      <PageHeader icon="notebook" eyebrow="Messages" title="Ledger Statement" subtitle="A customer's account in both companies, in Tally's layout — send it as a PDF on WhatsApp. Tap the PDF icon on any transaction to send that voucher (invoice, receipt, credit note…)."
         actions={<><Button variant="whatsapp" size="sm" onClick={sendPdf} disabled={making}><IconBrandWhatsapp size={16} /> {making ? "Making PDF…" : "PDF to WhatsApp"}</Button>
           <Button variant="secondary" size="sm" onClick={print}><IconPrinter size={16} /> Print</Button></>} />
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
@@ -104,7 +126,7 @@ export function Ledger() {
               <Field label="To"><Text type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
             </div>
             <p className="text-xs text-neutral-500">
-              Tally transactions are synced {range.from ? "from " + msgDate(range.from) + " to " + msgDate(range.to) : "— not yet"}. For a longer period, raise “transactions of the last … days” in the Windows app's Tally Sync settings (up to 366).
+              Tally transactions are synced {range.from ? "from " + msgDate(range.from) + " to " + msgDate(range.to) : "— not yet"}. The Windows app (2.9 and later) syncs from 1 April, the start of the financial year.
             </p>
             {tooEarly && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">Transactions before {msgDate(range.from)} aren't synced, so the opening balance on {msgDate(from)} would be wrong. Start on or after {msgDate(range.from)}.</p>}
             {customer && <TallyFreshness />}
@@ -119,7 +141,8 @@ export function Ledger() {
               </div>
               <div className="divide-y divide-neutral-100 text-sm">
                 <LedgerLine strong date={from} label="Opening balance" bal={p.opening} />
-                {p.rows.map((r, i) => <LedgerLine key={i} date={r.d} label={r.label} dr={r.dr} cr={r.cr} bal={r.bal} />)}
+                {p.rows.map((r, i) => <LedgerLine key={i} date={r.d} label={r.label} dr={r.dr} cr={r.cr} bal={r.bal}
+                  busy={vbusy === p.account + (r.id || r.n || "") + r.d} onShare={r.v ? () => sendVoucher(p.account, r) : undefined} />)}
                 {!p.rows.length && <p className="px-4 py-3 text-neutral-500">No transactions in this period.</p>}
                 <LedgerLine strong date={to} label="Closing balance" bal={p.closing} />
               </div>
@@ -142,15 +165,17 @@ export function Ledger() {
   );
 }
 
-function LedgerLine({ date, label, dr, cr, bal, strong }: { date: string; label: string; dr?: number; cr?: number; bal: number; strong?: boolean }) {
+function LedgerLine({ date, label, dr, cr, bal, strong, onShare, busy }: { date: string; label: string; dr?: number; cr?: number; bal: number; strong?: boolean; onShare?: () => void; busy?: boolean }) {
   return (
-    <div className={cn("grid grid-cols-[4.5rem_1fr_auto] items-start gap-3 px-4 py-2", strong && "bg-neutral-50 font-bold")}>
+    <div className={cn("grid grid-cols-[4.5rem_1fr_auto_2rem] items-start gap-3 px-4 py-2", strong && "bg-neutral-50 font-bold")}>
       <span className="text-xs text-neutral-500 tabular-nums">{msgDate(date).replace(/ \d{4}$/, "")}</span>
       <span className="min-w-0">
         <span className="block truncate">{label}</span>
         {(dr || cr) ? <span className={cn("text-xs font-semibold tabular-nums", dr ? "text-rose-700" : "text-emerald-700")}>{dr ? inr(dr) + " Dr" : inr(cr || 0) + " Cr"}</span> : null}
       </span>
       <span className="text-right tabular-nums">{drcr(bal)}</span>
+      {onShare ? <button onClick={onShare} disabled={busy} className="-my-1 rounded-lg p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-brand-700" title="Send this voucher as a PDF (Tally format)" aria-label="Voucher PDF to WhatsApp">
+        {busy ? <IconLoader2 size={16} className="animate-spin" /> : <IconFileTypePdf size={16} />}</button> : <span />}
     </div>
   );
 }

@@ -70,8 +70,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyProduct("Chittam Enterprises")]
 [assembly: System.Reflection.AssemblyCompany("Chittam Enterprises")]
 // keep in step with Program.DesktopVersion (build.ps1 checks)
-[assembly: System.Reflection.AssemblyVersion("2.8.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("2.8")]
+[assembly: System.Reflection.AssemblyVersion("2.9.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.9")]
 
 namespace ChittamEnterprises
 {
@@ -81,7 +81,7 @@ namespace ChittamEnterprises
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
         // where new versions of this program are published (desktop/ folder of the site)
         public const string UpdateUrl = "https://tarun1203.github.io/Chittamenterprises/desktop/version.json";
-        public const string DesktopVersion = "2.8";
+        public const string DesktopVersion = "2.9";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -634,6 +634,84 @@ namespace ChittamEnterprises
             return ParseVouchers(xml, debtorKeys);
         }
 
+        // one voucher in full (items, taxes, addresses, bills, bank details), to print it like Tally
+        public static Dictionary<string, object> VoucherDetail(string url, string company, string guid, DateTime date)
+        {
+            Func<string, string> x = t0 => System.Security.SecurityElement.Escape(t0 ?? "");
+            var xml = Post(url, "<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>ChittamVoucher</ID></HEADER>" +
+                "<BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>" +
+                "<SVCURRENTCOMPANY>" + x(company) + "</SVCURRENTCOMPANY>" +
+                "<SVFROMDATE>" + date.ToString("yyyyMMdd") + "</SVFROMDATE><SVTODATE>" + date.ToString("yyyyMMdd") + "</SVTODATE></STATICVARIABLES>" +
+                "<TDL><TDLMESSAGE><COLLECTION NAME=\"ChittamVoucher\" ISMODIFY=\"No\"><TYPE>Voucher</TYPE>" +
+                "<FETCH>*, AllInventoryEntries.*, AllLedgerEntries.*, LedgerEntries.*</FETCH><FILTER>ChittamThisVoucher</FILTER></COLLECTION>" +
+                "<SYSTEM TYPE=\"Formulae\" NAME=\"ChittamThisVoucher\">$GUID = \"" + x(guid).Replace("\"", "") + "\"</SYSTEM>" +
+                "</TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
+            var doc = new XmlDocument();
+            doc.LoadXml(xml);
+            XmlNode v = doc.SelectSingleNode("//VOUCHER[ALLINVENTORYENTRIES.LIST or ALLLEDGERENTRIES.LIST or LEDGERENTRIES.LIST]");
+            if (v == null) throw new Exception("Voucher not found in Tally (" + company + ").");
+            Func<XmlNode, string, List<string>> lines = (n, path) => { var l = new List<string>(); foreach (XmlNode a in n.SelectNodes(path)) if (a.InnerText.Trim().Length > 0) l.Add(a.InnerText.Trim()); return l; };
+            Func<string, string> iso = d => d.Length == 8 ? d.Substring(0, 4) + "-" + d.Substring(4, 2) + "-" + d.Substring(6, 2) : "";
+            var r = new Dictionary<string, object>();
+            string vtype = Text(v, "VOUCHERTYPENAME");
+            if (vtype.Length == 0 && v.Attributes["VCHTYPE"] != null) vtype = v.Attributes["VCHTYPE"].Value;
+            r["type"] = vtype; r["number"] = Text(v, "VOUCHERNUMBER"); r["date"] = iso(Text(v, "DATE"));
+            r["party"] = Text(v, "PARTYLEDGERNAME");
+            r["buyer"] = Text(v, "BASICBUYERNAME").Length > 0 ? Text(v, "BASICBUYERNAME") : Text(v, "PARTYMAILINGNAME");
+            r["address"] = lines(v, "BASICBUYERADDRESS.LIST/BASICBUYERADDRESS").Count > 0 ? lines(v, "BASICBUYERADDRESS.LIST/BASICBUYERADDRESS") : lines(v, "ADDRESS.LIST/ADDRESS");
+            r["gstin"] = Text(v, "PARTYGSTIN"); r["state"] = Text(v, "STATENAME"); r["pincode"] = Text(v, "PARTYPINCODE");
+            r["placeOfSupply"] = Text(v, "PLACEOFSUPPLY");
+            r["consignee"] = Text(v, "CONSIGNEEMAILINGNAME"); r["consigneeGstin"] = Text(v, "CONSIGNEEGSTIN"); r["consigneeState"] = Text(v, "CONSIGNEESTATENAME");
+            r["consigneeAddress"] = lines(v, "BASICCONSIGNEEADDRESS.LIST/BASICCONSIGNEEADDRESS");
+            r["cmpGstin"] = Text(v, "CMPGSTIN"); r["cmpState"] = Text(v, "CMPGSTSTATE");
+            r["reference"] = Text(v, "REFERENCE"); r["referenceDate"] = iso(Text(v, "REFERENCEDATE"));
+            r["orderRef"] = Text(v, "BASICORDERREF"); r["terms"] = Text(v, "BASICDUEDATEOFPYMT");
+            r["dispatchDoc"] = Text(v, "BASICSHIPDOCUMENTNO"); r["dispatchedThrough"] = Text(v, "BASICSHIPPEDBY");
+            r["destination"] = Text(v, "BASICFINALDESTINATION"); r["vehicle"] = Text(v, "BASICSHIPVESSELNO");
+            r["ewayBill"] = Text(v, "EWAYBILLNO"); r["irn"] = Text(v, "IRN");
+            r["narration"] = Text(v, "NARRATION");
+            // items
+            var items = new List<object>(); var itemLedgers = new HashSet<string>();
+            foreach (XmlNode i in v.SelectNodes("ALLINVENTORYENTRIES.LIST[STOCKITEMNAME!='']"))
+            {
+                string qty = Text(i, "BILLEDQTY").Length > 0 ? Text(i, "BILLEDQTY") : Text(i, "ACTUALQTY");
+                var qm = Regex.Match(qty, "(-?[\\d.,]+)\\s*(.*)");
+                string rate = Text(i, "RATE"); var rm = Regex.Match(rate, "(-?[\\d.,]+)\\s*/?\\s*(.*)");
+                double gst = 0;
+                foreach (XmlNode d in i.SelectNodes(".//RATEDETAILS.LIST"))
+                    if (Text(d, "GSTRATEDUTYHEAD") == "IGST") gst = Num(Text(d, "GSTRATE"));
+                foreach (XmlNode a in i.SelectNodes("ACCOUNTINGALLOCATIONS.LIST")) itemLedgers.Add(Normalize(Text(a, "LEDGERNAME")));
+                var desc = lines(i, "BASICUSERDESCRIPTION.LIST/BASICUSERDESCRIPTION");
+                items.Add(new Dictionary<string, object> {
+                    { "name", Text(i, "STOCKITEMNAME") }, { "desc", desc }, { "hsn", Text(i, "GSTHSNNAME") },
+                    { "qty", qm.Success ? Math.Abs(Num(qm.Groups[1].Value)) : 0 }, { "unit", qm.Success ? qm.Groups[2].Value.Trim() : "" },
+                    { "rate", rm.Success ? Num(rm.Groups[1].Value) : 0 }, { "per", rm.Success ? rm.Groups[2].Value.Trim() : "" },
+                    { "discount", Num(Text(i, "DISCOUNT")) }, { "amount", Math.Abs(Num(Text(i, "AMOUNT"))) }, { "gst", gst } });
+            }
+            r["items"] = items;
+            // ledger lines (the party's own line marked); bills and bank details where present
+            var entries = v.SelectNodes("ALLLEDGERENTRIES.LIST[LEDGERNAME!='']");
+            if (entries.Count == 0) entries = v.SelectNodes("LEDGERENTRIES.LIST[LEDGERNAME!='']");
+            var ledgers = new List<object>();
+            foreach (XmlNode e in entries)
+            {
+                string ln = Text(e, "LEDGERNAME");
+                var bills = new List<object>();
+                foreach (XmlNode b in e.SelectNodes("BILLALLOCATIONS.LIST[NAME!='']"))
+                    bills.Add(new Dictionary<string, object> { { "name", Text(b, "NAME") }, { "type", Text(b, "BILLTYPE") }, { "amount", Num(Text(b, "AMOUNT")) } });
+                var banks = new List<object>();
+                foreach (XmlNode b in e.SelectNodes("BANKALLOCATIONS.LIST"))
+                    if (Text(b, "TRANSACTIONTYPE").Length + Text(b, "INSTRUMENTNUMBER").Length + Text(b, "BANKNAME").Length > 0)
+                    banks.Add(new Dictionary<string, object> { { "type", Text(b, "TRANSACTIONTYPE") }, { "number", Text(b, "INSTRUMENTNUMBER") },
+                        { "date", iso(Text(b, "INSTRUMENTDATE")) }, { "bank", Text(b, "BANKNAME") } });
+                ledgers.Add(new Dictionary<string, object> {
+                    { "name", ln }, { "amount", Num(Text(e, "AMOUNT")) }, { "party", Text(v, "PARTYLEDGERNAME").Length > 0 ? Normalize(ln) == Normalize(Text(v, "PARTYLEDGERNAME")) : Text(e, "ISPARTYLEDGER") == "Yes" },
+                    { "itemLedger", itemLedgers.Contains(Normalize(ln)) }, { "bills", bills }, { "bank", banks } });
+            }
+            r["ledgers"] = ledgers;
+            return r;
+        }
+
         static string Text(XmlNode v, string tag)
         {
             var n = v.SelectSingleNode(tag);
@@ -1161,7 +1239,10 @@ namespace ChittamEnterprises
                 // ---- transactions ----
                 if (!Settings.SyncVouchers) continue;
                 var to = DateTime.Today;
+                // at least from 1 April (the financial year), further back if asked
+                var fyStart = new DateTime(to.Month >= 4 ? to.Year : to.Year - 1, 4, 1);
                 var from = to.AddDays(-Math.Max(7, Math.Min(366, Settings.VoucherDays)));
+                if (fyStart < from) from = fyStart;
                 List<Voucher> vouchers;
                 try { vouchers = Tally.Vouchers(Settings.TallyUrl, company, from, to, new HashSet<string>(bal.Keys)); }
                 catch (Exception ex) { Log("[" + company + "] transactions skipped: " + ex.Message); continue; }
@@ -1482,11 +1563,11 @@ namespace ChittamEnterprises
             cSch.Controls.Add(new Label { Text = "minutes", Left = 180, Top = 44, AutoSize = true, BackColor = Color.White });
             chkStartup = new CheckBox { Text = "Start with Windows", Left = 260, Top = 42, AutoSize = true, Checked = IsStartupEnabled(), BackColor = Color.White };
             cSch.Controls.Add(chkStartup);
-            chkVouchers = new CheckBox { Text = "Also send transactions of the last", Left = 16, Top = 80, AutoSize = true, Checked = s.SyncVouchers, BackColor = Color.White };
+            chkVouchers = new CheckBox { Text = "Also send transactions (from 1 April, or the last", Left = 16, Top = 80, AutoSize = true, Checked = s.SyncVouchers, BackColor = Color.White };
             cSch.Controls.Add(chkVouchers);
-            numDays = new NumericUpDown { Left = 262, Top = 77, Width = 64, Minimum = 7, Maximum = 366, Value = Math.Max(7, Math.Min(366, s.VoucherDays)) };
+            numDays = new NumericUpDown { Left = 330, Top = 77, Width = 64, Minimum = 7, Maximum = 366, Value = Math.Max(7, Math.Min(366, s.VoucherDays)) };
             cSch.Controls.Add(numDays);
-            cSch.Controls.Add(new Label { Text = "days", Left = 332, Top = 81, AutoSize = true, BackColor = Color.White });
+            cSch.Controls.Add(new Label { Text = "days)", Left = 400, Top = 81, AutoSize = true, BackColor = Color.White });
             chkVouchers.CheckedChanged += delegate { numDays.Enabled = chkVouchers.Checked; };
             numDays.Enabled = chkVouchers.Checked;
             chkStock = new CheckBox { Text = "Also send stock quantities (fills in orders)", Left = 16, Top = 114, AutoSize = true, Checked = s.SyncStock, BackColor = Color.White };
@@ -1845,18 +1926,35 @@ namespace ChittamEnterprises
                 case "tally-cashbank": SendCashBank(Str(obj, "key")); break;
                 case "tally-post-receipt": PostReceipt(obj); break;
                 case "share-file": ShareFile(obj); break;
+                case "tally-voucher": SendVoucher(obj); break;
             }
         }
 
         // A PDF from the page (ledger / receipt): saved in Documents\Chittam Enterprises\<folder>,
         // put on the clipboard as a file, and the customer's WhatsApp chat opened, so Ctrl+V
         // in the chat attaches it.
+        void SendVoucher(Dictionary<string, object> o)
+        {
+            string key = Str(o, "key"), id = Str(o, "id"), reqId = Str(o, "reqId");
+            var company = CompanyFor(key);
+            var reply = new Dictionary<string, object> { { "type", "tally-voucher" }, { "reqId", reqId }, { "ok", false } };
+            DateTime d;
+            if (!DateTime.TryParseExact(Str(o, "date"), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out d)) d = DateTime.Today;
+            if (company.Length == 0 || id.Length == 0) { reply["error"] = "Company or voucher missing."; Reply(reply); return; }
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try { reply["voucher"] = Tally.VoucherDetail(sync.Settings.TallyUrl, company, id, d); reply["ok"] = true; reply["company"] = company; }
+                catch (Exception ex) { reply["error"] = ex.Message; }
+                try { BeginInvoke((Action)(() => Reply(reply))); } catch { }
+            });
+        }
+
         void ShareFile(Dictionary<string, object> o)
         {
             var reply = new Dictionary<string, object> { { "type", "share-file-result" }, { "ok", false } };
             try
             {
-                var folder = Str(o, "folder") == "Ledgers" ? "Ledgers" : "Receipts";
+                var folder = Str(o, "folder") == "Ledgers" ? "Ledgers" : Str(o, "folder") == "Vouchers" ? "Vouchers" : "Receipts";
                 var name = Regex.Replace(Str(o, "name"), @"[\\/:*?""<>|\x00-\x1f]+", " ").Trim();
                 if (name.Length == 0) name = "Document";
                 if (!name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) name += ".pdf";

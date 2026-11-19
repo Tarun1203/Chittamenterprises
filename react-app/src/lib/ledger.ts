@@ -2,12 +2,12 @@
 // Windows app syncs: the transactions (last N days) and today's closing
 // balance. The opening balance is worked out backwards from the closing one,
 // so the statement always ends on Tally's own balance.
-import { normalizeName, type BalanceSet, type Settings, type TallyVoucherSet } from "./data";
+import { normalizeName, type BalanceSet, type Settings, type TallyVoucher, type TallyVoucherSet } from "./data";
 import { msgDate } from "./messages";
 import { inr } from "./format";
 
 export type Account = "business" | "cash";
-export interface LedgerRow { d: string; label: string; dr: number; cr: number; bal: number }
+export interface LedgerRow { d: string; label: string; dr: number; cr: number; bal: number; t?: string; n?: string; via?: string; nar?: string; id?: string; v?: TallyVoucher }
 export interface LedgerPart { account: Account; label: string; opening: number; rows: LedgerRow[]; closing: number; known: boolean }
 
 const key = (s?: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -41,7 +41,7 @@ export function buildLedger(sets: Record<string, TallyVoucherSet> | null, balanc
   let bal = opening;
   const rows = inPeriod.map((v) => {
     bal = round(bal + move(v));
-    return { d: v.d, label: v.t + (v.n ? " " + v.n : "") + (v.nar ? " — " + v.nar : ""), dr: v.dr ? v.a : 0, cr: v.dr ? 0 : v.a, bal };
+    return { d: v.d, label: v.t + (v.n ? " " + v.n : "") + (v.nar ? " — " + v.nar : ""), dr: v.dr ? v.a : 0, cr: v.dr ? 0 : v.a, bal, t: v.t, n: v.n, via: v.via, nar: v.nar, id: v.id, v };
   });
   return { account, label, opening, rows, closing, known };
 }

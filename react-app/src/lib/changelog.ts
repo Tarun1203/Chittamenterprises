@@ -4,6 +4,15 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.18", date: "2026-11-19", title: "Any voucher as a PDF in Tally's format; ledger from 1 April", windows: "2.9",
+    items: [
+      "Ledger Statement: every transaction has a PDF button — send that voucher on WhatsApp, printed like Tally: sales invoices, credit notes and purchases as a Tax Invoice (items, HSN, quantity, rate, GST, HSN tax summary, amount in words), receipts and payments as Tally's Receipt / Payment Voucher (bills adjusted, bank details), journals with Dr / Cr.",
+      "On the Tally PC (Windows app) the full voucher is read from Tally; on a phone the PDF is made from the synced summary.",
+      "The ledger PDF now follows Tally's Ledger Account layout: To / By, Vch Type, Vch No., Debit, Credit, Current Total and Closing Balance.",
+      "Transactions now sync from 1 April (start of the financial year), not only the last 90 days — so the ledger covers the whole year (Windows app 2.9).",
+    ],
+  },
+  {
     version: "3.17", date: "2026-11-19", title: "PDFs straight to WhatsApp; advance payments in Tally", windows: "2.8",
     items: [
       "Ledger Statement: “Send ledger PDF on WhatsApp” makes a proper PDF of both accounts. On a phone, pick WhatsApp from the share sheet. In the Windows app, the PDF is saved and copied and the customer's WhatsApp chat opens — just press Ctrl+V, then Send.",

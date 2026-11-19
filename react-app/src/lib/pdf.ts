@@ -5,20 +5,19 @@
 //                 customer's WhatsApp chat opened: press Ctrl+V there
 //   browser    → downloaded, and the WhatsApp chat opened
 import type { Receipt, Settings } from "./data";
-import type { LedgerPart } from "./ledger";
 import { msgDate, waNumber } from "./messages";
 import { desktopRequest, inDesktopApp } from "./desktop";
 
 // the PDF's built-in font has no ₹ sign
-const rs = (n: number) => "Rs. " + (Math.round(n * 100) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const plain = (s: string) => s.replace(/₹\s?/g, "Rs. ").replace(/[^\x20-\x7E\n]/g, "");
+export const rs = (n: number) => "Rs. " + (Math.round(n * 100) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export const plain = (s: string) => s.replace(/₹\s?/g, "Rs. ").replace(/[^\x20-\x7E\n]/g, "");
 
-async function lib() {
+export async function lib() {
   const [{ jsPDF }, at] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
   const autoTable = (at as unknown as { autoTable?: unknown; default: unknown }).autoTable || at.default;
   return { jsPDF, autoTable: autoTable as (doc: unknown, opts: Record<string, unknown>) => void };
 }
-type Doc = InstanceType<Awaited<ReturnType<typeof lib>>["jsPDF"]> & { lastAutoTable?: { finalY: number } };
+export type Doc = InstanceType<Awaited<ReturnType<typeof lib>>["jsPDF"]> & { lastAutoTable?: { finalY: number } };
 
 const BRAND: [number, number, number] = [67, 56, 202];
 
@@ -47,43 +46,6 @@ function footer(doc: Doc, note: string) {
     doc.text(plain(note), 14, h - 8);
     doc.text("Page " + i + " of " + pages, w - 14, h - 8, { align: "right" });
   }
-}
-
-export async function ledgerPdf(s: Settings, customer: { name: string; mobile?: string }, from: string, to: string, parts: LedgerPart[]) {
-  const { jsPDF, autoTable } = await lib();
-  const doc = new jsPDF({ unit: "mm", format: "a4" }) as Doc;
-  let y = header(doc, s, "LEDGER STATEMENT", msgDate(from) + " to " + msgDate(to));
-  doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text(plain(customer.name), 14, y);
-  if (customer.mobile) { doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(90); doc.text(customer.mobile, 14, y + 5); doc.setTextColor(17); }
-  y += customer.mobile ? 11 : 7;
-  const total = parts.reduce((t, p) => t + p.closing, 0);
-  const bal = (n: number) => (Math.abs(n) < 0.005 ? rs(0) : rs(Math.abs(n)) + (n > 0 ? " Dr" : " Cr"));
-  for (const p of parts) {
-    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...BRAND); doc.text(plain(p.label), 14, y + 2); doc.setTextColor(17);
-    const bold = { fontStyle: "bold", fillColor: [243, 244, 246] };
-    autoTable(doc, {
-      startY: y + 4, theme: "plain", margin: { left: 14, right: 14 },
-      head: [["Date", "Particulars", "Debit", "Credit", "Balance"]],
-      body: [
-        [{ content: msgDate(from), styles: bold }, { content: "Opening balance", styles: bold }, { content: "", styles: bold }, { content: "", styles: bold }, { content: bal(p.opening), styles: bold }],
-        ...p.rows.map((r) => [msgDate(r.d), plain(r.label), r.dr ? rs(r.dr) : "", r.cr ? rs(r.cr) : "", bal(r.bal)]),
-        ...(p.rows.length ? [] : [["", "No transactions in this period", "", "", ""]]),
-        [{ content: msgDate(to), styles: bold }, { content: "Closing balance", styles: bold }, { content: "", styles: bold }, { content: "", styles: bold }, { content: bal(p.closing), styles: bold }],
-      ],
-      styles: { fontSize: 8.5, cellPadding: 1.8, lineColor: [229, 231, 235], lineWidth: { bottom: 0.2 } },
-      headStyles: { fontStyle: "bold", textColor: [90, 90, 90], lineWidth: { bottom: 0.5 }, lineColor: [60, 60, 60] },
-      columnStyles: { 0: { cellWidth: 24 }, 2: { halign: "right", cellWidth: 26 }, 3: { halign: "right", cellWidth: 26 }, 4: { halign: "right", cellWidth: 30 } },
-      didParseCell: (d: { section: string; column: { index: number }; cell: { styles: { halign: string } } }) => { if (d.section === "head" && d.column.index >= 2) d.cell.styles.halign = "right"; },
-    });
-    y = (doc.lastAutoTable?.finalY || y) + 9;
-    if (y > doc.internal.pageSize.getHeight() - 30) { doc.addPage(); y = 18; }
-  }
-  const w = doc.internal.pageSize.getWidth();
-  doc.setFillColor(238, 242, 255); doc.roundedRect(14, y - 5, w - 28, 11, 2, 2, "F");
-  doc.setFont("helvetica", "bold"); doc.setFontSize(11);
-  doc.text("Total outstanding (both accounts)", 18, y + 2); doc.text(bal(total), w - 18, y + 2, { align: "right" });
-  footer(doc, "From Tally. Dr = amount due to " + (s.businessName || "us") + ", Cr = paid in advance. Generated " + new Date().toLocaleString("en-IN"));
-  return doc.output("blob");
 }
 
 // Indian number words, for "Rupees ... only"
@@ -165,7 +127,7 @@ const toBase64 = (blob: Blob) => new Promise<string>((ok, fail) => {
 export const safeFileName = (s: string) => s.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
 
 // Returns what happened, for a toast. kind picks the Windows app's folder.
-export async function sharePdf(blob: Blob, fileName: string, opts: { mobile?: string; text?: string; kind: "Ledgers" | "Receipts" }): Promise<{ message: string; path?: string }> {
+export async function sharePdf(blob: Blob, fileName: string, opts: { mobile?: string; text?: string; kind: "Ledgers" | "Receipts" | "Vouchers" }): Promise<{ message: string; path?: string }> {
   const phone = waNumber(opts.mobile);
   if (inDesktopApp()) {
     const r = await desktopRequest<{ ok: boolean; path?: string; error?: string; whatsapp?: boolean }>(
