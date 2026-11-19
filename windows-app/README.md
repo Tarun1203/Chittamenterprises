@@ -64,7 +64,7 @@ The app updates itself: it checks `desktop/version.json` on the site at start-up
 and every 6 hours, downloads changed files (SHA-256 checked) and installs them
 when it next starts (or tray → **Restart to update**). To release a new version:
 ```
-powershell -ExecutionPolicy Bypass -File .uild.ps1
+powershell -ExecutionPolicy Bypass -File .\build.ps1
 powershell -ExecutionPolicy Bypass -File .\publish.ps1
 ```
 then commit and push (the `desktop/` folder).
