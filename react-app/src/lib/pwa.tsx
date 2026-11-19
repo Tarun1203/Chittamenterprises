@@ -65,17 +65,15 @@ export function useUpdateCheck() {
   return newVersion;
 }
 
-// tells each device once that it is now on a new version
+// tells each device once that it is now on a new version: the version seen
+// last time is read once when the page loads (not in an effect, which can run twice)
+let previousVersion: string | null = null;
+try {
+  previousVersion = localStorage.getItem("ce_next_seen_version");
+  localStorage.setItem("ce_next_seen_version", APP_VERSION);
+} catch { /* private window: skip */ }
 export function useJustUpdated() {
-  const [msg, setMsg] = useState("");
-  useEffect(() => {
-    try {
-      const seen = localStorage.getItem("ce_next_seen_version");
-      if (seen && seen !== APP_VERSION) setMsg("App updated to version " + APP_VERSION);
-      localStorage.setItem("ce_next_seen_version", APP_VERSION);
-    } catch { /* private window: skip */ }
-  }, []);
-  return msg;
+  return previousVersion && previousVersion !== APP_VERSION ? "App updated to version " + APP_VERSION : "";
 }
 
 export function UpdateBar() {

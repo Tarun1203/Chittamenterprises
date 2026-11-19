@@ -16,6 +16,7 @@ import { History } from "@/pages/History";
 import { Settings } from "@/pages/Settings";
 import { Catalog } from "@/pages/Catalog";
 import { TallyMatch } from "@/pages/TallyMatch";
+import { WhatsNew } from "@/pages/WhatsNew";
 
 function Gate() {
   const { user, authReady } = useStore();
@@ -46,6 +47,7 @@ function Gate() {
         <Route path="/catalog" element={<Catalog />} />
         <Route path="/tally" element={<TallyMatch />} />
         <Route path="/history" element={<History />} />
+        <Route path="/whats-new" element={<WhatsNew />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Dashboard />} />
       </Routes>

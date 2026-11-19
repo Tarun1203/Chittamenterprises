@@ -1,11 +1,12 @@
 // Layout: Aceternity sidebar on desktop (icons, expands on hover), and on
 // phones a top bar, a bottom tab bar and a slide-in menu.
 import { useEffect, useState, type ReactNode } from "react";
-import { NavLink, useLocation } from "react-router";
+import { NavLink, useLocation, useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { IconDownload, IconX } from "@tabler/icons-react";
 import { DesktopSidebar, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
-import { Icon3D, useToast } from "@/components/kit";
+import { Button, Dialog, Icon3D } from "@/components/kit";
+import { latestRelease } from "@/lib/changelog";
 import { useInstall, useJustUpdated } from "@/lib/pwa";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { to: "/tally", label: "Tally Match", icon: "star" },
       { to: "/history", label: "History", icon: "clock" },
+      { to: "/whats-new", label: "What's new", icon: "chat" },
       { to: "/settings", label: "Settings", icon: "setting" },
     ],
   },
@@ -140,7 +142,7 @@ function DesktopNav() {
       <motion.div animate={{ opacity: open ? 1 : 0 }} className="mt-4 border-t border-neutral-200 px-1 pt-3">
         <SyncLine />
         <InstallButton />
-        <div className="mt-2 text-[10px] text-neutral-400">Version {APP_VERSION}</div>
+        <NavLink to="/whats-new" className="mt-2 block text-[10px] text-neutral-400 hover:text-brand-600">Version {APP_VERSION} · What's new</NavLink>
       </motion.div>
     </DesktopSidebar>
   );
@@ -181,7 +183,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
             <div className="mt-auto border-t border-neutral-200 pt-4">
               <SyncLine />
               <InstallButton />
-              <div className="mt-2 text-[10px] text-neutral-400">Version {APP_VERSION}</div>
+              <NavLink to="/whats-new" className="mt-2 block text-[10px] text-neutral-400 hover:text-brand-600">Version {APP_VERSION} · What's new</NavLink>
             </div>
           </motion.aside>
         </>
@@ -200,9 +202,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [loc.pathname]);
-  const toast = useToast();
+  // after an update: what changed, once on each device
   const updated = useJustUpdated();
-  useEffect(() => { if (updated) setTimeout(() => toast(updated), 1500); }, [updated, toast]);
+  const navigate = useNavigate();
+  const [showNew, setShowNew] = useState(false);
+  useEffect(() => { if (updated && latestRelease.version === APP_VERSION) { const t = setTimeout(() => setShowNew(true), 1200); return () => clearTimeout(t); } }, [updated]);
   return (
     <div className="flex min-h-full w-full">
       <SidebarProvider open={sideOpen} setOpen={setSideOpen}>
@@ -246,6 +250,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </button>
       </nav>
       <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <Dialog open={showNew} onClose={() => setShowNew(false)} title={"Updated to version " + APP_VERSION}
+        footer={<><Button variant="ghost" onClick={() => setShowNew(false)}>Close</Button><Button onClick={() => { setShowNew(false); navigate("/whats-new"); }}>See all updates</Button></>}>
+        <p className="font-bold">{latestRelease.title}</p>
+        <ul className="space-y-1.5 text-sm text-neutral-700">
+          {latestRelease.items.map((it) => <li key={it} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />{it}</li>)}
+        </ul>
+      </Dialog>
     </div>
   );
 }
