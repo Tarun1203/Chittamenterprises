@@ -1,17 +1,20 @@
 import { Route, Routes } from "react-router";
 import { StoreProvider, useStore } from "@/lib/store";
 import { ToastProvider, Icon3D } from "@/components/kit";
-import { AppShell, NAV } from "@/components/AppShell";
+import { AppShell } from "@/components/AppShell";
+import { UpdateBar } from "@/lib/pwa";
 import { Login } from "@/pages/Login";
 import { Dashboard } from "@/pages/Dashboard";
 import { Customers } from "@/pages/Customers";
 import { Products } from "@/pages/Products";
 import { Transports } from "@/pages/Transports";
-import { Soon } from "@/pages/Soon";
 import { PaymentUpdated } from "@/pages/PaymentUpdated";
 import { BalanceConfirmation, Dispatch, PaymentReminder, ServiceMaterial, StockReturn, StockUpdate } from "@/pages/MessagePages";
 import { Orders } from "@/pages/Orders";
 import { ServiceJobs } from "@/pages/ServiceJobs";
+import { History } from "@/pages/History";
+import { Settings } from "@/pages/Settings";
+import { Catalog } from "@/pages/Catalog";
 
 function Gate() {
   const { user, authReady } = useStore();
@@ -23,7 +26,6 @@ function Gate() {
     );
   }
   if (!user) return <Login />;
-  const soon = NAV.flatMap((g) => g.items).filter((i) => i.soon);
   return (
     <AppShell>
       <Routes>
@@ -40,7 +42,9 @@ function Gate() {
         <Route path="/stock-update" element={<StockUpdate />} />
         <Route path="/stock-return" element={<StockReturn />} />
         <Route path="/service-material" element={<ServiceMaterial />} />
-        {soon.map((s) => <Route key={s.to} path={s.to} element={<Soon path={s.to} />} />)}
+        <Route path="/catalog" element={<Catalog />} />
+        <Route path="/history" element={<History />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Dashboard />} />
       </Routes>
     </AppShell>
@@ -51,6 +55,7 @@ export default function App() {
   return (
     <StoreProvider>
       <ToastProvider>
+        <UpdateBar />
         <Gate />
       </ToastProvider>
     </StoreProvider>

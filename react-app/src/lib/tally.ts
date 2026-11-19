@@ -84,3 +84,60 @@ export function productsFromStockExport(obj: unknown, existing: Product[]) {
   }
   return { changes, summary: { added, updated, noPrice } };
 }
+
+/* ---------------- closing balances (Group Summary of Sundry Debtors) ---------------- */
+// Tally shows debit as negative and credit as positive; a customer who owes
+// us has a debit balance, so receivable = -(debit) - credit
+function balNum(v: unknown) {
+  if (v === undefined || v === null || v === "") return 0;
+  if (typeof v === "number") return v;
+  const n = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+  return isNaN(n) ? 0 : n;
+}
+const balAmount = (dr: unknown, cr: unknown) => Math.round((-balNum(dr) - balNum(cr)) * 100) / 100;
+function getCI(obj: unknown, key: string): unknown {
+  if (!obj || typeof obj !== "object") return undefined;
+  const k = Object.keys(obj).find((x) => x.toLowerCase() === key);
+  return k === undefined ? undefined : (obj as Record<string, unknown>)[k];
+}
+const firstOf = (v: unknown) => (Array.isArray(v) ? v[0] : v);
+function infoAmounts(info: unknown) {
+  const i = firstOf(info) || {};
+  return balAmount(getCI(firstOf(getCI(i, "dspcldramt")) || {}, "dspcldramta"), getCI(firstOf(getCI(i, "dspclcramt")) || {}, "dspclcramta"));
+}
+function nameOf(n: unknown) {
+  const v = firstOf(n);
+  return typeof v === "string" ? v : String(getCI(v || {}, "dspdispname") || "").trim();
+}
+// [{name, amount}] from Tally's JSON or XML export
+export function parseTallyBalances(text: string) {
+  const rows: { name: string; amount: number }[] = [];
+  text = text.trim();
+  if (text.charAt(0) === "<") {
+    text = text.replace(/&#(\d+);/g, (m, n) => { const c = Number(n); return c < 32 && c !== 9 && c !== 10 && c !== 13 ? "" : m; });
+    const doc = new DOMParser().parseFromString(text, "text/xml");
+    if (doc.getElementsByTagName("parsererror").length) throw new Error("not valid XML");
+    const names = doc.getElementsByTagName("DSPACCNAME");
+    for (let i = 0; i < names.length; i++) {
+      let info = names[i].nextElementSibling;
+      while (info && info.tagName !== "DSPACCINFO" && info.tagName !== "DSPACCNAME") info = info.nextElementSibling;
+      if (!info || info.tagName !== "DSPACCINFO") continue;
+      const nm = names[i].getElementsByTagName("DSPDISPNAME")[0];
+      const dr = info.getElementsByTagName("DSPCLDRAMTA")[0], cr = info.getElementsByTagName("DSPCLCRAMTA")[0];
+      if (nm) rows.push({ name: (nm.textContent || "").trim(), amount: balAmount(dr?.textContent, cr?.textContent) });
+    }
+    return rows;
+  }
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    if (!node || typeof node !== "object") return;
+    const nm = getCI(node, "dspaccname"), info = getCI(node, "dspaccinfo");
+    if (nm !== undefined && info !== undefined) {
+      if (Array.isArray(nm) && Array.isArray(info) && nm.length === info.length && nm.length > 1) nm.forEach((n, i) => rows.push({ name: nameOf(n), amount: infoAmounts(info[i]) }));
+      else rows.push({ name: nameOf(nm), amount: infoAmounts(info) });
+    }
+    Object.values(node as Record<string, unknown>).forEach((v) => { if (v && typeof v === "object") walk(v); });
+  };
+  walk(JSON.parse(text));
+  return rows.filter((r) => r.name);
+}

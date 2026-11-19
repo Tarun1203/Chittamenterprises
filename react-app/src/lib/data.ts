@@ -3,7 +3,7 @@
 //   - nothing is ever deleted (there is no delete function here, and the
 //     database rules refuse deletes);
 //   - every add / edit also writes an entry to the activity log (History).
-import { collection, doc, onSnapshot, serverTimestamp, writeBatch, addDoc, type DocumentData } from "firebase/firestore";
+import { collection, doc, onSnapshot, serverTimestamp, writeBatch, addDoc, getDocs, query, orderBy, limit, setDoc, type DocumentData, type Timestamp } from "firebase/firestore";
 import { db, auth } from "./firebase";
 
 export interface Customer { id: string; name: string; mobile?: string }
@@ -183,4 +183,29 @@ export async function logMessage(type: string, customer: Customer | null, text: 
     details: { type, messageId: msgRef.id, ...who }, at: serverTimestamp(), by: user.email || "",
   });
   await batch.commit();
+}
+
+/* ---------------- history (read-only) ---------------- */
+export interface ActivityEntry {
+  id: string; collection: string; docId?: string; action: string; name?: string;
+  before?: Record<string, unknown> | null; after?: Record<string, unknown>; details?: Record<string, unknown>;
+  at?: Timestamp | null; by?: string;
+}
+export interface MessageEntry {
+  id: string; type: string; text: string; customerId?: string; customerName?: string; mobile?: string;
+  inputs?: Record<string, unknown>; at?: Timestamp | null; by?: string;
+}
+// the latest entries, newest first
+export async function loadLatest<T>(coll: "activity" | "messages", count = 300) {
+  const snap = await getDocs(query(collection(db, coll), orderBy("at", "desc"), limit(count)));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
+}
+
+/* ---------------- Tally balances ---------------- */
+// replaces one company's balances (same document the Windows app's sync writes)
+export async function saveBalances(company: "business" | "cash", entry: BalanceSet & { matched: number; unmatched: string[] }) {
+  const user = auth.currentUser;
+  if (!user) return;
+  await setDoc(doc(db, "balances", company), { ...(stable(entry) as object), at: serverTimestamp(), by: user.email || "" });
+  await logEvent("balances-imported", { name: entry.label, file: entry.file, matched: entry.matched, unmatched: entry.unmatched.length });
 }

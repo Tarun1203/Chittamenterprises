@@ -3,14 +3,15 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { IconX } from "@tabler/icons-react";
+import { IconDownload, IconX } from "@tabler/icons-react";
 import { DesktopSidebar, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
-import { Icon3D } from "@/components/kit";
+import { Icon3D, useToast } from "@/components/kit";
+import { useInstall, useJustUpdated } from "@/lib/pwa";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/version";
 
-export interface NavItem { to: string; label: string; icon: string; soon?: number }
+export interface NavItem { to: string; label: string; icon: string }
 export const NAV: { group: string; items: NavItem[] }[] = [
   { group: "Overview", items: [{ to: "/", label: "Dashboard", icon: "chart" }] },
   {
@@ -30,7 +31,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
       { to: "/stock-update", label: "Stock Update", icon: "bag" },
       { to: "/stock-return", label: "Stock Return", icon: "back" },
       { to: "/service-material", label: "Service Material", icon: "gift" },
-      { to: "/catalog", label: "Product Catalog", icon: "picture", soon: 4 },
+      { to: "/catalog", label: "Product Catalog", icon: "picture" },
     ],
   },
   {
@@ -44,8 +45,8 @@ export const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "App",
     items: [
-      { to: "/history", label: "History", icon: "clock", soon: 4 },
-      { to: "/settings", label: "Settings", icon: "setting", soon: 4 },
+      { to: "/history", label: "History", icon: "clock" },
+      { to: "/settings", label: "Settings", icon: "setting" },
     ],
   },
 ];
@@ -77,6 +78,16 @@ function SyncLine({ compact }: { compact?: boolean }) {
   );
 }
 
+function InstallButton() {
+  const { canInstall, install } = useInstall();
+  if (!canInstall) return null;
+  return (
+    <button onClick={install} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-bold text-brand-700 hover:bg-brand-100">
+      <IconDownload size={14} /> Install app
+    </button>
+  );
+}
+
 function SideLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => void }) {
   const { open } = useSidebar();
   return (
@@ -97,7 +108,6 @@ function SideLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => void
         className="flex-1 items-center justify-between gap-2 whitespace-pre"
       >
         {item.label}
-        {item.soon && <span title="Coming in a later milestone" className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />}
       </motion.span>
     </NavLink>
   );
@@ -128,7 +138,8 @@ function DesktopNav() {
       </nav>
       <motion.div animate={{ opacity: open ? 1 : 0 }} className="mt-4 border-t border-neutral-200 px-1 pt-3">
         <SyncLine />
-        <div className="mt-2 text-[10px] text-neutral-400">Version {APP_VERSION} · preview</div>
+        <InstallButton />
+        <div className="mt-2 text-[10px] text-neutral-400">Version {APP_VERSION}</div>
       </motion.div>
     </DesktopSidebar>
   );
@@ -168,7 +179,8 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
             </SidebarProvider>
             <div className="mt-auto border-t border-neutral-200 pt-4">
               <SyncLine />
-              <div className="mt-2 text-[10px] text-neutral-400">Version {APP_VERSION} · preview</div>
+              <InstallButton />
+              <div className="mt-2 text-[10px] text-neutral-400">Version {APP_VERSION}</div>
             </div>
           </motion.aside>
         </>
@@ -187,6 +199,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [loc.pathname]);
+  const toast = useToast();
+  const updated = useJustUpdated();
+  useEffect(() => { if (updated) setTimeout(() => toast(updated), 1500); }, [updated, toast]);
   return (
     <div className="flex min-h-full w-full">
       <SidebarProvider open={sideOpen} setOpen={setSideOpen}>

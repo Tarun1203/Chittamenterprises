@@ -68,7 +68,6 @@ export function Dashboard() {
               <Icon3D name={s.icon} className="h-11 w-11 drop-shadow-md transition duration-300 group-hover:scale-110 group-hover:-rotate-6" />
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-bold text-neutral-800">{s.label}</span>
-                {s.soon && <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-bold text-neutral-500">soon</span>}
               </div>
             </Link>
           </motion.div>

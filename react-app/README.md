@@ -19,8 +19,13 @@ the old one.
 2. Messages: Payment Updated + payments report, Reminder, Balance Confirmation,
    Dispatch, Stock Update, Stock Return, Service Material, Tally balance fill-in (done)
 3. Orders (with pick lists) and Service Jobs (done)
-4. History, Settings, Catalog
-5. Offline/installable app, version updates, switch-over
+4. History, Settings, Catalog (done)
+5. Offline/installable app, version updates (done); switch-over from the old app (not yet)
+
+## Releasing a new version
+Bump `APP_VERSION` / `APP_UPDATED` in `src/version.ts`, then `npm run build`.
+The build writes `version.json`; open copies of the app check it every 10
+minutes (and when brought to the front) and offer a reload.
 
 ## Develop
 ```

@@ -1,6 +1,6 @@
 // Sample data for local development only (?demo). Never part of the published build.
 import type { User } from "firebase/auth";
-import type { BalanceSet, Customer, Order, Product, Receipt, ServiceJob, Transport } from "./data";
+import type { ActivityEntry, MessageEntry, BalanceSet, Customer, Order, Product, Receipt, ServiceJob, Transport } from "./data";
 
 export const demoUser = { email: "demo@example.com", uid: "demo" } as unknown as User;
 
@@ -56,3 +56,17 @@ export const demoBalances: Record<string, BalanceSet> = {
   business: { company: "business", label: "Chittam Enterprises - 2026", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 48250, "kashi sln": 12900, "deepak": 0 } },
   cash: { company: "cash", label: "Cash", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 6400, "kashi sln": 1500 } },
 };
+
+const ts = (minsAgo: number) => ({ toDate: () => new Date(Date.now() - minsAgo * 60000) }) as unknown as ActivityEntry["at"];
+export const demoMessages: MessageEntry[] = [
+  { id: "m1", type: "payment-updated", customerName: "Badrinath Allundi - Raichur", mobile: "9845020264", at: ts(50), by: "demo@example.com",
+    text: "✅ *Payment Received – Chittam Enterprises*\n\nDear Badrinath Allundi - Raichur,\n\nWe have received your payment of ₹17,500 via UPI on 18 Nov 2026…" },
+  { id: "m2", type: "order-confirmation", customerName: "AB Infinite", mobile: "9845012345", at: ts(180), by: "demo@example.com", text: "🧾 *Order Confirmation*\n\nNamaste Anna/Sir 🙏…" },
+];
+export const demoActivity: ActivityEntry[] = [
+  { id: "a1", collection: "orders", action: "update", name: "19/11-01 — AB Infinite", at: ts(20), by: "demo@example.com",
+    before: { status: "Pending", items: [{ name: "Remote - AC", qty: 8 }] }, after: { status: "Confirmed", items: [{ name: "Remote - AC", qty: 10 }] } },
+  { id: "a2", collection: "app", action: "whatsapp-opened", name: "AB Infinite", details: { type: "order-confirmation", mobile: "9845012345" }, at: ts(25), by: "demo@example.com" },
+  { id: "a3", collection: "customers", action: "create", name: "Kashi SLN", after: { name: "Kashi SLN" }, at: ts(300), by: "demo@example.com" },
+  { id: "a4", collection: "app", action: "balances-synced", name: "Chittam Enterprises - 2026", details: { company: "Chittam Enterprises - 2026", names: 412 }, at: ts(60), by: "demo@example.com" },
+];
