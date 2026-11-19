@@ -47,6 +47,7 @@ export interface MatchResult {
   detailsDiffer: Pair[];      // matched, but paid differently / other amount / dates far apart
   nameDiffers: Pair[];        // same amount and date, different name
   onlyApp: AppPayment[];      // recorded in the app, not found in Tally
+  recordedTwice: { app: AppPayment; other: Pair }[];  // its Tally receipt is already matched to another payment
   onlyTally: TallyEntry[];    // in Tally, not recorded in the app
 }
 
@@ -63,7 +64,7 @@ function differences(a: AppPayment, t: TallyEntry, gap: number) {
 
 export function matchPayments(app: AppPayment[], tally: TallyEntry[]): MatchResult {
   const used = new Set<string>();
-  const res: MatchResult = { matched: [], detailsDiffer: [], nameDiffers: [], onlyApp: [], onlyTally: [] };
+  const res: MatchResult = { matched: [], detailsDiffer: [], nameDiffers: [], onlyApp: [], recordedTwice: [], onlyTally: [] };
   const add = (list: Pair[], a: AppPayment, t: TallyEntry, gap: number, byVoucher: boolean) => {
     used.add(t.key);
     const differs = differences(a, t, gap);
@@ -98,6 +99,17 @@ export function matchPayments(app: AppPayment[], tally: TallyEntry[]): MatchResu
     if (m) add(res.nameDiffers, a, m.tally, m.gap, false); else res.onlyApp.push(a);
   }
   res.onlyTally = tally.filter((t) => !used.has(t.key));
+  // a leftover payment whose Tally receipt already went to another payment of the
+  // same customer (linked to the same voucher, or same amount within a few days):
+  // most likely the same payment entered twice in the app
+  const pairs = [...res.matched, ...res.detailsDiffer];
+  res.onlyApp = res.onlyApp.filter((a) => {
+    const other = pairs.find((p) => p.app.receiptId !== a.receiptId && p.tally.account === a.account && (
+      (a.tallyId && p.tally.id === a.tallyId) || sameNo(p.tally.n, a.tallyNo) ||
+      (normalizeName(p.app.name) === normalizeName(a.name) && SAME_AMOUNT(p.tally.a, a.amount) && days(p.tally.d, a.date) <= DAY_WINDOW)));
+    if (other) { res.recordedTwice.push({ app: a, other }); return false; }
+    return true;
+  });
   return res;
 }
 

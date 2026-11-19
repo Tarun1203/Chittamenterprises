@@ -49,6 +49,7 @@ export const demoReceipts: Receipt[] = [
   { id: "r1", date: iso(0), customerId: "d0", customerName: "AB Infinite", mode: "Advance", business: 2000, cash: 0, source: "Order advance", ref: no(0, 1) },
   { id: "r2", date: iso(-1), customerId: "d5", customerName: "Badrinath Allundi - Raichur", mode: "UPI", business: 15000, cash: 2500, source: "Payment Updated" },
   { id: "r3", date: iso(-1), customerId: "d9", customerName: "Kashi SLN", mode: "Cash", business: 0, cash: 4000, source: "Manual", note: "Paid at shop" },
+  { id: "r6", date: iso(0), customerId: "d0", customerName: "AB Infinite", mode: "Cash", business: 2000, cash: 0, source: "Tally", ref: "45", tallyNo: "45" },
   { id: "r5", date: iso(-9), customerId: "d10", customerName: "Lokesh - Kallur", mode: "UPI", business: 0, cash: 3000, source: "Payment Updated", tallyNo: "11" },
   { id: "r4", date: iso(-4), customerId: "d7", customerName: "Deepak", mode: "Cheque", business: 8000, cash: 0, source: "Manual", cancelled: true, note: "Cheque bounced" },
 ];

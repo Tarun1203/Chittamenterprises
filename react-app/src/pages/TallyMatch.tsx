@@ -4,7 +4,7 @@
 // balance (and names that don't match between the app and Tally).
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { IconAlertTriangle, IconCheck, IconFileText, IconLink, IconLinkOff, IconPlus, IconRefresh, IconSettings, IconUserQuestion } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCheck, IconFileText, IconLink, IconLinkOff, IconPlus, IconRefresh, IconSettings, IconUserQuestion, IconX } from "@tabler/icons-react";
 import { Button, Card, Dialog, EmptyState, Field, PageHeader, useToast } from "@/components/kit";
 import { CustomerPicker, Select, Text } from "@/components/forms";
 import { useStore } from "@/lib/store";
@@ -191,6 +191,14 @@ function PaymentsView({ r, accLabel, hasVouchers }: { r: ReturnType<typeof match
     try { await saveRecord("receipts", { ...before, mode, tallyNo: p.tally.n || before.tallyNo || "", tallyId: p.tally.id || before.tallyId || "" }, before); toast("Payment changed to " + mode + "."); }
     catch (e) { toast("Could not save: " + (e as Error).message); }
   }
+  // a payment entered twice: cancel the extra one (never deleted; it can be un-cancelled in Payments Received)
+  async function cancelPayment(p: AppPayment) {
+    const before = receipts.find((x) => x.id === p.receiptId);
+    if (!before) return;
+    if (!window.confirm("Cancel this " + inr(p.amount) + " payment of " + p.name + " (" + msgDate(p.date) + ")? It stays in Payments Received, marked cancelled.")) return;
+    try { await saveRecord("receipts", { ...before, cancelled: true }, before); toast("Payment cancelled. It's kept in Payments Received, left out of totals."); }
+    catch (e) { toast("Could not save: " + (e as Error).message); }
+  }
   async function unlink(p: AppPayment) {
     const before = receipts.find((x) => x.id === p.receiptId);
     if (!before) return;
@@ -204,9 +212,20 @@ function PaymentsView({ r, accLabel, hasVouchers }: { r: ReturnType<typeof match
         <Chip strong label="Matched" value={r.matched.length + " · " + inr(sum(r.matched.map((m) => m.app)))} />
         <Chip label="Details differ" value={String(r.detailsDiffer.length)} />
         <Chip label="Name differs" value={String(r.nameDiffers.length)} />
+        {r.recordedTwice.length > 0 && <Chip label="Recorded twice" value={r.recordedTwice.length + " · " + inr(sum(r.recordedTwice.map((d) => d.app)))} />}
         <Chip label="Not in Tally" value={r.onlyApp.length + " · " + inr(sum(r.onlyApp))} />
         <Chip label="Not in app" value={r.onlyTally.length + " · " + inr(sum(r.onlyTally))} />
       </div>
+      {r.recordedTwice.length > 0 && (
+        <Section title="Recorded twice in the app" hint="The Tally receipt for these is already matched to another payment of the same customer, so each is most likely the same payment entered twice. Cancel the extra one (it stays in the records, left out of totals)." count={r.recordedTwice.length} tone="bad">
+          {r.recordedTwice.map(({ app: p, other }) => <Row key={p.key} tone="bad" left={p.name} sub={appSub(p, accLabel)} right={inr(p.amount)}
+            note={"Same as the payment of " + msgDate(other.app.date) + " (" + other.app.mode + " · " + other.app.source + (other.app.ref ? " " + other.app.ref : "") + "), already matched to " + tallyRef(other.tally) + "."}
+            actions={<>
+              <ActionBtn onClick={() => cancelPayment(p)}><IconX size={13} /> Cancel this payment</ActionBtn>
+              <ActionBtn onClick={() => setLink(p)}><IconLink size={13} /> Link to another voucher</ActionBtn>
+            </>} />)}
+        </Section>
+      )}
       <Section title="Recorded in the app, not found in Tally" hint={"No receipt in Tally for the same customer and amount within " + DAY_WINDOW + " days. Enter it in Tally, or link it to the right voucher by its number."} count={r.onlyApp.length} tone="bad">
         {r.onlyApp.map((p) => <Row key={p.key} tone="bad" left={p.name} sub={appSub(p, accLabel)} right={inr(p.amount)}
           actions={<ActionBtn onClick={() => setLink(p)}><IconLink size={13} /> Link to Tally voucher</ActionBtn>} />)}

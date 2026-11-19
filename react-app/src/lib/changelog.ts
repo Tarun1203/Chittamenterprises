@@ -4,6 +4,13 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.10", date: "2026-11-19", title: "Tally Match: payments entered twice",
+    items: [
+      "A payment whose Tally receipt is already matched to another payment of the same customer now shows under “Recorded twice in the app”, saying which payment it repeats — instead of “not found in Tally”.",
+      "“Cancel this payment” right there (kept in Payments Received, left out of totals).",
+    ],
+  },
+  {
     version: "3.9", date: "2026-11-19", title: "Tally stock in orders, Tally invoices in reminders", windows: "2.2",
     items: [
       "Orders: each line shows Tally stock (Chittam + Cash added up), and “Available now” fills in from it — the rest stays pending.",
