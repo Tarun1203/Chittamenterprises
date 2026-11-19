@@ -70,8 +70,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyProduct("Chittam Enterprises")]
 [assembly: System.Reflection.AssemblyCompany("Chittam Enterprises")]
 // keep in step with Program.DesktopVersion (build.ps1 checks)
-[assembly: System.Reflection.AssemblyVersion("2.6.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("2.6")]
+[assembly: System.Reflection.AssemblyVersion("2.7.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.7")]
 
 namespace ChittamEnterprises
 {
@@ -81,7 +81,7 @@ namespace ChittamEnterprises
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
         // where new versions of this program are published (desktop/ folder of the site)
         public const string UpdateUrl = "https://tarun1203.github.io/Chittamenterprises/desktop/version.json";
-        public const string DesktopVersion = "2.6";
+        public const string DesktopVersion = "2.7";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -465,9 +465,12 @@ namespace ChittamEnterprises
         }
 
         // the ledgers money can be received into: Cash-in-Hand and Bank Accounts
-        public static List<string> CashBankLedgers(string url, string company)
+        public static List<string> CashBankLedgers(string url, string company) { return CashBank(url, company).Select(x => x[0]).ToList(); }
+
+        // [name, "cash" | "bank"] for every Cash-in-Hand / Bank Accounts ledger
+        public static List<string[]> CashBank(string url, string company)
         {
-            var list = new List<string>();
+            var list = new List<string[]>();
             foreach (var grp in new[] { "$$GroupCash", "$$GroupBank" })
             {
                 var xml = Post(url, "<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>ChittamCashBank</ID></HEADER>" +
@@ -477,17 +480,45 @@ namespace ChittamEnterprises
                     "<CHILDOF>" + grp + "</CHILDOF><BELONGSTO>Yes</BELONGSTO><FETCH>Name</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
                 var doc = new XmlDocument();
                 doc.LoadXml(xml);
-                foreach (XmlElement e in doc.SelectNodes("//LEDGER")) { var n = e.GetAttribute("NAME").Trim(); if (n.Length > 0 && !list.Contains(n)) list.Add(n); }
+                foreach (XmlElement e in doc.SelectNodes("//LEDGER"))
+                {
+                    var n = e.GetAttribute("NAME").Trim();
+                    if (n.Length > 0 && !list.Any(x => x[0] == n)) list.Add(new[] { n, grp == "$$GroupBank" ? "bank" : "cash" });
+                }
             }
             return list;
         }
 
         // creates one Receipt voucher (customer credited, cash / bank debited), "On Account"
         // against the customer's bills; returns null when Tally created it, else Tally's reason
+        public class BillPart { public string Ref; public double Amount; }
+        public class BankDetails { public string Type, Number, Bank; public DateTime Date; }
+
         public static string PostReceipt(string url, string company, DateTime date, string party, string intoLedger, double amount, string narration)
+        { return PostReceipt(url, company, date, party, intoLedger, amount, narration, null, null); }
+
+        // bills: amounts against the customer's invoices (Agst Ref); the rest goes On Account.
+        // bank: instrument details for a bank ledger (Tally's bank allocation)
+        public static string PostReceipt(string url, string company, DateTime date, string party, string intoLedger, double amount, string narration,
+            List<BillPart> bills, BankDetails bank)
         {
             Func<string, string> x = v => System.Security.SecurityElement.Escape(v ?? "");
-            string amt = amount.ToString("0.00", CultureInfo.InvariantCulture);
+            Func<double, string> f2 = v => v.ToString("0.00", CultureInfo.InvariantCulture);
+            string amt = f2(amount);
+            var allocs = new StringBuilder();
+            double against = 0;
+            foreach (var b in (bills ?? new List<BillPart>()).Where(b => b.Amount > 0 && !string.IsNullOrEmpty(b.Ref)))
+            {
+                allocs.Append("<BILLALLOCATIONS.LIST><NAME>" + x(b.Ref) + "</NAME><BILLTYPE>Agst Ref</BILLTYPE><AMOUNT>" + f2(b.Amount) + "</AMOUNT></BILLALLOCATIONS.LIST>");
+                against += b.Amount;
+            }
+            double rest = Math.Round(amount - against, 2);
+            if (rest > 0.004) allocs.Append("<BILLALLOCATIONS.LIST><NAME>On Account</NAME><BILLTYPE>On Account</BILLTYPE><AMOUNT>" + f2(rest) + "</AMOUNT></BILLALLOCATIONS.LIST>");
+            var bankXml = bank == null ? "" :
+                "<BANKALLOCATIONS.LIST><DATE>" + date.ToString("yyyyMMdd") + "</DATE><INSTRUMENTDATE>" + bank.Date.ToString("yyyyMMdd") + "</INSTRUMENTDATE>" +
+                "<TRANSACTIONTYPE>" + x(bank.Type) + "</TRANSACTIONTYPE><PAYMENTFAVOURING>" + x(party) + "</PAYMENTFAVOURING>" +
+                "<INSTRUMENTNUMBER>" + x(bank.Number) + "</INSTRUMENTNUMBER><BANKNAME>" + x(bank.Bank) + "</BANKNAME><BANKPARTYNAME>" + x(party) + "</BANKPARTYNAME>" +
+                "<AMOUNT>-" + amt + "</AMOUNT></BANKALLOCATIONS.LIST>";
             var xml = "<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME>" +
                 "<STATICVARIABLES><SVCURRENTCOMPANY>" + x(company) + "</SVCURRENTCOMPANY></STATICVARIABLES></REQUESTDESC><REQUESTDATA>" +
                 "<TALLYMESSAGE xmlns:UDF=\"TallyUDF\"><VOUCHER VCHTYPE=\"Receipt\" ACTION=\"Create\">" +
@@ -495,8 +526,8 @@ namespace ChittamEnterprises
                 "<VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME><PARTYLEDGERNAME>" + x(party) + "</PARTYLEDGERNAME>" +
                 "<NARRATION>" + x(narration) + "</NARRATION>" +
                 "<ALLLEDGERENTRIES.LIST><LEDGERNAME>" + x(party) + "</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><ISPARTYLEDGER>Yes</ISPARTYLEDGER><AMOUNT>" + amt + "</AMOUNT>" +
-                "<BILLALLOCATIONS.LIST><NAME>On Account</NAME><BILLTYPE>On Account</BILLTYPE><AMOUNT>" + amt + "</AMOUNT></BILLALLOCATIONS.LIST></ALLLEDGERENTRIES.LIST>" +
-                "<ALLLEDGERENTRIES.LIST><LEDGERNAME>" + x(intoLedger) + "</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-" + amt + "</AMOUNT></ALLLEDGERENTRIES.LIST>" +
+                allocs + "</ALLLEDGERENTRIES.LIST>" +
+                "<ALLLEDGERENTRIES.LIST><LEDGERNAME>" + x(intoLedger) + "</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-" + amt + "</AMOUNT>" + bankXml + "</ALLLEDGERENTRIES.LIST>" +
                 "</VOUCHER></TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>";
             string res;
             try { res = Post(url, xml); } catch (Exception ex) { return ex.Message; }
@@ -1822,8 +1853,13 @@ namespace ChittamEnterprises
             var company = CompanyFor(key);
             ThreadPool.QueueUserWorkItem(delegate {
                 var reply = new Dictionary<string, object> { { "type", "tally-cashbank" }, { "key", key }, { "company", company } };
-                try { reply["ledgers"] = Tally.CashBankLedgers(sync.Settings.TallyUrl, company).ToArray(); }
-                catch (Exception ex) { reply["error"] = ex.Message; reply["ledgers"] = new string[0]; }
+                try
+                {
+                    var cb = Tally.CashBank(sync.Settings.TallyUrl, company);
+                    reply["ledgers"] = cb.Select(x => x[0]).ToArray();
+                    reply["banks"] = cb.Where(x => x[1] == "bank").Select(x => x[0]).ToArray();
+                }
+                catch (Exception ex) { reply["error"] = ex.Message; reply["ledgers"] = new string[0]; reply["banks"] = new string[0]; }
                 BeginInvoke((Action)delegate { Reply(reply); });
             });
         }
@@ -1838,6 +1874,31 @@ namespace ChittamEnterprises
             Action<string> done = err => Reply(new Dictionary<string, object> { { "type", "tally-post-result" }, { "receiptId", receiptId }, { "ok", err == null }, { "error", err ?? "" } });
             if (!DateTime.TryParseExact(dateIso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date) || amount <= 0 || party.Length == 0 || into.Length == 0)
             { done("Some details are missing."); return; }
+            // bills to adjust and the instrument details, if the page sent them
+            var bills = new List<Tally.BillPart>();
+            object bo;
+            if (o.TryGetValue("bills", out bo) && bo is System.Collections.ArrayList)
+                foreach (var item in (System.Collections.ArrayList)bo)
+                {
+                    var d = item as Dictionary<string, object>; if (d == null) continue;
+                    double ba; double.TryParse(Str(d, "amount"), NumberStyles.Any, CultureInfo.InvariantCulture, out ba);
+                    if (ba > 0 && Str(d, "ref").Length > 0) bills.Add(new Tally.BillPart { Ref = Str(d, "ref"), Amount = Math.Round(ba, 2) });
+                }
+            if (bills.Sum(b => b.Amount) > amount + 0.004) { done("The bill amounts add up to more than the payment."); return; }
+            Tally.BankDetails bank = null;
+            object bk;
+            if (o.TryGetValue("bank", out bk) && bk is Dictionary<string, object>)
+            {
+                var d = (Dictionary<string, object>)bk; DateTime idt;
+                if (!DateTime.TryParseExact(Str(d, "date"), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out idt)) idt = date;
+                bank = new Tally.BankDetails { Type = Str(d, "type").Length > 0 ? Str(d, "type") : "Others", Number = Str(d, "number"), Bank = Str(d, "bank"), Date = idt };
+            }
+            var inr = CultureInfo.GetCultureInfo("en-IN");
+            double onAccount = Math.Round(amount - bills.Sum(b => b.Amount), 2);
+            var billText = string.Concat(bills.Select(b => "   Against " + b.Ref + ":  ₹" + b.Amount.ToString("N2", inr) + "\n")) +
+                (onAccount > 0.004 ? "   On Account:  ₹" + onAccount.ToString("N2", inr) + "\n" : "");
+            var bankText = bank == null ? "" : "Transaction:  " + bank.Type + (bank.Number.Length > 0 ? " · No. " + bank.Number : "") +
+                " · " + bank.Date.ToString("dd MMM yyyy") + (bank.Bank.Length > 0 ? " · " + bank.Bank : "") + "\n";
             var msg = "Create this voucher in Tally?\n\n" +
                 "Company:  " + company + "\n" +
                 "Voucher:  Receipt\n" +
@@ -1845,13 +1906,14 @@ namespace ChittamEnterprises
                 "Received from:  " + party + "\n" +
                 "Received into:  " + into + "\n" +
                 "Amount:  ₹" + amount.ToString("N2", CultureInfo.GetCultureInfo("en-IN")) + "\n" +
+                bankText +
                 (narration.Length > 0 ? "Narration:  " + narration + "\n" : "") +
-                "\nThe customer is credited \"On Account\"; you can adjust bills in Tally afterwards.";
+                "\nAdjusted against:\n" + billText;
             ShowWindow();
             if (MessageBox.Show(this, msg, "Post to Tally", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
             { done("Not posted."); return; }
             ThreadPool.QueueUserWorkItem(delegate {
-                string err = Tally.PostReceipt(sync.Settings.TallyUrl, company, date, party, into, amount, narration);
+                string err = Tally.PostReceipt(sync.Settings.TallyUrl, company, date, party, into, amount, narration, bills, bank);
                 sync.Log(err == null ? "Posted to Tally: Receipt " + party + " ₹" + amount.ToString("0.##", CultureInfo.InvariantCulture) + " into " + into + " (" + company + ")" : "Posting to Tally failed: " + err);
                 if (err == null)
                 {

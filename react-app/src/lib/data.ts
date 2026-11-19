@@ -40,6 +40,8 @@ export interface Receipt {
   id: string; date: string; customerId: string; customerName: string; mode: string;
   business: number; cash: number; source: string; ref?: string; note?: string; cancelled?: boolean;
   tallyNo?: string; tallyId?: string;   // the Tally voucher this payment is linked to
+  receivedBy?: string;   // cash: who collected it
+  txnRef?: string;       // other modes: transaction ID / UTR / cheque no.
 }
 export interface BalanceSet {
   company: string; label?: string; file?: string; importedAt?: string; importedBy?: string;

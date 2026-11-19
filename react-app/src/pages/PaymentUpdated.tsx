@@ -3,7 +3,7 @@ import { Card, Field, PageHeader, useToast } from "@/components/kit";
 import { BalanceNote, CustomerPicker, MessagePanel, Money, Select, Text, TotalLine, TwoColumn, n, useTallyFill } from "@/components/forms";
 import { useStore } from "@/lib/store";
 import { saveRecord, type Customer, type Receipt } from "@/lib/data";
-import { paymentUpdated } from "@/lib/messages";
+import { isCashMode, payRefLabel, paymentUpdated } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
 import { ReceiptsReport } from "./ReceiptsReport";
 import { TallyFreshness } from "@/components/TallyFreshness";
@@ -15,7 +15,7 @@ export function PaymentUpdated() {
   const tally = useTallyFill();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [note, setNote] = useState("");
-  const [f, setF] = useState({ mode: settings.paymentModes[0] || "", date: todayISO(), eprev: "", eamt: "", cprev: "", camt: "" });
+  const [f, setF] = useState({ mode: settings.paymentModes[0] || "", date: todayISO(), eprev: "", eamt: "", cprev: "", camt: "", receivedBy: "", txnRef: "" });
   const set = (k: keyof typeof f) => (v: string) => setF((x) => ({ ...x, [k]: v }));
 
   function pick(c: Customer | null) {
@@ -37,6 +37,7 @@ export function PaymentUpdated() {
     const rec: Receipt = {
       ...(before || {}), id, date: f.date || todayISO(), customerId: customer.id, customerName: customer.name,
       mode: f.mode || "—", business: n(f.eamt), cash: n(f.camt), source: "Payment Updated", ref: before?.ref || "", note: before?.note || "", cancelled: false,
+      receivedBy: isCashMode(f.mode) ? f.receivedBy.trim() : "", txnRef: isCashMode(f.mode) ? "" : f.txnRef.trim(),
     };
     try { await saveRecord("receipts", rec, before); } catch (e) { toast("Payment not saved: " + (e as Error).message); }
   }
@@ -52,6 +53,9 @@ export function PaymentUpdated() {
               <Field label="Payment mode"><Select value={f.mode} onChange={set("mode")} options={settings.paymentModes.length ? settings.paymentModes : ["Cash", "UPI", "Bank Transfer", "Cheque"]} /></Field>
               <Field label="Date"><Text type="date" value={f.date} onChange={(e) => set("date")(e.target.value)} /></Field>
             </div>
+            {isCashMode(f.mode)
+              ? <Field label="Received by"><Text value={f.receivedBy} onChange={(e) => set("receivedBy")(e.target.value)} placeholder="Who collected the cash, e.g. Ramesh" /></Field>
+              : <Field label={payRefLabel(f.mode)}><Text value={f.txnRef} onChange={(e) => set("txnRef")(e.target.value)} placeholder={/cheque/i.test(f.mode) ? "e.g. 004512" : "e.g. 431298765432"} /></Field>}
             <div className="rounded-2xl border border-neutral-100 bg-neutral-50/70 p-4">
               <p className="mb-3 text-sm font-bold">🏢 {name}</p>
               <div className="grid grid-cols-2 gap-3">
@@ -75,7 +79,7 @@ export function PaymentUpdated() {
           <MessagePanel
             type="payment-updated" customer={customer} inputs={{ customer: customer?.name || "", ...f }}
             build={() => customer
-              ? paymentUpdated(settings, { name: customer.name, mode: f.mode, date: f.date, eprev: n(f.eprev), eamt: n(f.eamt), cprev: n(f.cprev), camt: n(f.camt) })
+              ? paymentUpdated(settings, { name: customer.name, mode: f.mode, date: f.date, eprev: n(f.eprev), eamt: n(f.eamt), cprev: n(f.cprev), camt: n(f.camt), receivedBy: f.receivedBy, txnRef: f.txnRef })
               : "!Please select a customer first."}
             onGenerated={recordReceipt}
           />

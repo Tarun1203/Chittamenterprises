@@ -49,7 +49,10 @@ export function freightLine(s: Settings, terms?: string, amount?: unknown) {
 }
 
 /* ---------------- Payment Updated ---------------- */
-export interface PaymentUpdatedIn { name: string; mode: string; date: string; eprev: number; eamt: number; cprev: number; camt: number }
+export interface PaymentUpdatedIn { name: string; mode: string; date: string; eprev: number; eamt: number; cprev: number; camt: number; receivedBy?: string; txnRef?: string }
+// cash: who received it; other modes: the transaction / cheque reference
+export const payRefLabel = (mode: string) => (/cheque/i.test(mode) ? "Cheque no." : /upi|gpay|phone\s*pe|paytm/i.test(mode) ? "UTR / Transaction ID" : "Transaction ID / UTR");
+export const isCashMode = (mode: string) => /cash/i.test(mode || "");
 export function paymentUpdated(s: Settings, i: PaymentUpdatedIn) {
   const name = s.businessName;
   const efinal = i.eprev - i.eamt, cfinal = i.cprev - i.camt;
@@ -62,7 +65,9 @@ export function paymentUpdated(s: Settings, i: PaymentUpdatedIn) {
     : "📊 *" + label + " Ledger*\n*Balance: " + inr(fin) + "*\n\n";
   return "✅ *Payment Received – " + name + "*\n\n" +
     "Dear " + i.name + ",\n\n" +
-    "We have received your payment of " + inr(i.eamt + i.camt) + " via " + (i.mode || "—") + " on " + msgDate(i.date) + ", " + creditLine + ". Thank you.\n\n" +
+    "We have received your payment of " + inr(i.eamt + i.camt) + " via " + (i.mode || "—") +
+    (isCashMode(i.mode) ? (i.receivedBy?.trim() ? " (received by " + i.receivedBy.trim() + ")" : "") : (i.txnRef?.trim() ? " (" + (/cheque/i.test(i.mode) ? "Cheque No. " : "Ref: ") + i.txnRef.trim() + ")" : "")) +
+    " on " + msgDate(i.date) + ", " + creditLine + ". Thank you.\n\n" +
     ledger(name, i.eprev, i.eamt, efinal) + ledger("Cash", i.cprev, i.camt, cfinal) +
     "*Total Outstanding: " + inr(efinal + cfinal) + "*\n\n" +
     "Regards,\n" + name + (s.address ? "\n" + s.address : "");

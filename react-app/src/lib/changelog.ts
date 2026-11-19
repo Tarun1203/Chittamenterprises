@@ -4,6 +4,15 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.16", date: "2026-11-19", title: "Payment details and bill-wise posting to Tally", windows: "2.7",
+    items: [
+      "Payment Updated and Receipts: “Received by” for cash payments, and “Transaction ID / UTR / Cheque no.” for other modes. Shown in the customer's message and the receipts list.",
+      "Post to Tally now asks which bills the payment settles: the customer's open Tally bills, filled oldest first, with amounts you can change; anything left goes On Account.",
+      "When received into a bank ledger: type of payment (Cheque, e-Fund Transfer, Others), instrument no., instrument date and bank name go into the Tally voucher's bank details.",
+      "The Windows app's confirmation lists the bills and transaction details before the voucher is created (Windows app 2.7, updates itself).",
+    ],
+  },
+  {
     version: "3.15", date: "2026-11-19", title: "Ledger statement for both companies",
     items: [
       "New Messages → Ledger Statement: a customer's account in Chittam Enterprises and Cash — opening balance, every transaction with a running balance, closing balance and the total outstanding.",

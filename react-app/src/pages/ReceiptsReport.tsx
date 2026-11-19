@@ -6,7 +6,7 @@ import { Button, Card, Dialog, Field, useToast } from "@/components/kit";
 import { CustomerPicker, Money, Select, Text, copyText, n } from "@/components/forms";
 import { useStore } from "@/lib/store";
 import { logEvent, saveRecord, uid, type Customer, type Receipt } from "@/lib/data";
-import { msgDate } from "@/lib/messages";
+import { isCashMode, msgDate, payRefLabel } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -22,7 +22,7 @@ export function ReceiptsReport() {
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Receipt | null>(null);
   const [isNew, setIsNew] = useState(false);
-  const [form, setForm] = useState({ customer: null as Customer | null, date: "", mode: "", business: "", cash: "", note: "", tallyNo: "", cancelled: false });
+  const [form, setForm] = useState({ customer: null as Customer | null, date: "", mode: "", business: "", cash: "", note: "", tallyNo: "", receivedBy: "", txnRef: "", cancelled: false });
 
   const modes = useMemo(() => [...new Set(receipts.map((r) => r.mode).filter(Boolean))].sort(), [receipts]);
   const list = useMemo(() => {
@@ -82,7 +82,7 @@ export function ReceiptsReport() {
     setIsNew(!r);
     setEditing(r || { id: "rc_" + uid().slice(2), date: todayISO(), customerId: "", customerName: "", mode: m, business: 0, cash: 0, source: "Manual" });
     const c = r ? customers.find((x) => x.id === r.customerId) || { id: r.customerId, name: r.customerName } : null;
-    setForm({ customer: c, date: r?.date || todayISO(), mode: r?.mode || m, business: r?.business ? String(r.business) : "", cash: r?.cash ? String(r.cash) : "", note: r?.note || "", tallyNo: r?.tallyNo || "", cancelled: !!r?.cancelled });
+    setForm({ customer: c, date: r?.date || todayISO(), mode: r?.mode || m, business: r?.business ? String(r.business) : "", cash: r?.cash ? String(r.cash) : "", note: r?.note || "", tallyNo: r?.tallyNo || "", receivedBy: r?.receivedBy || "", txnRef: r?.txnRef || "", cancelled: !!r?.cancelled });
   }
   async function save() {
     if (!editing) return;
@@ -91,6 +91,7 @@ export function ReceiptsReport() {
     const rec: Receipt = {
       ...editing, date: form.date || todayISO(), customerId: form.customer.id, customerName: form.customer.name,
       mode: form.mode, business: n(form.business), cash: n(form.cash), note: form.note.trim(), cancelled: form.cancelled, ref: editing.ref || "",
+      receivedBy: isCashMode(form.mode) ? form.receivedBy.trim() : "", txnRef: isCashMode(form.mode) ? "" : form.txnRef.trim(),
       tallyNo: form.tallyNo.trim(), tallyId: form.tallyNo.trim() === (editing.tallyNo || "") ? editing.tallyId || "" : "",
     };
     try { await saveRecord("receipts", rec, isNew ? null : editing); toast("Payment saved."); setEditing(null); }
@@ -142,7 +143,7 @@ export function ReceiptsReport() {
                     <div className="min-w-0 flex-1">
                       <div className={cn("truncate font-semibold", r.cancelled && "line-through")}>{r.customerName || "—"}</div>
                       <div className="text-xs text-neutral-500">
-                        {r.mode || "—"} · {r.source}{r.ref ? " " + r.ref : ""}
+                        {r.mode || "—"}{r.txnRef ? " " + r.txnRef : ""}{r.receivedBy ? " (by " + r.receivedBy + ")" : ""} · {r.source}{r.ref ? " " + r.ref : ""}
                         {r.business ? " · " + biz + " " + inr(r.business) : ""}{r.cash ? " · Cash " + inr(r.cash) : ""}
                         {r.note ? " · " + r.note : ""}
                       </div>
@@ -169,6 +170,9 @@ export function ReceiptsReport() {
           <Field label={biz + " (₹)"}><Money value={form.business} onChange={(v) => setForm((x) => ({ ...x, business: v }))} /></Field>
           <Field label="Cash (₹)"><Money value={form.cash} onChange={(v) => setForm((x) => ({ ...x, cash: v }))} /></Field>
         </div>
+        {isCashMode(form.mode)
+          ? <Field label="Received by"><Text value={form.receivedBy} onChange={(e) => setForm((x) => ({ ...x, receivedBy: e.target.value }))} placeholder="Who collected the cash" /></Field>
+          : <Field label={payRefLabel(form.mode)}><Text value={form.txnRef} onChange={(e) => setForm((x) => ({ ...x, txnRef: e.target.value }))} placeholder="Optional" /></Field>}
         <Field label="Note"><Text value={form.note} onChange={(e) => setForm((x) => ({ ...x, note: e.target.value }))} placeholder="Optional" /></Field>
         <Field label="Tally voucher no." hint="Links this payment to that Tally receipt on Tally Match."><Text value={form.tallyNo} onChange={(e) => setForm((x) => ({ ...x, tallyNo: e.target.value }))} placeholder="Optional, e.g. RCPT/80-2026/27" /></Field>
         <label className="flex items-center gap-2 text-sm font-medium">

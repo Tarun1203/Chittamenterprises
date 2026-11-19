@@ -16,6 +16,7 @@ import { inr, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Chip } from "./ReceiptsReport";
 import { TallyFreshness } from "@/components/TallyFreshness";
+import { billsOf, useTallyBills } from "@/lib/tallydata";
 
 
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
@@ -326,23 +327,46 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
   const { balances, receipts } = useStore();
   const toast = useToast();
   const [ledgers, setLedgers] = useState<string[] | null>(null);
+  const [banks, setBanks] = useState<string[]>([]);
   const [into, setInto] = useState("");
+  const tallyBills = useTallyBills();
+  // bill-wise adjustment: amount against each open bill (ref -> rupees as typed)
+  const [adj, setAdj] = useState<Record<string, string>>({});
+  const [txn, setTxn] = useState({ type: "Others", number: "", date: "", bank: "" });
   const [narration, setNarration] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const receipt = payment ? receipts.find((x) => x.id === payment.receiptId) : undefined;
   // the customer's ledger as spelled in Tally (from the balance sync)
   const tallyName = payment ? balances[payment.account]?.names?.[normalizeName(payment.name)] || "" : "";
+  const openBills = useMemo(() => (payment ? billsOf(tallyBills, payment.account, tallyName || payment.name) : []), [payment, tallyBills, tallyName]);
+  const num = (v: string) => Math.max(0, Number(v) || 0);
+  const against = Math.round(openBills.reduce((t, b) => t + num(adj[b.n] || ""), 0) * 100) / 100;
+  const onAccount = payment ? Math.round((payment.amount - against) * 100) / 100 : 0;
+  const isBank = !!into && banks.includes(into);
+  // oldest bill first, until the payment is used up
+  function autoAdjust() {
+    if (!payment) return;
+    let left = payment.amount; const next: Record<string, string> = {};
+    for (const b of openBills) { if (left <= 0) break; const a = Math.min(left, b.a); next[b.n] = String(Math.round(a * 100) / 100); left -= a; }
+    setAdj(next);
+  }
+  useEffect(() => { autoAdjust(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [openBills]);
   useEffect(() => {
     if (!payment) return;
     setLedgers(null); setErr(""); setBusy(false);
-    setNarration((payment.mode || "") + (payment.ref ? " " + payment.ref : "") + " — recorded in Chittam app" + (receipt?.note ? ": " + receipt.note : ""));
+    setNarration((payment.mode || "") + (receipt?.txnRef ? " " + receipt.txnRef : "") + (receipt?.receivedBy ? " received by " + receipt.receivedBy : "") +
+      (payment.ref ? " " + payment.ref : "") + " — recorded in Chittam app" + (receipt?.note ? ": " + receipt.note : ""));
+    const m = payment.mode || "";
+    setTxn({ type: /cheque|dd|draft/i.test(m) ? "Cheque" : /upi|neft|rtgs|imps|transfer|gpay|phone\s*pe|paytm|online/i.test(m) ? "e-Fund Transfer" : "Others",
+      number: receipt?.txnRef || "", date: payment.date, bank: "" });
     desktopPost({ type: "tally-cashbank", key: payment.account });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payment]);
-  useDesktopReply<{ key: string; ledgers: string[]; error?: string }>("tally-cashbank", (d) => {
+  useDesktopReply<{ key: string; ledgers: string[]; banks?: string[]; error?: string }>("tally-cashbank", (d) => {
     if (!payment || d.key !== payment.account) return;
     setLedgers(d.ledgers || []);
+    setBanks(d.banks || []);
     if (d.error) setErr("Couldn't read Tally's cash / bank ledgers: " + d.error);
     const cash = /cash/i.test(payment.mode || "");
     setInto((d.ledgers || []).find((l) => (cash ? /^cash$/i.test(l) : /bank|phone\s*pe|upi|gpay/i.test(l))) || (d.ledgers || [])[0] || "");
@@ -353,14 +377,17 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
     if (d.ok) { toast("Posted to Tally. It shows as matched after the sync finishes (a few seconds)."); onClose(); }
     else if (d.error !== "Not posted.") setErr(d.error);
   });
+  const tooMuch = onAccount < -0.004;
   function send() {
-    if (!payment || !tallyName || !into) return;
+    if (!payment || !tallyName || !into || tooMuch) return;
     setBusy(true); setErr("");
-    desktopPost({ type: "tally-post-receipt", key: payment.account, date: payment.date, party: tallyName, into, amount: payment.amount, narration, receiptId: payment.receiptId });
+    const bills = openBills.filter((b) => num(adj[b.n] || "") > 0).map((b) => ({ ref: b.n, amount: num(adj[b.n] || "") }));
+    desktopPost({ type: "tally-post-receipt", key: payment.account, date: payment.date, party: tallyName, into, amount: payment.amount, narration, receiptId: payment.receiptId,
+      bills, bank: isBank ? { type: txn.type, number: txn.number.trim(), date: txn.date || payment.date, bank: txn.bank.trim() } : undefined });
   }
   return (
     <Dialog open={!!payment} onClose={onClose} title="Post to Tally"
-      footer={<><Button variant="ghost" onClick={onClose}>Close</Button><Button onClick={send} disabled={busy || !tallyName || !into}><IconSend size={16} /> {busy ? "Waiting for confirmation…" : "Post receipt"}</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Close</Button><Button onClick={send} disabled={busy || !tallyName || !into || tooMuch}><IconSend size={16} /> {busy ? "Waiting for confirmation…" : "Post receipt"}</Button></>}>
       {payment && <>
         <div className="rounded-xl bg-neutral-50 p-3 text-sm">
           <div className="font-bold">{payment.name} · {inr(payment.amount)}</div>
@@ -377,9 +404,44 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
           {ledgers === null ? <p className="text-sm text-neutral-500">Reading Tally's cash and bank ledgers…</p>
             : <Select value={into} onChange={setInto} options={ledgers.length ? ledgers : [{ value: "", label: "No cash / bank ledgers found" }]} />}
         </Field>
+        {isBank && (
+          <div className="space-y-3 rounded-xl border border-neutral-100 p-3">
+            <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">Transaction details</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Type of payment"><Select value={txn.type} onChange={(v) => setTxn((x) => ({ ...x, type: v }))} options={["Cheque", "e-Fund Transfer", "Others"]} /></Field>
+              <Field label={txn.type === "Cheque" ? "Cheque no." : "Instrument no. / UTR"}><Text value={txn.number} onChange={(e) => setTxn((x) => ({ ...x, number: e.target.value }))} placeholder="Optional" /></Field>
+              <Field label="Instrument date"><Text type="date" value={txn.date} onChange={(e) => setTxn((x) => ({ ...x, date: e.target.value }))} /></Field>
+              <Field label="Bank name"><Text value={txn.bank} onChange={(e) => setTxn((x) => ({ ...x, bank: e.target.value }))} placeholder="Customer's bank, e.g. SBI" /></Field>
+            </div>
+          </div>
+        )}
+        <div className="space-y-2 rounded-xl border border-neutral-100 p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">Adjust against bills</p>
+            {openBills.length > 0 && <span className="flex gap-3 text-xs font-semibold"><button className="text-brand-600 hover:underline" onClick={autoAdjust}>Oldest first</button><button className="text-neutral-500 hover:underline" onClick={() => setAdj({})}>Clear</button></span>}
+          </div>
+          {tallyBills === null ? <p className="text-sm text-neutral-500">Loading open bills…</p>
+            : openBills.length === 0 ? <p className="text-sm text-neutral-500">No open bills for this customer in Tally — the whole amount goes On Account.</p>
+            : <div className="max-h-56 divide-y divide-neutral-100 overflow-y-auto">
+                {openBills.map((b) => (
+                  <label key={b.n} className="flex items-center gap-3 py-1.5">
+                    <input type="checkbox" className="size-4 accent-brand-600" checked={num(adj[b.n] || "") > 0}
+                      onChange={(e) => setAdj((x) => ({ ...x, [b.n]: e.target.checked ? String(Math.min(b.a, Math.max(0, onAccount)) || "") : "" }))} />
+                    <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{b.n}</span>
+                      <span className="block text-xs text-neutral-500">{msgDate(b.d)} · due {inr(b.a)}{b.od > 0 ? " · " + b.od + " days overdue" : ""}</span></span>
+                    <input inputMode="decimal" className="field-input w-28 text-right tabular-nums" value={adj[b.n] || ""} placeholder="0"
+                      onChange={(e) => setAdj((x) => ({ ...x, [b.n]: e.target.value.replace(/[^0-9.]/g, "") }))} />
+                  </label>
+                ))}
+              </div>}
+          <div className="flex justify-between border-t border-neutral-100 pt-2 text-sm">
+            <span className="text-neutral-500">Against bills {inr(against)}</span>
+            <span className={cn("font-semibold", tooMuch && "text-rose-600")}>{tooMuch ? "More than the payment by " + inr(-onAccount) : "On Account " + inr(onAccount)}</span>
+          </div>
+        </div>
         <Field label="Narration"><Text value={narration} onChange={(e) => setNarration(e.target.value)} /></Field>
         {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{err}</p>}
-        <p className="text-xs text-neutral-500">The Windows app asks you to confirm the whole voucher before it's created. The customer is credited “On Account”; bills can be adjusted in Tally afterwards.</p>
+        <p className="text-xs text-neutral-500">The Windows app shows the whole voucher — bills and transaction details — and asks you to confirm before it's created.</p>
       </>}
     </Dialog>
   );
