@@ -4,6 +4,13 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.19", date: "2026-11-19", title: "Warning for customers filed under Creditors in Tally", windows: "3.0",
+    items: [
+      "The Windows app now checks, on every sync, for customers whose Tally ledger is under Sundry Creditors instead of Sundry Debtors — their balance and transactions would otherwise be missed (shown as 0).",
+      "A red note names the customer, the company and Tally's balance on Balance Confirmation, Payment Reminder, Payment Updated and Ledger Statement, and Tally Match lists them all. Fix: in Tally, alter the ledger and set “Under” to Sundry Debtors (or a group under it).",
+    ],
+  },
+  {
     version: "3.18", date: "2026-11-19", title: "Any voucher as a PDF in Tally's format; ledger from 1 April", windows: "2.9",
     items: [
       "Ledger Statement: every transaction has a PDF button — send that voucher on WhatsApp, printed like Tally: sales invoices, credit notes and purchases as a Tax Invoice (items, HSN, quantity, rate, GST, HSN tax summary, amount in words), receipts and payments as Tally's Receipt / Payment Voucher (bills adjusted, bank details), journals with Dr / Cr.",

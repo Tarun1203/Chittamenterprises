@@ -129,7 +129,7 @@ export function Ledger() {
               Tally transactions are synced {range.from ? "from " + msgDate(range.from) + " to " + msgDate(range.to) : "— not yet"}. The Windows app (2.9 and later) syncs from 1 April, the start of the financial year.
             </p>
             {tooEarly && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">Transactions before {msgDate(range.from)} aren't synced, so the opening balance on {msgDate(from)} would be wrong. Start on or after {msgDate(range.from)}.</p>}
-            {customer && <TallyFreshness />}
+            {customer && <TallyFreshness customer={customer.name} />}
           </Card>
 
           {customer && sets && !parts.length && <Card className="text-sm text-neutral-500">No Tally balance or transactions for {customer.name} in either company. Check the name matches the Tally ledger.</Card>}

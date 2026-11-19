@@ -70,8 +70,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyProduct("Chittam Enterprises")]
 [assembly: System.Reflection.AssemblyCompany("Chittam Enterprises")]
 // keep in step with Program.DesktopVersion (build.ps1 checks)
-[assembly: System.Reflection.AssemblyVersion("2.9.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("2.9")]
+[assembly: System.Reflection.AssemblyVersion("3.0.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.0")]
 
 namespace ChittamEnterprises
 {
@@ -81,7 +81,7 @@ namespace ChittamEnterprises
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
         // where new versions of this program are published (desktop/ folder of the site)
         public const string UpdateUrl = "https://tarun1203.github.io/Chittamenterprises/desktop/version.json";
-        public const string DesktopVersion = "2.9";
+        public const string DesktopVersion = "3.0";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -333,6 +333,7 @@ namespace ChittamEnterprises
 
     class StockLine { public string Name, Unit, Group = ""; public double Qty, Rate, SellingPrice; }
     class Debtor { public string Name, Mobile; }
+    class Creditor { public string Name, Parent; public double Closing; }
     class Bill { public string Party, Ref, Date, Due; public double Amount; public int Overdue; }
 
     static class Tally
@@ -550,6 +551,26 @@ namespace ChittamEnterprises
                 "<CHILDOF>$$GroupSundryDebtors</CHILDOF><BELONGSTO>Yes</BELONGSTO>" +
                 "<FETCH>Name, LedgerMobile, LedgerPhone</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
             return ParseDebtors(xml);
+        }
+
+        // ledgers under Sundry Creditors (and its sub-groups), with their closing balance (Tally: negative = Dr)
+        public static List<Creditor> Creditors(string url, string company)
+        {
+            var xml = Post(url, "<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>ChittamCreditors</ID></HEADER>" +
+                "<BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>" +
+                "<SVCURRENTCOMPANY>" + System.Security.SecurityElement.Escape(company) + "</SVCURRENTCOMPANY></STATICVARIABLES>" +
+                "<TDL><TDLMESSAGE><COLLECTION NAME=\"ChittamCreditors\" ISMODIFY=\"No\"><TYPE>Ledger</TYPE>" +
+                "<CHILDOF>$$GroupSundryCreditors</CHILDOF><BELONGSTO>Yes</BELONGSTO>" +
+                "<FETCH>Name, Parent, ClosingBalance</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
+            var doc = new XmlDocument();
+            doc.LoadXml(xml);
+            var list = new List<Creditor>();
+            foreach (XmlElement e in doc.SelectNodes("//LEDGER"))
+            {
+                var name = e.GetAttribute("NAME").Trim();
+                if (name.Length > 0) list.Add(new Creditor { Name = name, Parent = Text(e, "PARENT"), Closing = Num(Text(e, "CLOSINGBALANCE")) });
+            }
+            return list;
         }
 
         public static List<Debtor> ParseDebtors(string xml)
@@ -975,10 +996,14 @@ namespace ChittamEnterprises
             Log(s, token, "tally-company-switched", label, new Dictionary<string, object> { { "name", Str(label) }, { "from", Str(from) }, { "to", Str(to) } });
         }
 
-        public static void SaveStatus(Settings s, string token, bool ok, string error, List<string> companies)
+        public static void SaveStatus(Settings s, string token, bool ok, string error, List<string> companies, List<Dictionary<string, object>> misfiled)
         {
             string now = Now();
+            var mf = (misfiled ?? new List<Dictionary<string, object>>()).Select(m => (object)Map(new Dictionary<string, object> {
+                { "company", Str((string)m["company"]) }, { "label", Str((string)m["label"]) }, { "name", Str((string)m["name"]) },
+                { "group", Str((string)m["group"]) }, { "a", Dbl((double)m["a"]) }, { "dr", Bool((bool)m["dr"]) } })).ToArray();
             var fields = new Dictionary<string, object> {
+                { "misfiled", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", mf } } } } },
                 { "checkedAt", Str(now) }, { "ok", Bool(ok) }, { "error", Str(error ?? "") }, { "pcVersion", Str(Program.DesktopVersion) },
                 { "companies", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", companies.Select(c => (object)Str(c)).ToArray() } } } } },
                 { "at", Ts(now) }, { "by", Str(s.Email) }
@@ -1156,6 +1181,9 @@ namespace ChittamEnterprises
             var allDebtors = new List<Debtor>();
             var failed = new List<string>();
             var allStock = new List<StockLine>();
+            // app customers whose Tally ledger is under Sundry Creditors (their balance would be missed)
+            var misfiled = new List<Dictionary<string, object>>();
+            HashSet<string> appCustomers = null;
             var jobs = new[] {
                 new[] { "business", Settings.BusinessCompany, Settings.BusinessLabel },
                 new[] { "cash", Settings.CashCompany, Settings.CashLabel }
@@ -1167,6 +1195,32 @@ namespace ChittamEnterprises
                 Dictionary<string, double> bal; Dictionary<string, string> names;
                 try { Tally.Balances(Settings.TallyUrl, company, out bal, out names); }
                 catch (Exception ex) { Log("[" + company + "] skipped: " + ex.Message); LastError = ex.Message; failed.Add(company); continue; }
+
+                // ---- check: customers filed under Sundry Creditors ----
+                try
+                {
+                    var creditors = Tally.Creditors(Settings.TallyUrl, company);
+                    if (creditors.Count > 0)
+                    {
+                        if (appCustomers == null)
+                        {
+                            if (token == null) token = Firebase.SignIn(Settings);
+                            appCustomers = new HashSet<string>(Firebase.List(Settings, token, "customers", "name")
+                                .Select(r => Tally.Normalize(r.ContainsKey("name") ? Convert.ToString(r["name"]) : "")).Where(n => n.Length > 0));
+                        }
+                        foreach (var c in creditors)
+                        {
+                            var k = Tally.Normalize(c.Name);
+                            if (!appCustomers.Contains(k) || bal.ContainsKey(k)) continue;
+                            misfiled.Add(new Dictionary<string, object> { { "company", key }, { "label", label }, { "name", c.Name }, { "group", c.Parent },
+                                { "a", Math.Round(Math.Abs(c.Closing), 2) }, { "dr", c.Closing < 0 } });
+                            Log("[" + company + "] CHECK: \"" + c.Name + "\" is a customer in the app but is under " + (c.Parent.Length > 0 ? c.Parent : "Sundry Creditors") +
+                                " in Tally, so its balance (" + Math.Abs(c.Closing).ToString("N2", CultureInfo.GetCultureInfo("en-IN")) + (c.Closing < 0 ? " Dr" : c.Closing > 0 ? " Cr" : "") +
+                                ") is not included. Move it to Sundry Debtors (or a group under it).");
+                        }
+                    }
+                }
+                catch (Exception ex) { Log("[" + company + "] creditors check skipped: " + ex.Message); }
 
                 // ---- balances ----
                 var sig = string.Join("|", bal.Keys.OrderBy(k => k, StringComparer.Ordinal).Select(k => k + "=" + bal[k].ToString(CultureInfo.InvariantCulture)));
@@ -1266,7 +1320,7 @@ namespace ChittamEnterprises
                 if (token == null) token = Firebase.SignIn(Settings);
                 var reached = new List<string>();
                 foreach (var j in jobs) if (!string.IsNullOrEmpty(j[1]) && !failed.Contains(j[1])) reached.Add(j[1]);
-                Firebase.SaveStatus(Settings, token, failed.Count == 0, failed.Count == 0 ? "" : "Tally not reached for: " + string.Join(", ", failed), reached);
+                Firebase.SaveStatus(Settings, token, failed.Count == 0, failed.Count == 0 ? "" : "Tally not reached for: " + string.Join(", ", failed), reached, misfiled);
             }
             catch (Exception ex) { Log("Status note not saved: " + ex.Message); }
 

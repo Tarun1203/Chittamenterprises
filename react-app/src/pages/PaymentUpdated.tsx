@@ -68,7 +68,7 @@ export function PaymentUpdated() {
       <TwoColumn
         form={
           <Card className="space-y-4">
-            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} />{customer && <TallyFreshness className="mt-2" />}</Field>
+            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} />{customer && <TallyFreshness className="mt-2" customer={customer.name} />}</Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Payment mode"><Select value={f.mode} onChange={set("mode")} options={settings.paymentModes.length ? settings.paymentModes : ["Cash", "UPI", "Bank Transfer", "Cheque"]} /></Field>
               <Field label="Date"><Text type="date" value={f.date} onChange={(e) => set("date")(e.target.value)} /></Field>
