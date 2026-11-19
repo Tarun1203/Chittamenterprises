@@ -6,6 +6,8 @@ import { saveRecord, type Customer, type Receipt } from "@/lib/data";
 import { paymentUpdated } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
 import { ReceiptsReport } from "./ReceiptsReport";
+import { TallyFreshness } from "@/components/TallyFreshness";
+
 
 export function PaymentUpdated() {
   const { settings, receipts } = useStore();
@@ -45,7 +47,7 @@ export function PaymentUpdated() {
       <TwoColumn
         form={
           <Card className="space-y-4">
-            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} /></Field>
+            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} />{customer && <TallyFreshness className="mt-2" />}</Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Payment mode"><Select value={f.mode} onChange={set("mode")} options={settings.paymentModes.length ? settings.paymentModes : ["Cash", "UPI", "Bank Transfer", "Cheque"]} /></Field>
               <Field label="Date"><Text type="date" value={f.date} onChange={(e) => set("date")(e.target.value)} /></Field>

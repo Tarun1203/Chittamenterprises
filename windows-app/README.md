@@ -1,4 +1,4 @@
-# Chittam Enterprises for Windows (2.3)
+# Chittam Enterprises for Windows (2.4)
 
 The Chittam app in its own window, with **Tally sync built in**.
 

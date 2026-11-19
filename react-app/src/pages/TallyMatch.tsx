@@ -8,20 +8,23 @@ import { IconAlertTriangle, IconCheck, IconFileText, IconLink, IconLinkOff, Icon
 import { Button, Card, Dialog, EmptyState, Field, PageHeader, useToast } from "@/components/kit";
 import { CustomerPicker, Select, Text } from "@/components/forms";
 import { useStore } from "@/lib/store";
-import { loadTallyVouchers, normalizeName, saveRecord, uid, type Customer, type Receipt, type TallyVoucherSet } from "@/lib/data";
-import { appDuplicates, appPayments, isReceipt, matchPayments, tallyDuplicates, tallyEntries, DAY_WINDOW, viaKind, type Account, type AppPayment, type Pair, type TallyEntry } from "@/lib/tallymatch";
+import { loadLatest, loadTallyVouchers, normalizeName, saveRecord, uid, type Customer, type MessageEntry, type Receipt, type TallyVoucherSet } from "@/lib/data";
+import { appDuplicates, appPayments, isReceipt, matchPayments, matchSales, type SentMessage, type SalesResult, tallyDuplicates, tallyEntries, DAY_WINDOW, viaKind, type Account, type AppPayment, type Pair, type TallyEntry } from "@/lib/tallymatch";
 import { desktopSend, inDesktopApp, useDesktopStatus } from "@/lib/desktop";
 import { msgDate } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Chip } from "./ReceiptsReport";
+import { TallyFreshness } from "@/components/TallyFreshness";
+
 
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
 const when = (iso?: string) => (iso ? new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
-type Tab = "payments" | "duplicates" | "balances";
+type Tab = "payments" | "duplicates" | "sales" | "balances";
 
 export function TallyMatch() {
-  const { receipts, balances, settings } = useStore();
+  const { receipts, balances, settings, orders } = useStore();
+  const [messages, setMessages] = useState<SentMessage[] | null>(null);
   const toast = useToast();
   const [sets, setSets] = useState<Record<string, TallyVoucherSet> | null>(null);
   const [error, setError] = useState("");
@@ -36,8 +39,15 @@ export function TallyMatch() {
     setError("");
     try {
       // local development only (left out of the published build)
-      if (import.meta.env.DEV && new URLSearchParams(location.search).has("demo")) setSets((await import("@/lib/demo")).demoTallyVouchers);
-      else setSets(await loadTallyVouchers());
+      if (import.meta.env.DEV && new URLSearchParams(location.search).has("demo")) {
+        const d = await import("@/lib/demo");
+        setSets(d.demoTallyVouchers);
+        setMessages(toSent(d.demoMessages));
+      } else {
+        setSets(await loadTallyVouchers());
+        // the latest messages, for Dispatch / Stock Return vs Tally
+        loadLatest<MessageEntry>("messages", 500).then((m) => setMessages(toSent(m))).catch(() => setMessages([]));
+      }
     } catch (e) { setError((e as Error).message); setSets({}); }
   }
   useEffect(() => { load(); }, []);
@@ -51,8 +61,9 @@ export function TallyMatch() {
       match: matchPayments(app, tallyReceipts),
       tallyDups: tallyDuplicates(all),
       appDups: account ? [] : appDuplicates(receipts, from, to),
+      sales: messages ? matchSales(tallyEntries(sets, from, to), messages, orders.map((o) => ({ id: o.id, orderNo: o.orderNo, customerName: o.customerName, date: o.date, status: o.status, total: o.total })), from, to) : null,
     };
-  }, [sets, receipts, from, to, account]);
+  }, [sets, receipts, from, to, account, messages, orders]);
 
   const hasVouchers = !!sets && Object.values(sets).some((s) => s.vouchers?.length);
   const dupCount = result ? result.tallyDups.length + result.appDups.length : 0;
@@ -63,11 +74,12 @@ export function TallyMatch() {
         actions={<Button variant="secondary" size="sm" onClick={() => { load(); toast("Reloaded Tally transactions."); }}><IconRefresh size={16} /> Reload</Button>} />
 
       {inDesktopApp() && <DesktopSyncCard />}
+      <TallyFreshness className="mb-3" />
       <SyncInfo sets={sets} accLabel={accLabel} balancesAt={[balances.business?.importedAt, balances.cash?.importedAt]} />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="no-scrollbar flex max-w-full gap-1 overflow-x-auto rounded-xl bg-neutral-200/60 p-1">
-          {([["payments", "Payments"], ["duplicates", "Duplicates" + (dupCount ? " (" + dupCount + ")" : "")], ["balances", "Balances"]] as const).map(([v, l]) => (
+          {([["payments", "Payments"], ["duplicates", "Duplicates" + (dupCount ? " (" + dupCount + ")" : "")], ["sales", "Sales & returns"], ["balances", "Balances"]] as const).map(([v, l]) => (
             <button key={v} onClick={() => setTab(v)} className={cn("rounded-lg px-3.5 py-1.5 text-sm font-semibold whitespace-nowrap", tab === v ? "bg-white shadow-sm" : "text-neutral-500")}>{l}</button>
           ))}
         </div>
@@ -88,6 +100,7 @@ export function TallyMatch() {
 
       {tab === "payments" && result && <PaymentsView r={result.match} accLabel={accLabel} hasVouchers={hasVouchers} />}
       {tab === "duplicates" && result && <DuplicatesView tally={result.tallyDups} app={result.appDups} accLabel={accLabel} />}
+      {tab === "sales" && result && hasVouchers && (result.sales ? <SalesView r={result.sales} accLabel={accLabel} /> : <Card className="text-center text-sm text-neutral-500">Loading messages…</Card>)}
       {tab === "balances" && <BalancesView />}
       {!result && !error && <Card className="text-center text-sm text-neutral-500">Loading…</Card>}
     </div>
@@ -344,6 +357,46 @@ function LinkDialog({ payment, onClose, candidates, accLabel }: { payment: AppPa
         </Field>
       </>}
     </Dialog>
+  );
+}
+
+/* ---------------- sales invoices and returns ---------------- */
+// a sent message with the date it's about (the form's date, else when it was sent)
+function toSent(list: MessageEntry[]): SentMessage[] {
+  return list.map((m) => {
+    const typed = String((m.inputs as Record<string, unknown> | undefined)?.date || "");
+    const at = m.at && typeof m.at.toDate === "function" ? m.at.toDate() : null;
+    const iso = /^\d{4}-\d{2}-\d{2}$/.test(typed) ? typed : at ? at.getFullYear() + "-" + String(at.getMonth() + 1).padStart(2, "0") + "-" + String(at.getDate()).padStart(2, "0") : "";
+    return { id: m.id, type: m.type, customerName: m.customerName, date: iso, inputs: m.inputs as Record<string, unknown> | undefined };
+  }).filter((m) => m.date);
+}
+
+function SalesView({ r, accLabel }: { r: SalesResult; accLabel: (a: Account) => string }) {
+  const msgSub = (m: SentMessage, key: string, label: string) => msgDate(m.date) + (m.inputs?.[key] ? " · " + label + " " + String(m.inputs[key]) : "");
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Chip label="Tally sales" value={String(r.counts.sales)} />
+        <Chip label="Dispatch messages" value={String(r.counts.dispatches)} />
+        <Chip label="Tally credit notes" value={String(r.counts.creditNotes)} />
+        <Chip label="Stock return messages" value={String(r.counts.returns)} />
+      </div>
+      <Section title="Invoiced in Tally, no dispatch message sent" hint="A Tally sales invoice with no Dispatch Confirmation to that customer naming it, or within 7 days after it. Send one if the goods have gone." count={r.salesNoDispatch.length} tone="warn">
+        {r.salesNoDispatch.map((t) => <Row key={t.key} tone="warn" left={t.p} sub={tallySub(t, accLabel)} right={inr(t.a)} />)}
+      </Section>
+      <Section title="Orders not invoiced in Tally" hint="Orders marked Packed, Dispatched or Delivered with no Tally sales invoice for that customer from 2 days before to 10 days after the order." count={r.ordersNotInvoiced.length} tone="bad">
+        {r.ordersNotInvoiced.map((o) => <Row key={o.id} tone="bad" left={o.customerName} sub={"Order " + o.orderNo + " · " + msgDate(o.date) + " · " + o.status} right={inr(o.total)} />)}
+      </Section>
+      <Section title="Dispatch message, invoice not found in Tally" hint="A Dispatch Confirmation was sent, but there's no Tally sales invoice for that customer naming it or from just before it. Check the invoice number, or enter the invoice in Tally." count={r.dispatchNotInTally.length} tone="bad">
+        {r.dispatchNotInTally.map((m) => <Row key={m.id} tone="bad" left={m.customerName || "—"} sub={msgSub(m, "invoice", "Invoice")} right="" />)}
+      </Section>
+      <Section title="Credit note in Tally, no stock return message" hint="A Tally credit note with no Stock Return acknowledgement to that customer naming it or within 7 days. Send one so the customer knows it's credited." count={r.creditNoReturnMsg.length} tone="warn">
+        {r.creditNoReturnMsg.map((t) => <Row key={t.key} tone="warn" left={t.p} sub={tallySub(t, accLabel)} right={inr(t.a)} />)}
+      </Section>
+      <Section title="Stock return credited in the app, no credit note in Tally" hint="A Stock Return message said the amount was credited, but there's no Tally credit note for that customer naming it or within 7 days. Enter the credit note in Tally." count={r.returnMsgNoCredit.length} tone="bad">
+        {r.returnMsgNoCredit.map((m) => <Row key={m.id} tone="bad" left={m.customerName || "—"} sub={msgSub(m, "cn", "Credit note")} right="" />)}
+      </Section>
+    </div>
   );
 }
 

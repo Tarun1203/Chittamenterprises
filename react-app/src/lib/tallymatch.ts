@@ -150,3 +150,65 @@ export function appDuplicates(receipts: Receipt[], from: string, to: string): Du
   return clusters(live, (r) => [r.customerId || normalizeName(r.customerName), (Number(r.business) || 0).toFixed(2), (Number(r.cash) || 0).toFixed(2)].join("|"), (r) => r.date,
     "Same customer and amount within " + DAY_WINDOW + " days");
 }
+
+/* ---------------- sales invoices and returns ---------------- */
+// Tally sales vs Dispatch messages and Orders; Tally credit notes vs Stock
+// Return messages. Customers are matched ignoring case and punctuation.
+export interface SentMessage { id: string; type: string; customerName?: string; date: string; inputs?: Record<string, unknown> }
+const custKey = (s?: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const noKey = (s?: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const signedDays = (from: string, to: string) => Math.round((new Date(to + "T00:00:00").getTime() - new Date(from + "T00:00:00").getTime()) / 86400000);
+
+export const isSale = (v: TallyVoucher) => v.dr && /sale/i.test(v.t) && !/return/i.test(v.t);
+export const isCreditNote = (v: TallyVoucher) => !v.dr && /credit\s*note|return/i.test(v.t);
+
+// does a typed invoice / credit note no. ("245, 246" or "MKWL/26") name this voucher?
+function namesVoucher(typed: unknown, voucherNo: string) {
+  const v = noKey(voucherNo);
+  if (!v) return false;
+  const parts = voucherNo.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  return String(typed || "").split(/[,;&\s]+/).map((t) => t.trim()).filter(Boolean).some((t) => {
+    const k = noKey(t);
+    return !!k && (k === v || (k.length >= 2 && parts.includes(t.toLowerCase().replace(/[^a-z0-9]/g, ""))) || (k.length >= 4 && v.includes(k)));
+  });
+}
+
+export interface SalesResult {
+  salesNoDispatch: TallyEntry[];                        // invoiced in Tally, no dispatch message sent
+  dispatchNotInTally: SentMessage[];                    // dispatch message, no matching Tally sale
+  ordersNotInvoiced: { id: string; orderNo: string; customerName: string; date: string; status: string; total: number }[];
+  creditNoReturnMsg: TallyEntry[];                      // credit note in Tally, no stock return message
+  returnMsgNoCredit: SentMessage[];                     // stock return message (credited), no credit note in Tally
+  counts: { sales: number; dispatches: number; creditNotes: number; returns: number };
+}
+
+export function matchSales(
+  tally: TallyEntry[],
+  messages: SentMessage[],
+  orders: { id: string; orderNo: string; customerName: string; date: string; status: string; total: number }[],
+  from: string, to: string,
+): SalesResult {
+  const sales = tally.filter(isSale), cns = tally.filter(isCreditNote);
+  const inRange = (d: string) => d >= from && d <= to;
+  const dispatches = messages.filter((m) => m.type === "dispatch-confirmation" && inRange(m.date));
+  const returns = messages.filter((m) => m.type === "stock-return" && inRange(m.date));
+
+  // a dispatch message covers a sale: it names the invoice, or same customer within 7 days after it
+  const dispatchFor = (s: TallyEntry, m: SentMessage) => custKey(m.customerName) === custKey(s.p) &&
+    (namesVoucher(m.inputs?.invoice, s.n) || (signedDays(s.d, m.date) >= -1 && signedDays(s.d, m.date) <= 7));
+  const salesNoDispatch = sales.filter((s) => !dispatches.some((m) => dispatchFor(s, m)));
+  const allSales = tally.filter(isSale);
+  const dispatchNotInTally = dispatches.filter((m) => !allSales.some((s) => dispatchFor(s, m)));
+
+  // an order is invoiced when the customer has a Tally sale from 2 days before to 10 days after it
+  const ordersNotInvoiced = orders.filter((o) => inRange(o.date) && ["Packed", "Dispatched", "Delivered"].includes(o.status) &&
+    !allSales.some((s) => custKey(s.p) === custKey(o.customerName) && signedDays(o.date, s.d) >= -2 && signedDays(o.date, s.d) <= 10));
+
+  const returnFor = (c: TallyEntry, m: SentMessage) => custKey(m.customerName) === custKey(c.p) &&
+    (namesVoucher(m.inputs?.cn, c.n) || Math.abs(signedDays(c.d, m.date)) <= 7);
+  const creditNoReturnMsg = cns.filter((c) => !returns.some((m) => returnFor(c, m)));
+  const returnMsgNoCredit = returns.filter((m) => String(m.inputs?.status || "credited") === "credited" && !tally.filter(isCreditNote).some((c) => returnFor(c, m)));
+
+  return { salesNoDispatch, dispatchNotInTally, ordersNotInvoiced, creditNoReturnMsg, returnMsgNoCredit,
+    counts: { sales: sales.length, dispatches: dispatches.length, creditNotes: cns.length, returns: returns.length } };
+}

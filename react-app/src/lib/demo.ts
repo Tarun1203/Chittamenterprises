@@ -61,6 +61,9 @@ export const demoBalances: Record<string, BalanceSet> = {
 
 const ts = (minsAgo: number) => ({ toDate: () => new Date(Date.now() - minsAgo * 60000) }) as unknown as ActivityEntry["at"];
 export const demoMessages: MessageEntry[] = [
+  { id: "m3", type: "dispatch-confirmation", customerName: "Kashi SLN", at: ts(60 * 24 * 3), by: "demo@example.com", text: "🚚 *Dispatch & Delivery Confirmation*…", inputs: { date: iso(-3), invoice: "CE/245" } },
+  { id: "m4", type: "dispatch-confirmation", customerName: "Lokesh - Kallur", at: ts(60 * 24), by: "demo@example.com", text: "🚚 *Dispatch & Delivery Confirmation*…", inputs: { date: iso(-1), invoice: "999" } },
+  { id: "m5", type: "stock-return", customerName: "AB Infinite", at: ts(60 * 24 * 2), by: "demo@example.com", text: "↩️ *Stock Return Acknowledgement*…", inputs: { date: iso(-2), cn: "CN-9", status: "credited" } },
   { id: "m1", type: "payment-updated", customerName: "Badrinath Allundi - Raichur", mobile: "9845020264", at: ts(50), by: "demo@example.com",
     text: "✅ *Payment Received – Chittam Enterprises*\n\nDear Badrinath Allundi - Raichur,\n\nWe have received your payment of ₹17,500 via UPI on 18 Nov 2026…" },
   { id: "m2", type: "order-confirmation", customerName: "AB Infinite", mobile: "9845012345", at: ts(180), by: "demo@example.com", text: "🧾 *Order Confirmation*\n\nNamaste Anna/Sir 🙏…" },

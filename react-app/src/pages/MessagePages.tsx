@@ -15,6 +15,8 @@ import {
 } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
 import { billsOf, syncedWhen, useTallyBills } from "@/lib/tallydata";
+import { TallyFreshness } from "@/components/TallyFreshness";
+
 
 const NEED_CUSTOMER = "!Please select a customer first.";
 function useForm<T extends Record<string, unknown>>(init: T) {
@@ -79,7 +81,7 @@ export function PaymentReminder() {
       <TwoColumn
         form={<>
           <Card className="space-y-4">
-            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} />{billNote && <BalanceNote note={"📒" + billNote.slice(2)} />}</Field>
+            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} />{customer && <TallyFreshness className="mt-2" />}{billNote && <BalanceNote note={"📒" + billNote.slice(2)} />}</Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="As on"><Text type="date" value={f.date} onChange={(e) => set("date")(e.target.value)} /></Field>
               <Field label="Pay by (optional)"><Text type="date" value={f.dueDate} onChange={(e) => set("dueDate")(e.target.value)} /></Field>
@@ -142,7 +144,7 @@ export function BalanceConfirmation() {
       <TwoColumn
         form={
           <Card className="space-y-4">
-            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} /></Field>
+            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} />{customer && <TallyFreshness className="mt-2" />}</Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Month"><Text type="month" value={f.month} onChange={(e) => set("month")(e.target.value)} /></Field>
               <Field label="As on"><Text type="date" value={f.date} onChange={(e) => set("date")(e.target.value)} /></Field>

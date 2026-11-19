@@ -4,6 +4,14 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.12", date: "2026-11-19", title: "Sales & returns check, out-of-date warning, reliable Tally transactions", windows: "2.4",
+    items: [
+      "Tally Match → Sales & returns: Tally invoices with no dispatch message, orders not invoiced in Tally, dispatch messages whose invoice isn't in Tally, credit notes with no stock return message, and stock returns with no credit note.",
+      "A warning wherever Tally figures are used (Payment Updated, Reminder, Balance Confirmation, Orders, Tally Match) when they're over 2 hours old or Tally couldn't be reached.",
+      "Windows app 2.4 reads Tally transactions straight from the vouchers, so they no longer depend on what's open on Tally's screen — this was why K K's receipt stopped matching. Amounts are no longer counted twice.",
+    ],
+  },
+  {
     version: "3.11", date: "2026-11-19", title: "New customers and products come from Tally", windows: "2.3",
     items: [
       "A customer ledger created in Tally (under Sundry Debtors) appears in Customers by itself, with its mobile; a customer without a mobile gets Tally's.",

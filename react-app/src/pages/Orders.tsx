@@ -15,6 +15,8 @@ import { inr, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Chip } from "./ReceiptsReport";
 import { stockOf, syncedWhen, useTallyStock } from "@/lib/tallydata";
+import { TallyFreshness } from "@/components/TallyFreshness";
+
 import { PickListDialog } from "./PickList";
 
 export const ORDER_STATUSES = ["Pending", "Confirmed", "Packed", "Dispatched", "Delivered", "Cancelled"];
@@ -330,6 +332,7 @@ function OrderEditor({ order, onClose }: { order: Order | null; onClose: () => v
               </div>
             ))}
             <TotalLine strong label="Order total" value={inr(total)} />
+            <TallyFreshness what="Tally stock figures" />
             {tallyStock && (tallyStock.business || tallyStock.cash) && (
               <p className="text-xs text-neutral-400">Tally stock (Chittam + Cash) as of {syncedWhen(tallyStock.business?.syncedAt || tallyStock.cash?.syncedAt)} — “Available now” fills in from it; change it if needed.</p>
             )}

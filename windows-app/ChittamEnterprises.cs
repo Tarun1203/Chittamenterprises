@@ -61,7 +61,7 @@ namespace ChittamEnterprises
     {
         public const string AppUrl = "https://tarun1203.github.io/Chittamenterprises/next/";
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
-        public const string DesktopVersion = "2.3";
+        public const string DesktopVersion = "2.4";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -246,6 +246,8 @@ namespace ChittamEnterprises
             text = text.TrimStart('﻿');
             text = Regex.Replace(text, "&#(0*[0-8]|0*1[1-2]|0*1[4-9]|0*2[0-9]|0*3[01]);", "");
             text = Regex.Replace(text, "[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
+            // custom (UDF) fields come with a namespace prefix that isn't declared: keep them as plain names
+            text = Regex.Replace(text, "(</?)([A-Za-z]\\w*):(?=[A-Za-z_])", "$1$2_");
             var err = Regex.Match(text, "<LINEERROR>(.*?)</LINEERROR>");
             if (err.Success) throw new Exception("Tally: " + WebUtility.HtmlDecode(err.Groups[1].Value));
             return text;
@@ -429,11 +431,19 @@ namespace ChittamEnterprises
         // ledgers (debtors), from Tally's Day Book
         public static List<Voucher> Vouchers(string url, string company, DateTime from, DateTime to, ICollection<string> debtorKeys)
         {
-            var xml = Post(url, "<ENVELOPE><HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER><BODY><EXPORTDATA><REQUESTDESC>" +
-                "<REPORTNAME>Day Book</REPORTNAME><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>" +
+            // read straight from the vouchers, filtered by date: the Day Book report
+            // follows whatever period / view is open on Tally's screen, so it can come back empty
+            string f = from.ToString("d-MMM-yyyy", CultureInfo.InvariantCulture), t = to.ToString("d-MMM-yyyy", CultureInfo.InvariantCulture);
+            var xml = Post(url, "<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>ChittamVouchers</ID></HEADER>" +
+                "<BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>" +
                 "<SVCURRENTCOMPANY>" + System.Security.SecurityElement.Escape(company) + "</SVCURRENTCOMPANY>" +
-                "<SVFROMDATE>" + from.ToString("yyyyMMdd") + "</SVFROMDATE><SVTODATE>" + to.ToString("yyyyMMdd") + "</SVTODATE>" +
-                "</STATICVARIABLES></REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>");
+                "<SVFROMDATE>" + from.ToString("yyyyMMdd") + "</SVFROMDATE><SVTODATE>" + to.ToString("yyyyMMdd") + "</SVTODATE></STATICVARIABLES>" +
+                "<TDL><TDLMESSAGE><COLLECTION NAME=\"ChittamVouchers\" ISMODIFY=\"No\"><TYPE>Voucher</TYPE>" +
+                "<FETCH>Date, VoucherTypeName, VoucherNumber, PartyLedgerName, Narration, GUID, MasterID, IsCancelled, IsOptional, " +
+                "AllLedgerEntries.LedgerName, AllLedgerEntries.Amount, LedgerEntries.LedgerName, LedgerEntries.Amount</FETCH>" +
+                "<FILTER>ChittamInRange</FILTER></COLLECTION>" +
+                "<SYSTEM TYPE=\"Formulae\" NAME=\"ChittamInRange\">$Date &gt;= $$Date:\"" + f + "\" AND $Date &lt;= $$Date:\"" + t + "\"</SYSTEM>" +
+                "</TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
             return ParseVouchers(xml, debtorKeys);
         }
 
@@ -451,7 +461,9 @@ namespace ChittamEnterprises
             foreach (XmlNode v in doc.SelectNodes("//VOUCHER"))
             {
                 if (Text(v, "ISCANCELLED") == "Yes" || Text(v, "ISOPTIONAL") == "Yes" || Text(v, "ISDELETED") == "Yes") continue;
-                var entries = v.SelectNodes("ALLLEDGERENTRIES.LIST|LEDGERENTRIES.LIST");
+                // ALLLEDGERENTRIES and LEDGERENTRIES can both list the same lines: use one of them
+                var entries = v.SelectNodes("ALLLEDGERENTRIES.LIST[LEDGERNAME!='']");
+                if (entries.Count == 0) entries = v.SelectNodes("LEDGERENTRIES.LIST[LEDGERNAME!='']");
                 // the customer: the voucher's party if it is a debtor, otherwise
                 // the first debtor ledger in the entries (journals)
                 string party = Text(v, "PARTYLEDGERNAME");
@@ -686,6 +698,18 @@ namespace ChittamEnterprises
                 { "customersAdded", Int(custAdded) }, { "customersUpdated", Int(custUpdated) }, { "productsAdded", Int(prodAdded) }, { "productsUpdated", Int(prodUpdated) } });
         }
 
+        // a tiny "last checked" note, written on every sync even when nothing changed
+        public static void SaveStatus(Settings s, string token, bool ok, string error, List<string> companies)
+        {
+            string now = Now();
+            var fields = new Dictionary<string, object> {
+                { "checkedAt", Str(now) }, { "ok", Bool(ok) }, { "error", Str(error ?? "") }, { "pcVersion", Str(Program.DesktopVersion) },
+                { "companies", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", companies.Select(c => (object)Str(c)).ToArray() } } } } },
+                { "at", Ts(now) }, { "by", Str(s.Email) }
+            };
+            Send("PATCH", BaseUrl(s) + "balances/status", token, new Dictionary<string, object> { { "fields", fields } });
+        }
+
         public static void SaveStock(Settings s, string token, string key, string label, string company, List<StockLine> items)
         {
             string now = Now();
@@ -807,6 +831,7 @@ namespace ChittamEnterprises
         {
             string token = null;
             var allDebtors = new List<Debtor>();
+            var failed = new List<string>();
             var allStock = new List<StockLine>();
             var jobs = new[] {
                 new[] { "business", Settings.BusinessCompany, Settings.BusinessLabel },
@@ -818,7 +843,7 @@ namespace ChittamEnterprises
                 if (string.IsNullOrEmpty(company)) continue;
                 Dictionary<string, double> bal; Dictionary<string, string> names;
                 try { Tally.Balances(Settings.TallyUrl, company, out bal, out names); }
-                catch (Exception ex) { Log("[" + company + "] skipped: " + ex.Message); LastError = ex.Message; continue; }
+                catch (Exception ex) { Log("[" + company + "] skipped: " + ex.Message); LastError = ex.Message; failed.Add(company); continue; }
 
                 // ---- balances ----
                 var sig = string.Join("|", bal.Keys.OrderBy(k => k, StringComparer.Ordinal).Select(k => k + "=" + bal[k].ToString(CultureInfo.InvariantCulture)));
@@ -908,6 +933,16 @@ namespace ChittamEnterprises
                 Settings.Save();
                 Log("[" + company + "] uploaded " + vouchers.Count + " transactions (" + from.ToString("dd MMM") + " – " + to.ToString("dd MMM") + ")");
             }
+
+            // tell the app when Tally was last reached (so phones can warn about old figures)
+            try
+            {
+                if (token == null) token = Firebase.SignIn(Settings);
+                var reached = new List<string>();
+                foreach (var j in jobs) if (!string.IsNullOrEmpty(j[1]) && !failed.Contains(j[1])) reached.Add(j[1]);
+                Firebase.SaveStatus(Settings, token, failed.Count == 0, failed.Count == 0 ? "" : "Tally not reached for: " + string.Join(", ", failed), reached);
+            }
+            catch (Exception ex) { Log("Status note not saved: " + ex.Message); }
 
             if (Settings.SyncMasters && (allDebtors.Count > 0 || allStock.Count > 0))
             {
