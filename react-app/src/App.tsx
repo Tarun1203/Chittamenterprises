@@ -15,6 +15,7 @@ import { ServiceJobs } from "@/pages/ServiceJobs";
 import { History } from "@/pages/History";
 import { Settings } from "@/pages/Settings";
 import { Catalog } from "@/pages/Catalog";
+import { TallyMatch } from "@/pages/TallyMatch";
 
 function Gate() {
   const { user, authReady } = useStore();
@@ -43,6 +44,7 @@ function Gate() {
         <Route path="/stock-return" element={<StockReturn />} />
         <Route path="/service-material" element={<ServiceMaterial />} />
         <Route path="/catalog" element={<Catalog />} />
+        <Route path="/tally" element={<TallyMatch />} />
         <Route path="/history" element={<History />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Dashboard />} />

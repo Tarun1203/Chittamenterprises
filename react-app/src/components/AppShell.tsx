@@ -45,6 +45,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "App",
     items: [
+      { to: "/tally", label: "Tally Match", icon: "star" },
       { to: "/history", label: "History", icon: "clock" },
       { to: "/settings", label: "Settings", icon: "setting" },
     ],

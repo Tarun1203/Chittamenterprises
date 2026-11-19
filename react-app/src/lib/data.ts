@@ -209,3 +209,16 @@ export async function saveBalances(company: "business" | "cash", entry: BalanceS
   await setDoc(doc(db, "balances", company), { ...(stable(entry) as object), at: serverTimestamp(), by: user.email || "" });
   await logEvent("balances-imported", { name: entry.label, file: entry.file, matched: entry.matched, unmatched: entry.unmatched.length });
 }
+
+/* ---------------- Tally transactions (sent by the Windows app) ---------------- */
+// d date (yyyy-mm-dd), t voucher type, n number, p customer ledger, a amount,
+// dr customer debited (sale) / credited (receipt), nar narration, id Tally GUID
+export interface TallyVoucher { d: string; t: string; n: string; p: string; a: number; dr: boolean; nar?: string; id?: string }
+export interface TallyVoucherSet { company: string; label?: string; tallyCompany?: string; from?: string; to?: string; syncedAt?: string; count?: number; vouchers: TallyVoucher[] }
+// read once when the Tally Match page opens (a few hundred KB; not kept live)
+export async function loadTallyVouchers() {
+  const snap = await getDocs(collection(db, "tallyVouchers"));
+  const out: Record<string, TallyVoucherSet> = {};
+  snap.docs.forEach((d) => { out[d.id] = d.data() as TallyVoucherSet; });
+  return out;
+}

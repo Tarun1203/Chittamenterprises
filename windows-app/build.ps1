@@ -18,6 +18,7 @@ $out = Join-Path $dist 'Chittam Enterprises.exe'
 
 & $csc /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$out" `
   "/win32icon:$(Join-Path $PSScriptRoot 'app.ico')" `
+  "/win32manifest:$(Join-Path $PSScriptRoot 'app.manifest')" `
   /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll `
   /r:System.Xml.dll /r:System.Security.dll /r:System.Web.Extensions.dll `
   "/r:$(Join-Path $lib 'Microsoft.Web.WebView2.Core.dll')" `
@@ -28,4 +29,6 @@ if ($LASTEXITCODE -ne 0) { throw "Build failed (exit $LASTEXITCODE)" }
 foreach ($f in 'Microsoft.Web.WebView2.Core.dll', 'Microsoft.Web.WebView2.WinForms.dll', 'WebView2Loader.dll') {
   Copy-Item (Join-Path $lib $f) $dist -Force
 }
+# Windows Forms settings (sharp text at any display scaling)
+Copy-Item (Join-Path $PSScriptRoot 'app.config') "$out.config" -Force
 Write-Host "Built: $out"

@@ -1,17 +1,22 @@
-// Chittam Enterprises - Windows app.
+// Chittam Enterprises - Windows app (2.0).
 //
-// The whole Chittam app (orders, service jobs, messages, payments, history…)
-// in its own window, like the Android app, using Microsoft's WebView2 (the
-// Edge engine built into Windows). Sign-in and offline data are kept between
-// runs. WhatsApp and other outside links open in the normal browser / app.
+// The Chittam app in its own window, using Microsoft's WebView2 (the Edge
+// engine built into Windows). Sign-in and offline data are kept between runs.
+// WhatsApp and other outside links open in the normal browser / app.
 //
-// Tally sync is built in: it reads each company's Sundry Debtors closing
-// balances from Tally (http://localhost:9000) and saves them to the app's
-// Firebase database, so Payment Updated / Payment Reminder / Balance
-// Confirmation fill balances in on every phone. Business company -> business
-// balance, cash company -> cash balance. Uploads only when balances changed;
-// each upload is written to the app's History. Closing the window keeps the
-// sync running in the tray (near the clock).
+// Sharp at any display scaling: the app tells Windows it handles 125% / 150%
+// itself (app.manifest + the call in Main). Without that Windows stretched
+// the window, which made the page blurry and showed a second mouse cursor.
+//
+// Tally sync is built in and keeps running in the tray (near the clock):
+//  - balances: each company's Sundry Debtors closing balances, so Payment
+//    Updated / Payment Reminder / Balance Confirmation fill them in;
+//  - transactions: the last N days of vouchers that involve a customer
+//    (receipts, sales, credit notes, journals), so the app's Tally Match page
+//    can match payments with Tally and point out possible duplicates.
+// Each is uploaded only when it changed, and each upload is written to the
+// app's History. The app page talks to this window (status, Sync now, Sync
+// settings) through WebView2's message channel.
 //
 // Settings live in %APPDATA%\ChittamEnterprises\settings.json; the sync
 // password is encrypted with Windows DPAPI for the current Windows user.
@@ -23,14 +28,16 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 using System.Xml;
@@ -38,16 +45,26 @@ using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Win32;
 
+[assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8")]
+
 namespace ChittamEnterprises
 {
     static class Program
     {
-        public const string AppUrl = "https://tarun1203.github.io/Chittamenterprises/";
-        public const string DesktopVersion = "1.0";
+        public const string AppUrl = "https://tarun1203.github.io/Chittamenterprises/next/";
+        public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
+        public const string DesktopVersion = "2.0";
+
+        [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+        [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
 
         [STAThread]
         static void Main(string[] args)
         {
+            // per-monitor DPI awareness (the manifest says the same; this covers
+            // a copy started without it)
+            try { if (!SetProcessDpiAwarenessContext(new IntPtr(-4))) SetProcessDPIAware(); } catch { try { SetProcessDPIAware(); } catch { } }
+
             bool created;
             using (var mutex = new Mutex(true, "ChittamEnterprises_SingleInstance", out created))
             {
@@ -80,6 +97,24 @@ namespace ChittamEnterprises
         }
     }
 
+    // Windows 11 title bar colour / rounded corners
+    static class Dwm
+    {
+        [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+        static int Rgb(Color c) { return c.R | (c.G << 8) | (c.B << 16); }
+        public static void Style(IntPtr hwnd, Color caption, Color text)
+        {
+            try
+            {
+                int v = Rgb(caption); DwmSetWindowAttribute(hwnd, 35, ref v, 4);   // caption colour
+                v = Rgb(text); DwmSetWindowAttribute(hwnd, 36, ref v, 4);          // caption text
+                v = Rgb(caption); DwmSetWindowAttribute(hwnd, 34, ref v, 4);       // border
+                v = 2; DwmSetWindowAttribute(hwnd, 33, ref v, 4);                  // round corners
+            }
+            catch { }
+        }
+    }
+
     // ------------------------------------------------------------------ settings
     class Settings
     {
@@ -90,6 +125,8 @@ namespace ChittamEnterprises
         public string CashCompany = "Cash";
         public string CashLabel = "Cash Bill";
         public int IntervalMinutes = 30;
+        public bool SyncVouchers = true;
+        public int VoucherDays = 90;
         public string TallyUrl = "http://localhost:9000";
         public string ProjectId = "chittam-enterprises";
         public string ApiKey = "AIzaSyCEk9hKMJzA05DdB0axSJ4k76-Jl9acmjc";
@@ -138,9 +175,13 @@ namespace ChittamEnterprises
                 {
                     if (File.Exists(path))
                     {
-                        var s = new JavaScriptSerializer().Deserialize<Settings>(File.ReadAllText(path, Encoding.UTF8));
+                        var text = File.ReadAllText(path, Encoding.UTF8);
+                        var s = new JavaScriptSerializer().Deserialize<Settings>(text);
                         if (s.LastHash == null) s.LastHash = new Dictionary<string, string>();
                         if (s.LastStatus == null) s.LastStatus = new Dictionary<string, string>();
+                        // settings saved by version 1.0 have no transaction options: turn them on
+                        if (!text.Contains("\"SyncVouchers\"")) { s.SyncVouchers = true; s.VoucherDays = 90; }
+                        if (s.VoucherDays < 7) s.VoucherDays = 90;
                         return s;
                     }
                 }
@@ -157,6 +198,13 @@ namespace ChittamEnterprises
     }
 
     // ------------------------------------------------------------------ Tally
+    class Voucher
+    {
+        public string Date, Type, Number, Party, Narration, Id;
+        public double Amount;
+        public bool Debit;   // the customer's ledger was debited (sale) rather than credited (receipt)
+    }
+
     static class Tally
     {
         static string Post(string url, string xml)
@@ -167,16 +215,21 @@ namespace ChittamEnterprises
                 byte[] bytes;
                 try { bytes = wc.UploadData(url, "POST", Encoding.UTF8.GetBytes(xml)); }
                 catch (Exception) { throw new Exception("Tally is not reachable at " + url + " - is Tally open?"); }
-                string text = (bytes.Length >= 2 && ((bytes[0] == 0xFF && bytes[1] == 0xFE) || bytes[1] == 0))
-                    ? Encoding.Unicode.GetString(bytes) : Encoding.UTF8.GetString(bytes);
-                text = text.TrimStart('﻿');
-                // Tally sometimes sends control characters that are not allowed in XML
-                text = Regex.Replace(text, "&#(0*[0-8]|0*1[1-2]|0*1[4-9]|0*2[0-9]|0*3[01]);", "");
-                text = Regex.Replace(text, "[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
-                var err = Regex.Match(text, "<LINEERROR>(.*?)</LINEERROR>");
-                if (err.Success) throw new Exception("Tally: " + WebUtility.HtmlDecode(err.Groups[1].Value));
-                return text;
+                return Clean(bytes);
             }
+        }
+
+        // Tally replies in UTF-16 or UTF-8 and sometimes with characters XML does not allow
+        public static string Clean(byte[] bytes)
+        {
+            string text = (bytes.Length >= 2 && ((bytes[0] == 0xFF && bytes[1] == 0xFE) || bytes[1] == 0))
+                ? Encoding.Unicode.GetString(bytes) : Encoding.UTF8.GetString(bytes);
+            text = text.TrimStart('﻿');
+            text = Regex.Replace(text, "&#(0*[0-8]|0*1[1-2]|0*1[4-9]|0*2[0-9]|0*3[01]);", "");
+            text = Regex.Replace(text, "[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
+            var err = Regex.Match(text, "<LINEERROR>(.*?)</LINEERROR>");
+            if (err.Success) throw new Exception("Tally: " + WebUtility.HtmlDecode(err.Groups[1].Value));
+            return text;
         }
 
         public static List<string> Companies(string url)
@@ -199,13 +252,13 @@ namespace ChittamEnterprises
         {
             if (string.IsNullOrEmpty(s)) return 0;
             var m = Regex.Match(s.Replace(",", ""), "-?\\d+(\\.\\d+)?");
-            return m.Success ? double.Parse(m.Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
+            return m.Success ? double.Parse(m.Value, CultureInfo.InvariantCulture) : 0;
         }
 
         // same rule as the app's normalizeName(): trim, lower case, single spaces
         public static string Normalize(string s)
         {
-            return Regex.Replace(s.Trim().ToLowerInvariant(), "\\s+", " ");
+            return Regex.Replace((s ?? "").Trim().ToLowerInvariant(), "\\s+", " ");
         }
 
         // normalized name -> receivable, plus normalized name -> name as in Tally
@@ -216,6 +269,11 @@ namespace ChittamEnterprises
                 "<SVCURRENTCOMPANY>" + System.Security.SecurityElement.Escape(company) + "</SVCURRENTCOMPANY>" +
                 "<GROUPNAME>Sundry Debtors</GROUPNAME><EXPLODEFLAG>Yes</EXPLODEFLAG>" +
                 "</STATICVARIABLES></REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>");
+            ParseBalances(xml, out balances, out names);
+        }
+
+        public static void ParseBalances(string xml, out Dictionary<string, double> balances, out Dictionary<string, string> names)
+        {
             var doc = new XmlDocument();
             doc.LoadXml(xml);
             balances = new Dictionary<string, double>();
@@ -237,6 +295,67 @@ namespace ChittamEnterprises
                 balances[k] = amount;
                 names[k] = name;
             }
+        }
+
+        // vouchers between two dates that involve one of the given customer
+        // ledgers (debtors), from Tally's Day Book
+        public static List<Voucher> Vouchers(string url, string company, DateTime from, DateTime to, ICollection<string> debtorKeys)
+        {
+            var xml = Post(url, "<ENVELOPE><HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER><BODY><EXPORTDATA><REQUESTDESC>" +
+                "<REPORTNAME>Day Book</REPORTNAME><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>" +
+                "<SVCURRENTCOMPANY>" + System.Security.SecurityElement.Escape(company) + "</SVCURRENTCOMPANY>" +
+                "<SVFROMDATE>" + from.ToString("yyyyMMdd") + "</SVFROMDATE><SVTODATE>" + to.ToString("yyyyMMdd") + "</SVTODATE>" +
+                "</STATICVARIABLES></REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>");
+            return ParseVouchers(xml, debtorKeys);
+        }
+
+        static string Text(XmlNode v, string tag)
+        {
+            var n = v.SelectSingleNode(tag);
+            return n == null ? "" : n.InnerText.Trim();
+        }
+
+        public static List<Voucher> ParseVouchers(string xml, ICollection<string> debtorKeys)
+        {
+            var doc = new XmlDocument();
+            doc.LoadXml(xml);
+            var list = new List<Voucher>();
+            foreach (XmlNode v in doc.SelectNodes("//VOUCHER"))
+            {
+                if (Text(v, "ISCANCELLED") == "Yes" || Text(v, "ISOPTIONAL") == "Yes" || Text(v, "ISDELETED") == "Yes") continue;
+                var entries = v.SelectNodes("ALLLEDGERENTRIES.LIST|LEDGERENTRIES.LIST");
+                // the customer: the voucher's party if it is a debtor, otherwise
+                // the first debtor ledger in the entries (journals)
+                string party = Text(v, "PARTYLEDGERNAME");
+                if (party.Length == 0 || !debtorKeys.Contains(Normalize(party)))
+                {
+                    party = "";
+                    foreach (XmlNode e in entries)
+                    {
+                        var ln = Text(e, "LEDGERNAME");
+                        if (debtorKeys.Contains(Normalize(ln))) { party = ln; break; }
+                    }
+                }
+                if (party.Length == 0) continue;
+                double amount = 0;
+                foreach (XmlNode e in entries)
+                    if (Normalize(Text(e, "LEDGERNAME")) == Normalize(party)) amount += Num(Text(e, "AMOUNT"));
+                if (amount == 0) continue;
+                var vtype = Text(v, "VOUCHERTYPENAME");
+                if (vtype.Length == 0 && v.Attributes["VCHTYPE"] != null) vtype = v.Attributes["VCHTYPE"].Value;
+                var date = Text(v, "DATE");
+                if (date.Length != 8) continue;
+                var nar = Text(v, "NARRATION");
+                list.Add(new Voucher {
+                    Date = date.Substring(0, 4) + "-" + date.Substring(4, 2) + "-" + date.Substring(6, 2),
+                    Type = vtype, Number = Text(v, "VOUCHERNUMBER"), Party = party,
+                    Narration = nar.Length > 80 ? nar.Substring(0, 80) : nar,
+                    Id = Text(v, "GUID").Length > 0 ? Text(v, "GUID") : Text(v, "MASTERID"),
+                    // Tally shows debit as negative
+                    Amount = Math.Round(Math.Abs(amount), 2), Debit = amount < 0
+                });
+            }
+            return list;
         }
     }
 
@@ -287,18 +406,31 @@ namespace ChittamEnterprises
 
         static Dictionary<string, object> Str(string v) { return new Dictionary<string, object> { { "stringValue", v ?? "" } }; }
         static Dictionary<string, object> Int(int v) { return new Dictionary<string, object> { { "integerValue", v.ToString() } }; }
+        static Dictionary<string, object> Dbl(double v) { return new Dictionary<string, object> { { "doubleValue", v } }; }
+        static Dictionary<string, object> Bool(bool v) { return new Dictionary<string, object> { { "booleanValue", v } }; }
         static Dictionary<string, object> Ts(string iso) { return new Dictionary<string, object> { { "timestampValue", iso } }; }
         static Dictionary<string, object> Map(Dictionary<string, object> fields)
         {
             return new Dictionary<string, object> { { "mapValue", new Dictionary<string, object> { { "fields", fields } } } };
         }
+        static string BaseUrl(Settings s) { return "https://firestore.googleapis.com/v1/projects/" + s.ProjectId + "/databases/(default)/documents/"; }
+        static string Now() { return DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"); }
+
+        static void Log(Settings s, string token, string action, string label, Dictionary<string, object> details)
+        {
+            var log = new Dictionary<string, object> {
+                { "collection", Str("app") }, { "action", Str(action) }, { "name", Str(label) },
+                { "details", Map(details) }, { "at", Ts(Now()) }, { "by", Str(s.Email) }
+            };
+            Send("POST", BaseUrl(s) + "activity", token, new Dictionary<string, object> { { "fields", log } });
+        }
 
         public static void SaveBalances(Settings s, string token, string key, string label, string company,
             Dictionary<string, double> balances, Dictionary<string, string> names)
         {
-            string now = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            string now = Now();
             var bal = new Dictionary<string, object>();
-            foreach (var kv in balances) bal[kv.Key] = new Dictionary<string, object> { { "doubleValue", kv.Value } };
+            foreach (var kv in balances) bal[kv.Key] = Dbl(kv.Value);
             var nm = new Dictionary<string, object>();
             foreach (var kv in names) nm[kv.Key] = Str(kv.Value);
 
@@ -308,16 +440,28 @@ namespace ChittamEnterprises
                 { "unmatched", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", new object[0] } } } } },
                 { "balances", Map(bal) }, { "names", Map(nm) }, { "at", Ts(now) }, { "by", Str(s.Email) }
             };
-            string baseUrl = "https://firestore.googleapis.com/v1/projects/" + s.ProjectId + "/databases/(default)/documents/";
-            Send("PATCH", baseUrl + "balances/" + key, token, new Dictionary<string, object> { { "fields", fields } });
+            Send("PATCH", BaseUrl(s) + "balances/" + key, token, new Dictionary<string, object> { { "fields", fields } });
+            Log(s, token, "balances-synced", label, new Dictionary<string, object> { { "name", Str(label) }, { "company", Str(company) }, { "names", Int(balances.Count) } });
+        }
 
-            // one line in the app's History for each upload
-            var log = new Dictionary<string, object> {
-                { "collection", Str("app") }, { "action", Str("balances-synced") }, { "name", Str(label) },
-                { "details", Map(new Dictionary<string, object> { { "name", Str(label) }, { "company", Str(company) }, { "names", Int(balances.Count) } }) },
+        public static void SaveVouchers(Settings s, string token, string key, string label, string company, DateTime from, DateTime to, List<Voucher> vouchers)
+        {
+            string now = Now();
+            var values = vouchers.Select(v => (object)Map(new Dictionary<string, object> {
+                { "d", Str(v.Date) }, { "t", Str(v.Type) }, { "n", Str(v.Number) }, { "p", Str(v.Party) },
+                { "a", Dbl(v.Amount) }, { "dr", Bool(v.Debit) }, { "nar", Str(v.Narration) }, { "id", Str(v.Id) }
+            })).ToArray();
+            var fields = new Dictionary<string, object> {
+                { "company", Str(key) }, { "label", Str(label) }, { "tallyCompany", Str(company) },
+                { "from", Str(from.ToString("yyyy-MM-dd")) }, { "to", Str(to.ToString("yyyy-MM-dd")) },
+                { "syncedAt", Str(now) }, { "count", Int(vouchers.Count) },
+                { "vouchers", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", values } } } } },
                 { "at", Ts(now) }, { "by", Str(s.Email) }
             };
-            Send("POST", baseUrl + "activity", token, new Dictionary<string, object> { { "fields", log } });
+            Send("PATCH", BaseUrl(s) + "tallyVouchers/" + key, token, new Dictionary<string, object> { { "fields", fields } });
+            Log(s, token, "tally-vouchers-synced", label, new Dictionary<string, object> {
+                { "name", Str(label) }, { "company", Str(company) }, { "count", Int(vouchers.Count) },
+                { "from", Str(from.ToString("yyyy-MM-dd")) }, { "to", Str(to.ToString("yyyy-MM-dd")) } });
         }
     }
 
@@ -329,8 +473,14 @@ namespace ChittamEnterprises
         public event Action Changed;
         public bool Busy { get; private set; }
         public DateTime NextSync = DateTime.Now.AddSeconds(15);
+        public string LastError = "";
+        readonly List<string> recent = new List<string>();
 
-        public SyncEngine(Settings s) { Settings = s; }
+        public SyncEngine(Settings s)
+        {
+            Settings = s;
+            try { if (File.Exists(LogPath)) { var lines = File.ReadAllLines(LogPath); recent.AddRange(lines.Skip(Math.Max(0, lines.Length - 60))); } } catch { }
+        }
 
         public void Log(string msg)
         {
@@ -343,16 +493,18 @@ namespace ChittamEnterprises
                 File.AppendAllText(path, line + Environment.NewLine, Encoding.UTF8);
             }
             catch { }
+            lock (recent) { recent.Add(line); if (recent.Count > 60) recent.RemoveAt(0); }
             var h = Logged; if (h != null) h(line);
         }
 
+        public List<string> RecentLog() { lock (recent) return recent.ToList(); }
+
         public static string LogPath { get { return Path.Combine(Settings.Folder, "sync.log"); } }
 
-        public string StatusText(string key)
+        public string LastText(string key)
         {
             string v;
-            string label = key == "business" ? Settings.BusinessLabel : Settings.CashLabel;
-            return label + ": " + (Settings.LastStatus.TryGetValue(key, out v) ? "last uploaded " + v : "not uploaded yet");
+            return Settings.LastStatus.TryGetValue(key, out v) ? v : "";
         }
 
         // runs on a worker thread; Changed fires when done
@@ -362,8 +514,8 @@ namespace ChittamEnterprises
             Busy = true;
             var h0 = Changed; if (h0 != null) h0();
             ThreadPool.QueueUserWorkItem(delegate {
-                try { Run(force); }
-                catch (Exception ex) { Log("ERROR: " + ex.Message); }
+                try { LastError = ""; Run(force); }
+                catch (Exception ex) { LastError = ex.Message; Log("ERROR: " + ex.Message); }
                 finally
                 {
                     Busy = false;
@@ -371,6 +523,11 @@ namespace ChittamEnterprises
                     var h = Changed; if (h != null) h();
                 }
             });
+        }
+
+        static string Hash(string text)
+        {
+            using (var sha = SHA256.Create()) return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(text))).Replace("-", "");
         }
 
         void Run(bool force)
@@ -386,36 +543,143 @@ namespace ChittamEnterprises
                 if (string.IsNullOrEmpty(company)) continue;
                 Dictionary<string, double> bal; Dictionary<string, string> names;
                 try { Tally.Balances(Settings.TallyUrl, company, out bal, out names); }
-                catch (Exception ex) { Log("[" + company + "] skipped: " + ex.Message); continue; }
+                catch (Exception ex) { Log("[" + company + "] skipped: " + ex.Message); LastError = ex.Message; continue; }
 
-                var sig = string.Join("|", bal.Keys.OrderBy(k => k, StringComparer.Ordinal).Select(k => k + "=" + bal[k].ToString(System.Globalization.CultureInfo.InvariantCulture)));
-                string hash;
-                using (var sha = SHA256.Create()) hash = BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(sig))).Replace("-", "");
-                string last;
-                if (!force && Settings.LastHash.TryGetValue(key, out last) && last == hash)
+                // ---- balances ----
+                var sig = string.Join("|", bal.Keys.OrderBy(k => k, StringComparer.Ordinal).Select(k => k + "=" + bal[k].ToString(CultureInfo.InvariantCulture)));
+                string hash = Hash(sig), last;
+                if (!force && Settings.LastHash.TryGetValue(key, out last) && last == hash) Log("[" + company + "] balances: no change");
+                else
                 {
-                    Log("[" + company + "] no change");
-                    continue;
+                    if (token == null) token = Firebase.SignIn(Settings);
+                    Firebase.SaveBalances(Settings, token, key, label, company, bal, names);
+                    Settings.LastHash[key] = hash;
+                    Settings.LastStatus[key] = DateTime.Now.ToString("dd MMM yyyy, h:mm tt") + " · " + bal.Count + " names";
+                    Settings.Save();
+                    Log("[" + company + "] uploaded " + bal.Count + " balances");
                 }
+
+                // ---- transactions ----
+                if (!Settings.SyncVouchers) continue;
+                var to = DateTime.Today;
+                var from = to.AddDays(-Math.Max(7, Math.Min(366, Settings.VoucherDays)));
+                List<Voucher> vouchers;
+                try { vouchers = Tally.Vouchers(Settings.TallyUrl, company, from, to, new HashSet<string>(bal.Keys)); }
+                catch (Exception ex) { Log("[" + company + "] transactions skipped: " + ex.Message); continue; }
+                // newest first; keep the upload well inside Firestore's 1 MB limit
+                vouchers = vouchers.OrderByDescending(v => v.Date).Take(3000).ToList();
+                var vsig = string.Join("\n", vouchers.Select(v => v.Date + "|" + v.Type + "|" + v.Number + "|" + v.Party + "|" +
+                    v.Amount.ToString(CultureInfo.InvariantCulture) + "|" + v.Debit + "|" + v.Id + "|" + v.Narration));
+                string vhash = Hash(from.ToString("yyyyMMdd") + vsig), vkey = "v-" + key, vlast;
+                if (!force && Settings.LastHash.TryGetValue(vkey, out vlast) && vlast == vhash) { Log("[" + company + "] transactions: no change"); continue; }
                 if (token == null) token = Firebase.SignIn(Settings);
-                Firebase.SaveBalances(Settings, token, key, label, company, bal, names);
-                Settings.LastHash[key] = hash;
-                Settings.LastStatus[key] = DateTime.Now.ToString("dd MMM yyyy, h:mm tt") + " · " + bal.Count + " names";
+                Firebase.SaveVouchers(Settings, token, key, label, company, from, to, vouchers);
+                Settings.LastHash[vkey] = vhash;
+                Settings.LastStatus[vkey] = DateTime.Now.ToString("dd MMM yyyy, h:mm tt") + " · " + vouchers.Count + " transactions";
                 Settings.Save();
-                Log("[" + company + "] uploaded " + bal.Count + " balances");
+                Log("[" + company + "] uploaded " + vouchers.Count + " transactions (" + from.ToString("dd MMM") + " – " + to.ToString("dd MMM") + ")");
             }
+        }
+
+        // what the app page shows about the sync
+        public string StatusJson()
+        {
+            var s = Settings;
+            var o = new Dictionary<string, object> {
+                { "type", "tally-status" }, { "desktopVersion", Program.DesktopVersion },
+                { "configured", s.Configured }, { "busy", Busy }, { "error", LastError },
+                { "nextSync", NextSync.ToString("h:mm tt") }, { "intervalMinutes", s.IntervalMinutes },
+                { "syncVouchers", s.SyncVouchers }, { "voucherDays", s.VoucherDays },
+                { "companies", new object[] {
+                    new Dictionary<string, object> { { "key", "business" }, { "company", s.BusinessCompany }, { "label", s.BusinessLabel }, { "balances", LastText("business") }, { "vouchers", LastText("v-business") } },
+                    new Dictionary<string, object> { { "key", "cash" }, { "company", s.CashCompany }, { "label", s.CashLabel }, { "balances", LastText("cash") }, { "vouchers", LastText("v-cash") } }
+                } },
+                { "log", RecentLog().Skip(Math.Max(0, RecentLog().Count - 30)).ToArray() }
+            };
+            return new JavaScriptSerializer().Serialize(o);
         }
     }
 
-    // ------------------------------------------------------------------ sync settings window
+    // ------------------------------------------------------------------ look
+    static class Look
+    {
+        public static readonly Color Brand = Color.FromArgb(36, 99, 235);
+        public static readonly Color BrandDark = Color.FromArgb(29, 79, 209);
+        public static readonly Color Page = Color.FromArgb(245, 245, 247);
+        public static readonly Color Ink = Color.FromArgb(23, 23, 23);
+        public static readonly Color Soft = Color.FromArgb(115, 115, 115);
+        public static readonly Color Line = Color.FromArgb(229, 229, 229);
+        public static readonly Color Good = Color.FromArgb(5, 150, 105);
+
+        public static Font UI(float size, FontStyle style = FontStyle.Regular)
+        {
+            foreach (var name in new[] { "Segoe UI Variable Text", "Segoe UI" })
+            {
+                var f = new Font(name, size, style);
+                if (f.Name == name) return f;
+            }
+            return new Font(FontFamily.GenericSansSerif, size, style);
+        }
+
+        public static Button Primary(string text)
+        {
+            var b = new Button { Text = text, FlatStyle = FlatStyle.Flat, BackColor = Brand, ForeColor = Color.White, Font = UI(9.75f, FontStyle.Bold), Cursor = Cursors.Hand, Height = 36 };
+            b.FlatAppearance.BorderSize = 0;
+            b.FlatAppearance.MouseOverBackColor = BrandDark;
+            return b;
+        }
+        public static Button Secondary(string text)
+        {
+            var b = new Button { Text = text, FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = Ink, Font = UI(9.75f, FontStyle.Bold), Cursor = Cursors.Hand, Height = 36 };
+            b.FlatAppearance.BorderColor = Line;
+            b.FlatAppearance.MouseOverBackColor = Color.FromArgb(244, 247, 255);
+            return b;
+        }
+
+        // white card with a soft rounded border
+        public static Panel Card(int left, int top, int width, int height, string title)
+        {
+            var p = new Panel { Left = left, Top = top, Width = width, Height = height, BackColor = Page };
+            p.Paint += (s, e) => {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                var r = new Rectangle(0, 0, p.Width - 1, p.Height - 1);
+                using (var path = Rounded(r, 12))
+                using (var fill = new SolidBrush(Color.White))
+                using (var pen = new Pen(Line))
+                { e.Graphics.FillPath(fill, path); e.Graphics.DrawPath(pen, path); }
+            };
+            if (title != null)
+                p.Controls.Add(new Label { Text = title.ToUpperInvariant(), Left = 16, Top = 12, AutoSize = true, Font = UI(8f, FontStyle.Bold), ForeColor = Soft, BackColor = Color.White });
+            return p;
+        }
+
+        public static GraphicsPath Rounded(Rectangle r, int radius)
+        {
+            var d = radius * 2;
+            var path = new GraphicsPath();
+            path.AddArc(r.X, r.Y, d, d, 180, 90);
+            path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+
+        public static Label FieldLabel(string text, int left, int top)
+        {
+            return new Label { Text = text, Left = left, Top = top, AutoSize = true, Font = UI(9f, FontStyle.Bold), ForeColor = Color.FromArgb(82, 82, 82), BackColor = Color.White };
+        }
+    }
+
+    // ------------------------------------------------------------------ Tally Sync window
     class SyncSettingsForm : Form
     {
         readonly SyncEngine sync;
         TextBox txtEmail, txtPassword, txtLog;
         ComboBox cboBusiness, cboCash;
-        NumericUpDown numInterval;
-        CheckBox chkStartup;
-        Label lblBusiness, lblCash, lblNext;
+        NumericUpDown numInterval, numDays;
+        CheckBox chkStartup, chkVouchers;
+        Label lblBusiness, lblCash, lblNext, lblDot;
         Button btnSave, btnSync;
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         const string RunName = "ChittamEnterprises";
@@ -424,77 +688,110 @@ namespace ChittamEnterprises
         {
             this.sync = sync;
             var s = sync.Settings;
+            SuspendLayout();
+            AutoScaleDimensions = new SizeF(96F, 96F);
+            AutoScaleMode = AutoScaleMode.Dpi;
             Text = "Tally Sync — Chittam Enterprises";
             Icon = icon;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false; MinimizeBox = false;
+            FormBorderStyle = FormBorderStyle.FixedSingle;
+            MaximizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(560, 590);
-            Font = new Font("Segoe UI", 9.5f);
+            ClientSize = new Size(900, 600);
+            BackColor = Look.Page;
+            Font = Look.UI(9.75f);
 
-            int y = 12;
-            Controls.Add(new Label { Text = "Sends customer balances from Tally to the app so phones fill them in.", Left = 14, Top = y, Width = 530, Height = 20 });
-            y += 28;
+            // ---- header ----
+            Controls.Add(new Label { Text = "Tally Sync", Left = 24, Top = 18, AutoSize = true, Font = Look.UI(17f, FontStyle.Bold), ForeColor = Look.Ink });
+            Controls.Add(new Label { Text = "Sends customer balances and transactions from Tally to the app, so phones fill balances in and Tally Match can check payments.",
+                Left = 26, Top = 56, Width = 850, Height = 22, ForeColor = Look.Soft });
 
-            var gLogin = new GroupBox { Text = "Sync login (Firebase user for this PC)", Left = 12, Top = y, Width = 536, Height = 92 };
-            gLogin.Controls.Add(new Label { Text = "Email", Left = 12, Top = 27, Width = 80 });
-            txtEmail = new TextBox { Left = 100, Top = 24, Width = 420, Text = s.Email };
-            gLogin.Controls.Add(txtEmail);
-            gLogin.Controls.Add(new Label { Text = "Password", Left = 12, Top = 59, Width = 80 });
-            txtPassword = new TextBox { Left = 100, Top = 56, Width = 420, UseSystemPasswordChar = true, Text = s.Password };
-            gLogin.Controls.Add(txtPassword);
-            Controls.Add(gLogin);
-            y += 100;
+            // ---- left column ----
+            int L = 24, W = 420;
+            var cLogin = Look.Card(L, 92, W, 150, "Sync login (Firebase user for this PC)");
+            cLogin.Controls.Add(Look.FieldLabel("Email", 16, 44));
+            txtEmail = new TextBox { Left = 110, Top = 40, Width = 290, Text = s.Email };
+            cLogin.Controls.Add(txtEmail);
+            cLogin.Controls.Add(Look.FieldLabel("Password", 16, 84));
+            txtPassword = new TextBox { Left = 110, Top = 80, Width = 290, UseSystemPasswordChar = true, Text = s.Password };
+            cLogin.Controls.Add(txtPassword);
+            cLogin.Controls.Add(new Label { Text = "Stored encrypted for your Windows account.", Left = 110, Top = 112, AutoSize = true, ForeColor = Look.Soft, Font = Look.UI(8.5f), BackColor = Color.White });
+            Controls.Add(cLogin);
 
-            var gCo = new GroupBox { Text = "Tally companies", Left = 12, Top = y, Width = 536, Height = 128 };
-            gCo.Controls.Add(new Label { Text = "Business", Left = 12, Top = 27, Width = 80 });
-            cboBusiness = new ComboBox { Left = 100, Top = 24, Width = 300, DropDownStyle = ComboBoxStyle.DropDown, Text = s.BusinessCompany };
-            gCo.Controls.Add(cboBusiness);
-            gCo.Controls.Add(new Label { Text = "→ " + s.BusinessLabel, Left = 406, Top = 27, Width = 125, ForeColor = Color.DimGray });
-            gCo.Controls.Add(new Label { Text = "Cash", Left = 12, Top = 59, Width = 80 });
-            cboCash = new ComboBox { Left = 100, Top = 56, Width = 300, DropDownStyle = ComboBoxStyle.DropDown, Text = s.CashCompany };
-            gCo.Controls.Add(cboCash);
-            gCo.Controls.Add(new Label { Text = "→ " + s.CashLabel, Left = 406, Top = 59, Width = 125, ForeColor = Color.DimGray });
-            var btnLoad = new Button { Text = "Load company names from Tally", Left = 100, Top = 88, Width = 230, Height = 28 };
-            btnLoad.Click += delegate { LoadCompanies(true); };
-            gCo.Controls.Add(btnLoad);
-            Controls.Add(gCo);
-            y += 136;
+            var cCo = Look.Card(L, 254, W, 150, "Tally companies");
+            cCo.Controls.Add(Look.FieldLabel("Business", 16, 44));
+            cboBusiness = new ComboBox { Left = 110, Top = 40, Width = 290, DropDownStyle = ComboBoxStyle.DropDown, Text = s.BusinessCompany };
+            cCo.Controls.Add(cboBusiness);
+            cCo.Controls.Add(Look.FieldLabel("Cash", 16, 84));
+            cboCash = new ComboBox { Left = 110, Top = 80, Width = 290, DropDownStyle = ComboBoxStyle.DropDown, Text = s.CashCompany };
+            cCo.Controls.Add(cboCash);
+            var lnkLoad = new LinkLabel { Text = "Load company names from Tally", Left = 110, Top = 116, AutoSize = true, LinkColor = Look.Brand, BackColor = Color.White };
+            lnkLoad.LinkClicked += delegate { LoadCompanies(true); };
+            cCo.Controls.Add(lnkLoad);
+            Controls.Add(cCo);
 
-            var gSync = new GroupBox { Text = "Sync", Left = 12, Top = y, Width = 536, Height = 62 };
-            gSync.Controls.Add(new Label { Text = "Every", Left = 12, Top = 27, Width = 45 });
-            numInterval = new NumericUpDown { Left = 60, Top = 24, Width = 60, Minimum = 5, Maximum = 240, Value = Math.Max(5, Math.Min(240, s.IntervalMinutes)) };
-            gSync.Controls.Add(numInterval);
-            gSync.Controls.Add(new Label { Text = "minutes", Left = 126, Top = 27, Width = 60 });
-            chkStartup = new CheckBox { Text = "Start with Windows (in the tray)", Left = 220, Top = 25, Width = 260, Checked = IsStartupEnabled() };
-            gSync.Controls.Add(chkStartup);
-            Controls.Add(gSync);
-            y += 70;
+            var cSch = Look.Card(L, 416, W, 120, "Schedule");
+            cSch.Controls.Add(Look.FieldLabel("Every", 16, 44));
+            numInterval = new NumericUpDown { Left = 110, Top = 40, Width = 64, Minimum = 5, Maximum = 240, Value = Math.Max(5, Math.Min(240, s.IntervalMinutes)) };
+            cSch.Controls.Add(numInterval);
+            cSch.Controls.Add(new Label { Text = "minutes", Left = 180, Top = 44, AutoSize = true, BackColor = Color.White });
+            chkStartup = new CheckBox { Text = "Start with Windows", Left = 260, Top = 42, AutoSize = true, Checked = IsStartupEnabled(), BackColor = Color.White };
+            cSch.Controls.Add(chkStartup);
+            chkVouchers = new CheckBox { Text = "Also send transactions of the last", Left = 16, Top = 80, AutoSize = true, Checked = s.SyncVouchers, BackColor = Color.White };
+            cSch.Controls.Add(chkVouchers);
+            numDays = new NumericUpDown { Left = 262, Top = 77, Width = 64, Minimum = 7, Maximum = 366, Value = Math.Max(7, Math.Min(366, s.VoucherDays)) };
+            cSch.Controls.Add(numDays);
+            cSch.Controls.Add(new Label { Text = "days", Left = 332, Top = 81, AutoSize = true, BackColor = Color.White });
+            chkVouchers.CheckedChanged += delegate { numDays.Enabled = chkVouchers.Checked; };
+            numDays.Enabled = chkVouchers.Checked;
+            Controls.Add(cSch);
 
-            btnSave = new Button { Text = "Save", Left = 12, Top = y, Width = 120, Height = 32 };
+            btnSave = Look.Primary("Save");
+            btnSave.SetBounds(L, 548, 130, 36);
             btnSave.Click += delegate { Save(true); };
             Controls.Add(btnSave);
-            btnSync = new Button { Text = "Sync now", Left = 140, Top = y, Width = 120, Height = 32 };
+            var btnClose = Look.Secondary("Close");
+            btnClose.SetBounds(L + 140, 548, 110, 36);
+            btnClose.Click += delegate { Close(); };
+            Controls.Add(btnClose);
+
+            // ---- right column ----
+            int R = 460, RW = 416;
+            var cStatus = Look.Card(R, 92, RW, 150, "Status");
+            lblDot = new Label { Left = 16, Top = 44, Width = 10, Height = 10, BackColor = Look.Good };
+            cStatus.Controls.Add(lblDot);
+            lblNext = new Label { Left = 34, Top = 39, Width = 230, Height = 22, Font = Look.UI(10f, FontStyle.Bold), BackColor = Color.White, ForeColor = Look.Ink };
+            cStatus.Controls.Add(lblNext);
+            btnSync = Look.Primary("Sync now");
+            btnSync.SetBounds(RW - 136, 34, 120, 34);
             btnSync.Click += delegate { if (Save(false)) sync.Start(true); };
-            Controls.Add(btnSync);
-            lblNext = new Label { Left = 272, Top = y + 8, Width = 276, Height = 20, ForeColor = Color.DimGray };
-            Controls.Add(lblNext);
-            y += 42;
+            cStatus.Controls.Add(btnSync);
+            lblBusiness = new Label { Left = 16, Top = 80, Width = RW - 32, Height = 26, BackColor = Color.White, ForeColor = Look.Soft, Font = Look.UI(9f) };
+            cStatus.Controls.Add(lblBusiness);
+            lblCash = new Label { Left = 16, Top = 108, Width = RW - 32, Height = 26, BackColor = Color.White, ForeColor = Look.Soft, Font = Look.UI(9f) };
+            cStatus.Controls.Add(lblCash);
+            Controls.Add(cStatus);
 
-            lblBusiness = new Label { Left = 14, Top = y, Width = 534, Height = 20 };
-            Controls.Add(lblBusiness);
-            lblCash = new Label { Left = 14, Top = y + 22, Width = 534, Height = 20 };
-            Controls.Add(lblCash);
-            y += 50;
+            var cLog = Look.Card(R, 254, RW, 330, "Activity");
+            txtLog = new TextBox { Left = 14, Top = 38, Width = RW - 28, Height = 252, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+                BorderStyle = BorderStyle.None, BackColor = Color.FromArgb(250, 250, 250), Font = new Font("Consolas", 8.75f), ForeColor = Color.FromArgb(64, 64, 64) };
+            txtLog.Text = string.Join(Environment.NewLine, sync.RecentLog()) + Environment.NewLine;
+            cLog.Controls.Add(txtLog);
+            var lnkLog = new LinkLabel { Text = "Open the full log", Left = 14, Top = 300, AutoSize = true, LinkColor = Look.Brand, BackColor = Color.White };
+            lnkLog.LinkClicked += delegate { try { Process.Start("notepad.exe", "\"" + SyncEngine.LogPath + "\""); } catch { } };
+            cLog.Controls.Add(lnkLog);
+            Controls.Add(cLog);
 
-            txtLog = new TextBox { Left = 12, Top = y, Width = 536, Height = ClientSize.Height - y - 12, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = Color.White };
-            try { if (File.Exists(SyncEngine.LogPath)) { var lines = File.ReadAllLines(SyncEngine.LogPath); txtLog.Text = string.Join(Environment.NewLine, lines.Skip(Math.Max(0, lines.Length - 60))) + Environment.NewLine; } } catch { }
-            Controls.Add(txtLog);
-
+            ResumeLayout(false);
             sync.Logged += OnLogged;
             sync.Changed += OnChanged;
             FormClosed += delegate { sync.Logged -= OnLogged; sync.Changed -= OnChanged; };
             Refresh2();
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            Dwm.Style(Handle, Look.Page, Look.Ink);
         }
 
         protected override void OnShown(EventArgs e)
@@ -520,11 +817,17 @@ namespace ChittamEnterprises
 
         void Refresh2()
         {
-            lblBusiness.Text = sync.StatusText("business");
-            lblCash.Text = sync.StatusText("cash");
+            var s = sync.Settings;
+            Func<string, string, string> line = (label, key) => {
+                var b = sync.LastText(key); var v = sync.LastText("v-" + key);
+                return label + ":  " + (b.Length > 0 ? b : "balances not sent yet") + (s.SyncVouchers ? (v.Length > 0 ? "  ·  " + Regex.Replace(v, "^.*· ", "") : "") : "");
+            };
+            lblBusiness.Text = line(s.BusinessLabel, "business");
+            lblCash.Text = line(s.CashLabel, "cash");
             btnSync.Enabled = !sync.Busy;
             btnSync.Text = sync.Busy ? "Syncing…" : "Sync now";
-            lblNext.Text = !sync.Settings.Configured ? "Not set up yet" : sync.Busy ? "Syncing…" : "Next check: " + sync.NextSync.ToString("h:mm tt");
+            lblNext.Text = !s.Configured ? "Not set up yet" : sync.Busy ? "Syncing…" : sync.LastError.Length > 0 ? "Last try failed" : "Next check " + sync.NextSync.ToString("h:mm tt");
+            lblDot.BackColor = !s.Configured || sync.LastError.Length > 0 ? Color.FromArgb(245, 158, 11) : Look.Good;
         }
 
         void LoadCompanies(bool showErrors)
@@ -557,11 +860,14 @@ namespace ChittamEnterprises
             }
             bool loginChanged = s.Email != txtEmail.Text.Trim() || s.Password != txtPassword.Text;
             bool companiesChanged = s.BusinessCompany != cboBusiness.Text.Trim() || s.CashCompany != cboCash.Text.Trim();
+            bool vouchersChanged = s.SyncVouchers != chkVouchers.Checked || s.VoucherDays != (int)numDays.Value;
             s.Email = txtEmail.Text.Trim();
             s.Password = txtPassword.Text;
             s.BusinessCompany = cboBusiness.Text.Trim();
             s.CashCompany = cboCash.Text.Trim();
             s.IntervalMinutes = (int)numInterval.Value;
+            s.SyncVouchers = chkVouchers.Checked;
+            s.VoucherDays = (int)numDays.Value;
             if (companiesChanged) s.LastHash.Clear();   // upload fresh figures for the new companies
             s.Save();
             SetStartup(chkStartup.Checked);
@@ -570,7 +876,7 @@ namespace ChittamEnterprises
             if (announce)
             {
                 sync.Log("Settings saved.");
-                if (loginChanged || companiesChanged) sync.Start(true);
+                if (loginChanged || companiesChanged || (vouchersChanged && s.SyncVouchers)) sync.Start(true);
             }
             return true;
         }
@@ -598,6 +904,8 @@ namespace ChittamEnterprises
     {
         readonly SyncEngine sync;
         WebView2 web;
+        Panel splash;
+        Label splashText;
         NotifyIcon tray;
         ToolStripMenuItem miStatus;
         System.Windows.Forms.Timer timer;
@@ -609,57 +917,59 @@ namespace ChittamEnterprises
         {
             this.startHidden = startHidden;
             sync = new SyncEngine(Settings.Load());
+            SuspendLayout();
+            AutoScaleDimensions = new SizeF(96F, 96F);
+            AutoScaleMode = AutoScaleMode.Dpi;
             Text = "Chittam Enterprises";
             StartPosition = FormStartPosition.CenterScreen;
-            Size = new Size(1320, 860);
-            MinimumSize = new Size(420, 500);
-            Font = new Font("Segoe UI", 9f);
+            Size = new Size(1360, 880);
+            MinimumSize = new Size(420, 520);
+            Font = Look.UI(9f);
             BackColor = Color.FromArgb(250, 250, 250);
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
-            // ---- menu ----
-            var menu = new MenuStrip { BackColor = Color.White, Padding = new Padding(4, 2, 0, 2) };
-            var mApp = new ToolStripMenuItem("App");
-            mApp.DropDownItems.Add(new ToolStripMenuItem("Reload", null, delegate { if (web.CoreWebView2 != null) web.CoreWebView2.Reload(); }) { ShortcutKeys = Keys.F5 });
-            mApp.DropDownItems.Add(new ToolStripMenuItem("Zoom in", null, delegate { web.ZoomFactor = Math.Min(3, web.ZoomFactor + 0.1); }) { ShortcutKeyDisplayString = "Ctrl++" });
-            mApp.DropDownItems.Add(new ToolStripMenuItem("Zoom out", null, delegate { web.ZoomFactor = Math.Max(0.5, web.ZoomFactor - 0.1); }) { ShortcutKeyDisplayString = "Ctrl+-" });
-            mApp.DropDownItems.Add(new ToolStripMenuItem("Actual size", null, delegate { web.ZoomFactor = 1; }) { ShortcutKeyDisplayString = "Ctrl+0" });
-            mApp.DropDownItems.Add(new ToolStripSeparator());
-            mApp.DropDownItems.Add(new ToolStripMenuItem("Open in browser", null, delegate { OpenExternal(Program.AppUrl); }));
-            mApp.DropDownItems.Add(new ToolStripMenuItem("Exit", null, delegate { ExitApp(); }));
-            var mSync = new ToolStripMenuItem("Tally Sync");
-            mSync.DropDownItems.Add(new ToolStripMenuItem("Sync now", null, delegate { if (sync.Settings.Configured) sync.Start(true); else OpenSyncSettings(); }));
-            mSync.DropDownItems.Add(new ToolStripMenuItem("Sync settings…", null, delegate { OpenSyncSettings(); }));
-            miStatus = new ToolStripMenuItem("") { Enabled = false };
-            mSync.DropDownItems.Add(new ToolStripSeparator());
-            mSync.DropDownItems.Add(miStatus);
-            var mHelp = new ToolStripMenuItem("Help");
-            mHelp.DropDownItems.Add(new ToolStripMenuItem("About", null, delegate {
-                MessageBox.Show(this, "Chittam Enterprises for Windows " + Program.DesktopVersion + "\n\nThe app itself updates automatically from:\n" + Program.AppUrl +
-                    "\n\nTally Sync settings and log:\n" + Settings.Folder, "About");
-            }));
-            menu.Items.Add(mApp); menu.Items.Add(mSync); menu.Items.Add(mHelp);
-            MainMenuStrip = menu;
-
-            // ---- the app ----
+            // ---- the app fills the whole window ----
             web = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(250, 250, 250) };
             Controls.Add(web);
-            Controls.Add(menu);
+
+            // ---- loading screen until the page is ready ----
+            splash = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(250, 250, 250) };
+            var badge = new Label { Text = "CE", Width = 64, Height = 64, TextAlign = ContentAlignment.MiddleCenter, Font = Look.UI(18f, FontStyle.Bold), ForeColor = Color.White, BackColor = Look.Brand };
+            var name = new Label { Text = "Chittam Enterprises", AutoSize = true, Font = Look.UI(16f, FontStyle.Bold), ForeColor = Look.Ink };
+            splashText = new Label { Text = "Opening…", AutoSize = true, Font = Look.UI(10f), ForeColor = Look.Soft };
+            splash.Controls.Add(badge); splash.Controls.Add(name); splash.Controls.Add(splashText);
+            splash.Resize += delegate {
+                int cx = splash.Width / 2, cy = splash.Height / 2;
+                badge.Location = new Point(cx - badge.Width / 2, cy - 90);
+                name.Location = new Point(cx - name.Width / 2, cy - 10);
+                splashText.Location = new Point(cx - splashText.Width / 2, cy + 30);
+                using (var path = Look.Rounded(new Rectangle(0, 0, badge.Width, badge.Height), badge.Width / 4)) badge.Region = new Region(path);
+            };
+            Controls.Add(splash);
+            splash.BringToFront();
+            ResumeLayout(false);
 
             // ---- tray ----
             tray = new NotifyIcon { Text = "Chittam Enterprises", Visible = true };
             tray.Icon = Icon ?? SystemIcons.Application;
-            var trayMenu = new ContextMenuStrip();
-            trayMenu.Items.Add("Open Chittam Enterprises", null, delegate { ShowWindow(); });
-            trayMenu.Items.Add("Tally sync now", null, delegate { if (sync.Settings.Configured) sync.Start(true); else { ShowWindow(); OpenSyncSettings(); } });
-            trayMenu.Items.Add("Tally sync settings…", null, delegate { ShowWindow(); OpenSyncSettings(); });
+            var trayMenu = new ContextMenuStrip { Font = Look.UI(9.5f), ShowImageMargin = false };
+            trayMenu.Items.Add(new ToolStripMenuItem("Open Chittam Enterprises", null, delegate { ShowWindow(); }) { Font = Look.UI(9.5f, FontStyle.Bold) });
+            trayMenu.Items.Add(new ToolStripSeparator());
+            trayMenu.Items.Add("Tally sync now", null, delegate { SyncNow(); });
+            trayMenu.Items.Add("Tally Sync settings…", null, delegate { ShowWindow(); OpenSyncSettings(); });
+            miStatus = new ToolStripMenuItem("") { Enabled = false };
+            trayMenu.Items.Add(miStatus);
+            trayMenu.Items.Add(new ToolStripSeparator());
+            trayMenu.Items.Add("Reload app", null, delegate { ShowWindow(); if (web.CoreWebView2 != null) web.CoreWebView2.Reload(); });
+            trayMenu.Items.Add("Open the old version in the browser", null, delegate { OpenExternal(Program.ClassicUrl); });
             trayMenu.Items.Add(new ToolStripSeparator());
             trayMenu.Items.Add("Exit", null, delegate { ExitApp(); });
             tray.ContextMenuStrip = trayMenu;
             tray.DoubleClick += delegate { ShowWindow(); };
 
             // ---- sync timer ----
-            sync.Changed += delegate { if (IsHandleCreated) BeginInvoke((Action)UpdateStatus); };
+            sync.Changed += delegate { if (IsHandleCreated) BeginInvoke((Action)delegate { UpdateStatus(); PostStatus(); }); };
+            sync.Logged += delegate { if (IsHandleCreated) BeginInvoke((Action)PostStatus); };
             timer = new System.Windows.Forms.Timer { Interval = 15000 };
             timer.Tick += delegate {
                 if (!sync.Busy && sync.Settings.Configured && DateTime.Now >= sync.NextSync) sync.Start(false);
@@ -667,7 +977,7 @@ namespace ChittamEnterprises
             };
             timer.Start();
             UpdateStatus();
-            sync.Log("Chittam Enterprises started." + (sync.Settings.Configured ? "" : " Tally sync is not set up yet."));
+            sync.Log("Chittam Enterprises " + Program.DesktopVersion + " started." + (sync.Settings.Configured ? "" : " Tally sync is not set up yet."));
 
             // a second launch brings this window forward
             showSignal = NativeShow.Create();
@@ -677,6 +987,13 @@ namespace ChittamEnterprises
             t.Start();
 
             InitWeb();
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            // title bar in the app's own light grey
+            Dwm.Style(Handle, Color.FromArgb(244, 244, 245), Look.Ink);
         }
 
         async void InitWeb()
@@ -689,9 +1006,20 @@ namespace ChittamEnterprises
                 var core = web.CoreWebView2;
                 core.Settings.IsStatusBarEnabled = false;
                 core.Settings.IsZoomControlEnabled = true;
+                core.Settings.AreDefaultContextMenusEnabled = true;
+                core.Settings.IsGeneralAutofillEnabled = false;
+                core.Settings.IsPasswordAutosaveEnabled = false;
+                // the app page knows it is inside this window
+                await core.AddScriptToExecuteOnDocumentCreatedAsync("window.chittamDesktop = { version: '" + Program.DesktopVersion + "' };");
                 // WhatsApp and other outside links open in the normal browser / WhatsApp app
                 core.NewWindowRequested += (s, e) => { e.Handled = true; OpenExternal(e.Uri); };
                 core.NavigationStarting += (s, e) => { if (!IsAppUrl(e.Uri)) { e.Cancel = true; OpenExternal(e.Uri); } };
+                core.NavigationCompleted += (s, e) => {
+                    if (e.IsSuccess) splash.Visible = false;
+                    else splashText.Text = "Could not open the app. Check the internet connection — retrying…";
+                    if (!e.IsSuccess) RetrySoon();
+                };
+                core.WebMessageReceived += OnWebMessage;
                 core.Navigate(Program.AppUrl);
             }
             catch (Exception ex)
@@ -702,10 +1030,48 @@ namespace ChittamEnterprises
             }
         }
 
+        void RetrySoon()
+        {
+            var t = new System.Windows.Forms.Timer { Interval = 8000 };
+            t.Tick += delegate { t.Stop(); t.Dispose(); if (web.CoreWebView2 != null && splash.Visible) web.CoreWebView2.Navigate(Program.AppUrl); };
+            t.Start();
+        }
+
+        // messages from the app page: status, Sync now, settings, log
+        void OnWebMessage(object sender, CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            if (!e.Source.StartsWith("https://tarun1203.github.io/", StringComparison.OrdinalIgnoreCase) &&
+                !e.Source.StartsWith("http://localhost:", StringComparison.OrdinalIgnoreCase)) return;
+            string type = "";
+            try
+            {
+                var obj = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(e.WebMessageAsJson);
+                object v; if (obj != null && obj.TryGetValue("type", out v) && v != null) type = v.ToString();
+            }
+            catch { return; }
+            switch (type)
+            {
+                case "tally-status": PostStatus(); break;
+                case "tally-sync-now": SyncNow(); break;
+                case "tally-settings": OpenSyncSettings(); break;
+                case "tally-log": try { Process.Start("notepad.exe", "\"" + SyncEngine.LogPath + "\""); } catch { } break;
+            }
+        }
+
+        void PostStatus()
+        {
+            try { if (web.CoreWebView2 != null) web.CoreWebView2.PostWebMessageAsJson(sync.StatusJson()); } catch { }
+        }
+
+        void SyncNow()
+        {
+            if (sync.Settings.Configured) sync.Start(true);
+            else { ShowWindow(); OpenSyncSettings(); }
+        }
+
         static bool IsAppUrl(string uri)
         {
-            return uri.StartsWith(Program.AppUrl, StringComparison.OrdinalIgnoreCase) ||
-                uri.StartsWith("https://tarun1203.github.io/", StringComparison.OrdinalIgnoreCase) ||
+            return uri.StartsWith("https://tarun1203.github.io/", StringComparison.OrdinalIgnoreCase) ||
                 uri.StartsWith("blob:", StringComparison.OrdinalIgnoreCase) ||
                 uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ||
                 uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase);
@@ -721,17 +1087,13 @@ namespace ChittamEnterprises
         {
             var s = sync.Settings;
             string text;
-            if (!s.Configured) text = "Not set up — open Sync settings";
-            else if (sync.Busy) text = "Syncing…";
-            else
-            {
-                string b, c;
-                s.LastStatus.TryGetValue("business", out b);
-                s.LastStatus.TryGetValue("cash", out c);
-                text = "Last: " + (b ?? c ?? "not yet") + " · next " + sync.NextSync.ToString("h:mm tt");
-            }
+            if (!s.Configured) text = "Tally sync not set up";
+            else if (sync.Busy) text = "Syncing with Tally…";
+            else if (sync.LastError.Length > 0) text = "Tally sync: last try failed";
+            else text = "Tally sync · next " + sync.NextSync.ToString("h:mm tt");
             miStatus.Text = text;
-            tray.Text = ("Chittam Enterprises — " + text).Length > 63 ? "Chittam Enterprises" : "Chittam Enterprises — " + text;
+            var tip = "Chittam Enterprises — " + text;
+            tray.Text = tip.Length > 63 ? "Chittam Enterprises" : tip;
         }
 
         void OpenSyncSettings()
@@ -752,7 +1114,7 @@ namespace ChittamEnterprises
         {
             base.OnShown(e);
             if (!sync.Settings.Configured) BeginInvoke((Action)delegate {
-                tray.ShowBalloonTip(5000, "Tally sync not set up", "Open Tally Sync → Sync settings… to send Tally balances to the app.", ToolTipIcon.Info);
+                tray.ShowBalloonTip(5000, "Tally sync not set up", "Right-click the tray icon → Tally Sync settings… to send Tally balances to the app.", ToolTipIcon.Info);
             });
         }
 

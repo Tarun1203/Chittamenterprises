@@ -1,6 +1,6 @@
 // Sample data for local development only (?demo). Never part of the published build.
 import type { User } from "firebase/auth";
-import type { ActivityEntry, MessageEntry, BalanceSet, Customer, Order, Product, Receipt, ServiceJob, Transport } from "./data";
+import type { TallyVoucherSet, ActivityEntry, MessageEntry, BalanceSet, Customer, Order, Product, Receipt, ServiceJob, Transport } from "./data";
 
 export const demoUser = { email: "demo@example.com", uid: "demo" } as unknown as User;
 
@@ -70,3 +70,20 @@ export const demoActivity: ActivityEntry[] = [
   { id: "a3", collection: "customers", action: "create", name: "Kashi SLN", after: { name: "Kashi SLN" }, at: ts(300), by: "demo@example.com" },
   { id: "a4", collection: "app", action: "balances-synced", name: "Chittam Enterprises - 2026", details: { company: "Chittam Enterprises - 2026", names: 412 }, at: ts(60), by: "demo@example.com" },
 ];
+
+// Tally transactions: matches demoReceipts r1 (AB Infinite advance) and r2 (Badrinath), plus
+// one Tally-only receipt, a name that differs, and a duplicate sale
+export const demoTallyVouchers: Record<string, TallyVoucherSet> = {
+  business: { company: "business", label: "Chittam Enterprises", tallyCompany: "Chittam Enterprises - 2026", from: iso(-90), to: iso(0), syncedAt: new Date(Date.now() - 1800e3).toISOString(), count: 6, vouchers: [
+    { d: iso(0), t: "Receipt", n: "45", p: "AB Infinite", a: 2000, dr: false, nar: "Advance against order", id: "v1" },
+    { d: iso(-1), t: "Receipt", n: "44", p: "Badrinath Allundi Raichur", a: 15000, dr: false, nar: "UPI", id: "v2" },
+    { d: iso(-2), t: "Receipt", n: "43", p: "Mallu Mobiles and Electronics - Pothnal", a: 9000, dr: false, nar: "Cheque 004512", id: "v3" },
+    { d: iso(-3), t: "Sales", n: "CE/245", p: "Kashi SLN", a: 12900, dr: true, id: "v4" },
+    { d: iso(-2), t: "Sales", n: "CE/247", p: "Kashi SLN", a: 12900, dr: true, id: "v5" },
+    { d: iso(-6), t: "Sales", n: "CE/240", p: "Deepak", a: 4300, dr: true, id: "v6" },
+  ] },
+  cash: { company: "cash", label: "Cash Bill", tallyCompany: "Cash", from: iso(-90), to: iso(0), syncedAt: new Date(Date.now() - 1800e3).toISOString(), count: 2, vouchers: [
+    { d: iso(-1), t: "Receipt", n: "12", p: "Badrinath Allundi - Raichur", a: 2500, dr: false, id: "c1" },
+    { d: iso(-1), t: "Receipt", n: "13", p: "Kashi SLN", a: 4000, dr: false, id: "c2" },
+  ] },
+};
