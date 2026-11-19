@@ -19,12 +19,20 @@
 //    their mobile), new stock items as products (group + price); a customer
 //    without a mobile gets Tally's; a product's price follows Tally only
 //    when Tally has a selling price for it (its rate is the purchase cost);
+//  - new financial year: when Tally has a newer company of the same name open
+//    ("… - 2027" next to "… - 2026") that already has customer balances,
+//    the sync moves to it by itself;
 //  - transactions: the last N days of vouchers that involve a customer
 //    (receipts, sales, credit notes, journals), so the app's Tally Match page
 //    can match payments with Tally and point out possible duplicates.
 // Each is uploaded only when it changed, and each upload is written to the
 // app's History. The app page talks to this window (status, Sync now, Sync
 // settings) through WebView2's message channel.
+//
+// Updates itself: checks desktop/version.json on the site at start-up and every
+// 6 hours, downloads changed files (SHA-256 checked) into
+// %LOCALAPPDATA%\ChittamEnterprises\update, and installs them when the app next
+// starts or from the tray (Restart to update).
 //
 // Settings live in %APPDATA%\ChittamEnterprises\settings.json; the sync
 // password is encrypted with Windows DPAPI for the current Windows user.
@@ -61,7 +69,9 @@ namespace ChittamEnterprises
     {
         public const string AppUrl = "https://tarun1203.github.io/Chittamenterprises/next/";
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
-        public const string DesktopVersion = "2.4";
+        // where new versions of this program are published (desktop/ folder of the site)
+        public const string UpdateUrl = "https://tarun1203.github.io/Chittamenterprises/desktop/version.json";
+        public const string DesktopVersion = "2.5";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -86,6 +96,8 @@ namespace ChittamEnterprises
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 bool startHidden = args.Any(a => a.Equals("/tray", StringComparison.OrdinalIgnoreCase));
+                // a downloaded update waiting? install it and start the new version instead
+                if (Updater.ApplyIfReady(startHidden)) return;
                 Application.Run(new MainForm(startHidden));
             }
         }
@@ -120,6 +132,95 @@ namespace ChittamEnterprises
                 v = 2; DwmSetWindowAttribute(hwnd, 33, ref v, 4);                  // round corners
             }
             catch { }
+        }
+    }
+
+    // ------------------------------------------------------------------ updates
+    static class Updater
+    {
+        public static string Folder { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ChittamEnterprises", "update"); } }
+        static string ReadyFile { get { return Path.Combine(Folder, "ready.txt"); } }
+        public static string Status = "";   // shown in the tray and in the app
+
+        static bool Newer(string v)
+        {
+            Version a, b;
+            return Version.TryParse(v, out a) && Version.TryParse(Program.DesktopVersion, out b) && a > b;
+        }
+
+        public static string ReadyVersion()
+        {
+            try { if (File.Exists(ReadyFile)) { var v = File.ReadAllText(ReadyFile).Trim(); if (Newer(v)) return v; } } catch { }
+            return null;
+        }
+
+        static string Sha256(string path)
+        {
+            using (var sha = SHA256.Create()) using (var f = File.OpenRead(path))
+                return BitConverter.ToString(sha.ComputeHash(f)).Replace("-", "").ToLowerInvariant();
+        }
+
+        // downloads a newer version's changed files, checks them, and marks them ready
+        public static void Check(Action<string> log)
+        {
+            try
+            {
+                string json;
+                using (var wc = new WebClient()) { wc.Headers[HttpRequestHeader.CacheControl] = "no-cache"; json = wc.DownloadString(Program.UpdateUrl + "?t=" + DateTime.UtcNow.Ticks); }
+                var info = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
+                var version = Convert.ToString(info["version"]);
+                if (!Newer(version)) { Status = ""; return; }
+                if (ReadyVersion() == version) { Status = "Version " + version + " is ready — restart to update"; return; }
+                var appDir = Path.GetDirectoryName(Application.ExecutablePath);
+                var dir = Path.Combine(Folder, version);
+                if (Directory.Exists(dir)) Directory.Delete(dir, true);
+                Directory.CreateDirectory(dir);
+                var baseUrl = Program.UpdateUrl.Substring(0, Program.UpdateUrl.LastIndexOf('/') + 1);
+                int n = 0;
+                foreach (Dictionary<string, object> f in (System.Collections.ArrayList)info["files"])
+                {
+                    var name = Convert.ToString(f["name"]); var sha = Convert.ToString(f["sha256"]).ToLowerInvariant();
+                    if (name.IndexOfAny(new[] { '/', '\\', ':' }) >= 0 || name.Contains("..")) throw new Exception("bad file name in version.json: " + name);
+                    var local = Path.Combine(appDir, name);
+                    if (File.Exists(local) && Sha256(local) == sha) continue;   // unchanged
+                    var target = Path.Combine(dir, name);
+                    using (var wc = new WebClient()) wc.DownloadFile(baseUrl + Uri.EscapeDataString(name) + "?v=" + version, target);
+                    if (Sha256(target) != sha) throw new Exception(name + " did not match its checksum");
+                    n++;
+                }
+                File.WriteAllText(Path.Combine(Folder, "ready.txt"), version);
+                Status = "Version " + version + " is ready — restart to update";
+                log("Update " + version + " downloaded (" + n + " file" + (n == 1 ? "" : "s") + ", checked). It installs when the app restarts.");
+            }
+            catch (Exception ex) { log("Update check: " + ex.Message); }
+        }
+
+        // copies the waiting files over this program once it has closed, then starts it again
+        public static bool ApplyIfReady(bool startHidden)
+        {
+            var v = ReadyVersion();
+            if (v == null) return false;
+            try
+            {
+                var dir = Path.Combine(Folder, v);
+                if (!Directory.Exists(dir)) { File.Delete(ReadyFile); return false; }
+                var exe = Application.ExecutablePath;
+                var appDir = Path.GetDirectoryName(exe);
+                var script = Path.Combine(Folder, "install.ps1");
+                Func<string, string> q = x => "'" + x.Replace("'", "''") + "'";
+                File.WriteAllText(script,
+                    "$ErrorActionPreference = 'SilentlyContinue'\r\n" +
+                    "Wait-Process -Id " + Process.GetCurrentProcess().Id + " -Timeout 30\r\n" +
+                    "Start-Sleep -Milliseconds 700\r\n" +
+                    "Copy-Item -Path (Join-Path " + q(dir) + " '*') -Destination " + q(appDir) + " -Force\r\n" +
+                    "Remove-Item -LiteralPath " + q(Path.Combine(Folder, "ready.txt")) + " -Force\r\n" +
+                    "Remove-Item -LiteralPath " + q(dir) + " -Recurse -Force\r\n" +
+                    "Start-Process -FilePath " + q(exe) + (startHidden ? " -ArgumentList '/tray'" : "") + "\r\n", Encoding.UTF8);
+                Process.Start(new ProcessStartInfo("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\"")
+                    { CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden, UseShellExecute = false });
+                return true;
+            }
+            catch { return false; }
         }
     }
 
@@ -699,6 +800,11 @@ namespace ChittamEnterprises
         }
 
         // a tiny "last checked" note, written on every sync even when nothing changed
+        public static void LogCompanySwitch(Settings s, string token, string label, string from, string to)
+        {
+            Log(s, token, "tally-company-switched", label, new Dictionary<string, object> { { "name", Str(label) }, { "from", Str(from) }, { "to", Str(to) } });
+        }
+
         public static void SaveStatus(Settings s, string token, bool ok, string error, List<string> companies)
         {
             string now = Now();
@@ -827,9 +933,56 @@ namespace ChittamEnterprises
             using (var sha = SHA256.Create()) return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(text))).Replace("-", "");
         }
 
+        public event Action<string> CompanySwitched;
+
+        // "Chittam Enterprises - 2026" -> a newer "Chittam Enterprises - 2027" open in Tally
+        // that already has customer balances (so it's really in use)
+        string NewerYearCompany(string current, List<string> open)
+        {
+            var m = Regex.Match(current ?? "", "^(.*\\S)\\s*-\\s*(\\d{4})$");
+            if (!m.Success) return null;
+            string baseName = m.Groups[1].Value; int year = int.Parse(m.Groups[2].Value);
+            var newer = open.Select(n => Regex.Match(n, "^(.*\\S)\\s*-\\s*(\\d{4})$"))
+                .Where(x => x.Success && string.Equals(x.Groups[1].Value, baseName, StringComparison.OrdinalIgnoreCase) && int.Parse(x.Groups[2].Value) > year)
+                .OrderByDescending(x => int.Parse(x.Groups[2].Value)).Select(x => x.Value).FirstOrDefault();
+            if (newer == null) return null;
+            try
+            {
+                Dictionary<string, double> bal; Dictionary<string, string> names;
+                Tally.Balances(Settings.TallyUrl, newer, out bal, out names);
+                return bal.Count > 0 ? newer : null;
+            }
+            catch { return null; }
+        }
+
+        void SwitchYearIfNeeded(ref string token)
+        {
+            List<string> open;
+            try { open = Tally.Companies(Settings.TallyUrl); } catch { return; }
+            foreach (var key in new[] { "business", "cash" })
+            {
+                var current = key == "business" ? Settings.BusinessCompany : Settings.CashCompany;
+                var newer = NewerYearCompany(current, open);
+                if (newer == null) continue;
+                if (key == "business") Settings.BusinessCompany = newer; else Settings.CashCompany = newer;
+                foreach (var k in Settings.LastHash.Keys.Where(k => k == key || k.EndsWith("-" + key)).ToList()) Settings.LastHash.Remove(k);
+                Settings.Save();
+                var msg = "New financial year: syncing " + newer + " instead of " + current + ".";
+                Log(msg);
+                try
+                {
+                    if (token == null) token = Firebase.SignIn(Settings);
+                    Firebase.LogCompanySwitch(Settings, token, key == "business" ? Settings.BusinessLabel : Settings.CashLabel, current, newer);
+                }
+                catch { }
+                var h = CompanySwitched; if (h != null) h(msg);
+            }
+        }
+
         void Run(bool force)
         {
             string token = null;
+            SwitchYearIfNeeded(ref token);
             var allDebtors = new List<Debtor>();
             var failed = new List<string>();
             var allStock = new List<StockLine>();
@@ -1094,6 +1247,7 @@ namespace ChittamEnterprises
                     new Dictionary<string, object> { { "key", "business" }, { "company", s.BusinessCompany }, { "label", s.BusinessLabel }, { "balances", LastText("business") }, { "vouchers", LastText("v-business") }, { "stock", LastText("s-business") }, { "bills", LastText("b-business") } },
                     new Dictionary<string, object> { { "key", "cash" }, { "company", s.CashCompany }, { "label", s.CashLabel }, { "balances", LastText("cash") }, { "vouchers", LastText("v-cash") }, { "stock", LastText("s-cash") }, { "bills", LastText("b-cash") } }
                 } },
+                { "update", Updater.Status },
                 { "log", RecentLog().Skip(Math.Max(0, RecentLog().Count - 30)).ToArray() }
             };
             return new JavaScriptSerializer().Serialize(o);
@@ -1422,6 +1576,30 @@ namespace ChittamEnterprises
         EventWaitHandle showSignal;
         bool reallyExit, startHidden, toldAboutTray;
         SyncSettingsForm settingsForm;
+        ToolStripMenuItem miUpdate;
+        DateTime nextUpdateCheck = DateTime.Now.AddMinutes(1);
+
+        void CheckForUpdate()
+        {
+            ThreadPool.QueueUserWorkItem(delegate {
+                var before = Updater.ReadyVersion();
+                Updater.Check(line => sync.Log(line));
+                var ready = Updater.ReadyVersion();
+                if (IsHandleCreated) BeginInvoke((Action)delegate {
+                    miUpdate.Visible = ready != null;
+                    if (ready != null) miUpdate.Text = "Restart to update to " + ready;
+                    if (ready != null && ready != before)
+                        tray.ShowBalloonTip(8000, "Update ready", "Chittam Enterprises " + ready + " is downloaded. It installs when the app restarts — or right-click the tray icon → Restart to update.", ToolTipIcon.Info);
+                    PostStatus();
+                });
+            });
+        }
+
+        void RestartToUpdate()
+        {
+            if (Updater.ApplyIfReady(!Visible)) ExitApp();
+            else MessageBox.Show(this, "The update isn't ready yet. Try again in a minute.", "Chittam Enterprises");
+        }
 
         public MainForm(bool startHidden)
         {
@@ -1470,6 +1648,8 @@ namespace ChittamEnterprises
             miStatus = new ToolStripMenuItem("") { Enabled = false };
             trayMenu.Items.Add(miStatus);
             trayMenu.Items.Add(new ToolStripSeparator());
+            miUpdate = new ToolStripMenuItem("Restart to update", null, delegate { RestartToUpdate(); }) { Visible = false, Font = Look.UI(9.5f, FontStyle.Bold) };
+            trayMenu.Items.Add(miUpdate);
             trayMenu.Items.Add("Reload app", null, delegate { ShowWindow(); if (web.CoreWebView2 != null) web.CoreWebView2.Reload(); });
             trayMenu.Items.Add("Open the old version in the browser", null, delegate { OpenExternal(Program.ClassicUrl); });
             trayMenu.Items.Add(new ToolStripSeparator());
@@ -1480,9 +1660,12 @@ namespace ChittamEnterprises
             // ---- sync timer ----
             sync.Changed += delegate { if (IsHandleCreated) BeginInvoke((Action)delegate { UpdateStatus(); PostStatus(); }); };
             sync.Logged += delegate { if (IsHandleCreated) BeginInvoke((Action)PostStatus); };
+            sync.CompanySwitched += msg => { if (IsHandleCreated) BeginInvoke((Action)delegate { tray.ShowBalloonTip(8000, "Tally Sync", msg, ToolTipIcon.Info); }); };
             timer = new System.Windows.Forms.Timer { Interval = 15000 };
             timer.Tick += delegate {
                 if (!sync.Busy && sync.Settings.Configured && DateTime.Now >= sync.NextSync) sync.Start(false);
+                // new version of this program: a minute after start, then every 6 hours
+                if (DateTime.Now >= nextUpdateCheck) { nextUpdateCheck = DateTime.Now.AddHours(6); CheckForUpdate(); }
                 UpdateStatus();
             };
             timer.Start();

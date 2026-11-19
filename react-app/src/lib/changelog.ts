@@ -4,6 +4,13 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.13", date: "2026-11-19", title: "Windows app updates itself; new financial year by itself", windows: "2.5",
+    items: [
+      "The Windows app checks for a new version at start-up and every 6 hours, downloads it in the background (checked against its checksum) and installs it the next time it starts — or right away from the tray: Restart to update.",
+      "When Tally has a newer company of the same name open (e.g. “Chittam Enterprises - 2027”) with customer balances, the sync moves to it by itself and notes it in History.",
+    ],
+  },
+  {
     version: "3.12", date: "2026-11-19", title: "Sales & returns check, out-of-date warning, reliable Tally transactions", windows: "2.4",
     items: [
       "Tally Match → Sales & returns: Tally invoices with no dispatch message, orders not invoiced in Tally, dispatch messages whose invoice isn't in Tally, credit notes with no stock return message, and stock returns with no credit note.",

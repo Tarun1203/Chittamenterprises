@@ -121,6 +121,7 @@ function DesktopSyncCard() {
               {!st.configured ? "Not set up yet" : st.busy ? "Syncing with Tally…" : st.error ? "Last try failed: " + st.error : "Next check " + st.nextSync}
             </p>
             <div className="mt-1 space-y-0.5 text-xs text-neutral-500">
+              {st.update && <div className="font-semibold text-brand-700">⬆ {st.update}</div>}
               {st.companies.map((c) => <div key={c.key}><strong className="text-neutral-700">{c.label}</strong> ({c.company}) · {c.balances || "balances not sent yet"}{st.syncVouchers && c.vouchers ? " · " + c.vouchers.replace(/^.*· /, "") : ""}</div>)}
             </div>
           </>

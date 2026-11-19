@@ -1,4 +1,4 @@
-# Chittam Enterprises for Windows (2.4)
+# Chittam Enterprises for Windows (2.5)
 
 The Chittam app in its own window, with **Tally sync built in**.
 
@@ -55,8 +55,19 @@ from the build folder.)
      restart, and keep **Also send transactions** ticked for Tally Match.
    - Click **Save**. It syncs straight away.
 
-**Every year:** when you start the new year's company in Tally (e.g. *Chittam
-Enterprises - 2027*), pick it under **Business** and click **Save**.
+**Every year:** nothing to do. When the new year's company (e.g. *Chittam
+Enterprises - 2027*) is open in Tally and has customer balances, the sync moves to
+it by itself (shown in History and as a tray notice).
+
+## Updates
+The app updates itself: it checks `desktop/version.json` on the site at start-up
+and every 6 hours, downloads changed files (SHA-256 checked) and installs them
+when it next starts (or tray → **Restart to update**). To release a new version:
+```
+powershell -ExecutionPolicy Bypass -File .uild.ps1
+powershell -ExecutionPolicy Bypass -File .\publish.ps1
+```
+then commit and push (the `desktop/` folder).
 
 ## Files
 - `ChittamEnterprises.cs`: the program (C# 5 / .NET Framework 4.x)

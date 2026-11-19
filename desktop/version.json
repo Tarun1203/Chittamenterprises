@@ -1,0 +1,26 @@
+{
+    "version":  "2.5",
+    "published":  "2026-11-19 18:28",
+    "files":  [
+                  {
+                      "name":  "Chittam Enterprises.exe",
+                      "sha256":  "eb9ce04f693d5637040fbcbb8fff9669b60fc0d07f124cf86dbab7cef72b36a5"
+                  },
+                  {
+                      "name":  "Chittam Enterprises.exe.config",
+                      "sha256":  "2a5c836bb3dae12541403eecc09e34c1f5cd9c9e60d2e13d6c9e3bcc56487c85"
+                  },
+                  {
+                      "name":  "Microsoft.Web.WebView2.Core.dll",
+                      "sha256":  "acdd517b951829f763d1255f32df1e6a936cb8623a7ebff6b8b24172dede6bd6"
+                  },
+                  {
+                      "name":  "Microsoft.Web.WebView2.WinForms.dll",
+                      "sha256":  "c66437f80886aecf074804b61af4cc10ad90a95310c8e0a717f31ea377c26b03"
+                  },
+                  {
+                      "name":  "WebView2Loader.dll",
+                      "sha256":  "d3fce90bdeecb08596e377dea6a316354dd8949e32ff09b89d51be00c14e21b6"
+                  }
+              ]
+}

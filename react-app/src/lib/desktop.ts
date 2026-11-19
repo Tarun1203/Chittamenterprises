@@ -8,6 +8,7 @@ export interface DesktopStatus {
   intervalMinutes: number; syncVouchers: boolean; voucherDays: number;
   companies: { key: string; company: string; label: string; balances: string; vouchers: string }[];
   log: string[];
+  update?: string;
 }
 interface WebView { postMessage: (m: unknown) => void; addEventListener: (t: "message", f: (e: { data: unknown }) => void) => void; removeEventListener: (t: "message", f: (e: { data: unknown }) => void) => void }
 const webview = (): WebView | null => {
