@@ -1211,10 +1211,11 @@ namespace ChittamEnterprises
                         foreach (var c in creditors)
                         {
                             var k = Tally.Normalize(c.Name);
-                            if (!appCustomers.Contains(k) || bal.ContainsKey(k)) continue;
+                            // only a debit balance (money owed to us) looks like a customer: suppliers rightly sit there with a credit balance
+                            if (c.Closing > -0.5 || !appCustomers.Contains(k) || bal.ContainsKey(k)) continue;
                             misfiled.Add(new Dictionary<string, object> { { "company", key }, { "label", label }, { "name", c.Name }, { "group", c.Parent },
                                 { "a", Math.Round(Math.Abs(c.Closing), 2) }, { "dr", c.Closing < 0 } });
-                            Log("[" + company + "] CHECK: \"" + c.Name + "\" is a customer in the app but is under " + (c.Parent.Length > 0 ? c.Parent : "Sundry Creditors") +
+                            Log("[" + company + "] CHECK: \"" + c.Name + "\" is a customer in the app with a debit balance but is under " + (c.Parent.Length > 0 ? c.Parent : "Sundry Creditors") +
                                 " in Tally, so its balance (" + Math.Abs(c.Closing).ToString("N2", CultureInfo.GetCultureInfo("en-IN")) + (c.Closing < 0 ? " Dr" : c.Closing > 0 ? " Cr" : "") +
                                 ") is not included. Move it to Sundry Debtors (or a group under it).");
                         }
