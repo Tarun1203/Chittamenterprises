@@ -4,6 +4,13 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.7", date: "2026-11-19", title: "Pick list printing fixed",
+    items: [
+      "Print on the pick list works in the Windows app and on phones — no more “Allow pop-ups to print”.",
+      "The printed pick list also lists the pending items (no stock, not packed).",
+    ],
+  },
+  {
     version: "3.6", date: "2026-11-19", title: "Orders: pack what's in stock, keep the rest pending",
     items: [
       "Each order line has “Available now” and a “No stock” button; whatever isn't available stays pending in that order.",

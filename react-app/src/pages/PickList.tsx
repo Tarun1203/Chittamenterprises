@@ -35,10 +35,9 @@ export function PickListDialog({ open, onClose, single }: { open: boolean; onClo
   }
   function print() {
     if (!text) { toast("Nothing to print."); return; }
-    const w = window.open("", "_blank", "width=800,height=900");
-    if (!w) { toast("Allow pop-ups to print."); return; }
     const box = '<span style="display:inline-block;width:14px;height:14px;border:1.5px solid #333;border-radius:3px;margin-right:8px;vertical-align:-2px"></span>';
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
+    const pend = chosen.flatMap((o) => orderPending(o).map((it) => esc(it.name) + " × <b>" + pendingQty(it) + "</b>" + (chosen.length > 1 ? " (" + esc(o.orderNo) + ")" : "")));
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
       <style>body{font:14px/1.5 "Segoe UI",system-ui,sans-serif;margin:28px;color:#111}h1{font-size:20px;margin:0}p.m{color:#555;margin:2px 0 16px}
       table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:7px 6px;text-align:left}th.q,td.q{text-align:right;width:60px}
       .sub{font-size:12px;color:#666}h2{font-size:15px;margin:22px 0 6px}.o{margin-bottom:12px}</style></head><body>
@@ -47,10 +46,22 @@ export function PickListDialog({ open, onClose, single }: { open: boolean; onClo
       ${products.map((p) => `<tr><td>${box}${esc(p.name)}${chosen.length > 1 ? `<div class="sub">${esc(p.orders.join(", "))}</div>` : ""}</td><td class="q"><b>${p.qty}</b></td></tr>`).join("")}
       </tbody></table>
       ${chosen.length > 1 ? "<h2>By order</h2>" + chosen.map((o) => `<div class="o"><b>${esc(o.orderNo)}</b> · ${esc(o.customerName)}${o.transport ? " · " + esc(o.transport) : ""}<br>${(o.items || []).filter((it) => packQty(it) > 0).map((it) => `${box}${esc(it.name)} × <b>${packQty(it)}</b>`).join("<br>")}</div>`).join("") : chosen[0].notes ? `<p>📝 ${esc(chosen[0].notes)}</p>` : ""}
-      </body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 250);
+      ${pend.length ? `<h2>⏳ Pending — no stock, not packed</h2><p>${pend.join("<br>")}</p>` : ""}
+      </body></html>`;
+    // printed from a hidden frame in this page: no pop-up window needed (the
+    // Windows app and some phones block pop-ups)
+    const frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+    document.body.appendChild(frame);
+    const doc = frame.contentWindow?.document;
+    if (!doc || !frame.contentWindow) { frame.remove(); toast("Printing is not available here — use Copy instead."); return; }
+    doc.open(); doc.write(html); doc.close();
+    setTimeout(() => {
+      try { frame.contentWindow!.focus(); frame.contentWindow!.print(); }
+      catch { toast("Printing is not available here — use Copy instead."); }
+      setTimeout(() => frame.remove(), 60000);
+    }, 300);
     logEvent("picklist-printed", {}).catch(() => {});
   }
 
