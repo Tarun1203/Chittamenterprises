@@ -281,8 +281,9 @@ export function orderConfirmation(s: Settings, transports: Transport[], o: Omit<
     (o.transport ? "🚛 Transport: " + transportLine(transports, o.transport, o.transportPhone) + "\n" : "") +
     (freight ? freight + "\n" : "") +
     "📌 Status: " + o.status + "\n\n" +
-    "*Items:*\n" + lines + "\n\n" +
-    "💰 *Order Total: " + inr(o.total) + "*\n" +
+    "*Items:*\n" + lines + "\n" +
+    (orderPending(o).length ? "\n⏳ *Pending — will be sent when stock arrives:*\n" + orderPending(o).map((it) => "• " + it.name + " × " + pendingQty(it)).join("\n") + "\n" : "") +
+    "\n💰 *Order Total: " + inr(o.total) + "*\n" +
     (refund ? "🚚 Transport Charges to Refund: " + inr(refund) + "\n" : "") +
     (o.advance ? "✅ Advance Received: " + inr(o.advance) + "\n" : "") +
     (o.advance || refund ? "🔖 *Balance Payable: " + inr(balance) + "*" + (refund ? " (incl. transport charges)" : "") + "\n" : "") +
@@ -333,15 +334,23 @@ export function serviceJobMessage(s: Settings, transports: Transport[], j: Omit<
     "Thank you for your support. 🙏\n" + so;
 }
 
-/* ---------------- Pick list ---------------- */
+/* ---------------- stock: pack now / pending ---------------- */
+export const packQty = (it: { qty: number; avail?: number }) => Math.max(0, Math.min(num(it.qty), it.avail === undefined || it.avail === null ? num(it.qty) : num(it.avail)));
+export const pendingQty = (it: { qty: number; avail?: number }) => Math.max(0, num(it.qty) - packQty(it));
+export const orderPending = <T extends { qty: number; avail?: number }>(o: { items?: T[] }): T[] => (o.items || []).filter((it) => pendingQty(it) > 0);
+
+/* ---------------- Pick list (only what can be packed now) ---------------- */
 export function buildPickList(orders: Order[]) {
   const byName: Record<string, { name: string; qty: number; orders: string[] }> = {};
   orders.forEach((o) => (o.items || []).forEach((it) => {
     const k = normalizeName(it.name);
     if (!byName[k]) byName[k] = { name: it.name, qty: 0, orders: [] };
-    byName[k].qty += num(it.qty);
+    const q = packQty(it);
+    if (!q) return;
+    byName[k].qty += q;
     if (!byName[k].orders.includes(o.orderNo)) byName[k].orders.push(o.orderNo);
   }));
+  Object.keys(byName).forEach((k) => { if (!byName[k].qty) delete byName[k]; });
   const products = Object.values(byName).sort((a, b) => a.name.localeCompare(b.name));
   return { products, totalQty: products.reduce((t, p) => t + p.qty, 0) };
 }
@@ -355,11 +364,13 @@ export function pickListText(title: string, orders: Order[]) {
     "", "*Items to pick:*"];
   products.forEach((p) => lines.push("☐ " + p.name + " — *" + p.qty + "*"));
   lines.push("", "Total: " + totalQty + " pcs");
+  const pend = orders.flatMap((o) => orderPending(o).map((it) => it.name + " × " + pendingQty(it) + (orders.length > 1 ? " (" + o.orderNo + ")" : "")));
+  if (pend.length) lines.push("", "⏳ *Pending — no stock, not packed:*", ...pend.map((x) => "• " + x));
   if (orders.length > 1) {
     lines.push("", "*By order:*");
     orders.forEach((o) => {
       lines.push(o.orderNo + " · " + o.customerName + (o.transport ? " · 🚛 " + o.transport : ""));
-      (o.items || []).forEach((it) => lines.push("   ☐ " + it.name + " × " + num(it.qty)));
+      (o.items || []).filter((it) => packQty(it) > 0).forEach((it) => lines.push("   ☐ " + it.name + " × " + packQty(it)));
     });
   } else if (orders[0].notes) {
     lines.push("", "📝 " + orders[0].notes);

@@ -6,7 +6,7 @@ import { Button, Dialog, Field, useToast } from "@/components/kit";
 import { Text, copyText } from "@/components/forms";
 import { useStore } from "@/lib/store";
 import { logEvent, type Order } from "@/lib/data";
-import { buildPickList, msgDate, pickListText } from "@/lib/messages";
+import { buildPickList, msgDate, orderPending, packQty, pendingQty, pickListText } from "@/lib/messages";
 import { todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -46,7 +46,7 @@ export function PickListDialog({ open, onClose, single }: { open: boolean; onClo
       <table><thead><tr><th>Product</th><th class="q">Qty</th></tr></thead><tbody>
       ${products.map((p) => `<tr><td>${box}${esc(p.name)}${chosen.length > 1 ? `<div class="sub">${esc(p.orders.join(", "))}</div>` : ""}</td><td class="q"><b>${p.qty}</b></td></tr>`).join("")}
       </tbody></table>
-      ${chosen.length > 1 ? "<h2>By order</h2>" + chosen.map((o) => `<div class="o"><b>${esc(o.orderNo)}</b> · ${esc(o.customerName)}${o.transport ? " · " + esc(o.transport) : ""}<br>${(o.items || []).map((it) => `${box}${esc(it.name)} × <b>${Number(it.qty) || 0}</b>`).join("<br>")}</div>`).join("") : chosen[0].notes ? `<p>📝 ${esc(chosen[0].notes)}</p>` : ""}
+      ${chosen.length > 1 ? "<h2>By order</h2>" + chosen.map((o) => `<div class="o"><b>${esc(o.orderNo)}</b> · ${esc(o.customerName)}${o.transport ? " · " + esc(o.transport) : ""}<br>${(o.items || []).filter((it) => packQty(it) > 0).map((it) => `${box}${esc(it.name)} × <b>${packQty(it)}</b>`).join("<br>")}</div>`).join("") : chosen[0].notes ? `<p>📝 ${esc(chosen[0].notes)}</p>` : ""}
       </body></html>`);
     w.document.close();
     w.focus();
@@ -93,9 +93,15 @@ export function PickListDialog({ open, onClose, single }: { open: boolean; onClo
               {chosen.map((o) => (
                 <div key={o.id} className="rounded-xl bg-neutral-50 px-3 py-2 text-sm">
                   <div className="font-semibold">{o.orderNo} · {o.customerName}{o.transport ? " · 🚛 " + o.transport : ""} <span className="text-xs text-neutral-500">({o.status})</span></div>
-                  {(o.items || []).map((it, i) => <div key={i} className="text-neutral-600">☐ {it.name} × <strong>{Number(it.qty) || 0}</strong></div>)}
+                  {(o.items || []).filter((it) => packQty(it) > 0).map((it, i) => <div key={i} className="text-neutral-600">☐ {it.name} × <strong>{packQty(it)}</strong></div>)}
                 </div>
               ))}
+            </div>
+          )}
+          {chosen.some((o) => orderPending(o).length > 0) && (
+            <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <p className="font-bold">⏳ Pending — no stock, not packed</p>
+              {chosen.flatMap((o) => orderPending(o).map((it, i) => <div key={o.id + i}>{it.name} × <strong>{pendingQty(it)}</strong>{chosen.length > 1 ? " (" + o.orderNo + ")" : ""}</div>))}
             </div>
           )}
           {chosen.length === 1 && chosen[0].notes && <p className="mt-3 text-sm text-neutral-600">📝 {chosen[0].notes}</p>}

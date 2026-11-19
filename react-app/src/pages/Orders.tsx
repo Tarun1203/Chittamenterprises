@@ -5,12 +5,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
 import { motion } from "motion/react";
-import { IconArrowLeft, IconClipboardList, IconDeviceFloppy, IconPlus } from "@tabler/icons-react";
-import { Button, Card, EmptyState, Field, PageHeader, useToast } from "@/components/kit";
+import { IconArrowLeft, IconClipboardList, IconDeviceFloppy, IconHourglass, IconPackage, IconPlus } from "@tabler/icons-react";
+import { Button, Card, Dialog, EmptyState, Field, PageHeader, useToast } from "@/components/kit";
 import { CustomerPicker, MessagePanel, Money, RowRemove, Select, SuggestInput, Text, TotalLine, n, useProductSuggestions, useTransportSuggestions } from "@/components/forms";
 import { useStore } from "@/lib/store";
 import { normalizeName, saveRecord, uid, type Customer, type Order, type OrderItem, type Receipt } from "@/lib/data";
-import { FREIGHT_TERMS, findTransport, freightRefund, msgDate, orderConfirmation } from "@/lib/messages";
+import { FREIGHT_TERMS, findTransport, freightRefund, msgDate, orderConfirmation, orderPending, packQty, pendingQty } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Chip } from "./ReceiptsReport";
@@ -36,7 +36,8 @@ export function nextOrderNo(orders: Order[], iso: string) {
   return prefix + String(max + 1).padStart(2, "0");
 }
 
-type Row = { name: string; qty: string; rate: string };
+// avail: "" = all of it can be packed now; a number = only that many (rest pending)
+type Row = { name: string; qty: string; rate: string; avail: string };
 interface Form {
   orderNo: string; date: string; deliveryDate: string; transport: string; transportPhone: string; freightTerms: string; freight: string;
   status: string; advance: string; notes: string; items: Row[];
@@ -50,6 +51,7 @@ export function Orders() {
   useEffect(() => { setEditing(null); }, [key]);
   useEffect(() => { window.scrollTo(0, 0); }, [editing]);
   const [pickOpen, setPickOpen] = useState(false);
+  const [pendingOpen, setPendingOpen] = useState(false);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
 
@@ -60,6 +62,7 @@ export function Orders() {
     sorted.forEach((o) => { c[o.status] = (c[o.status] || 0) + 1; if (o.status !== "Delivered" && o.status !== "Cancelled") open += n(o.total); });
     return { c, open };
   }, [sorted]);
+  const pendingCount = useMemo(() => sorted.filter((o) => o.status !== "Cancelled" && o.status !== "Delivered").reduce((t, o) => t + orderPending(o).length, 0), [sorted]);
   const list = sorted.filter((o) => {
     if (status && o.status !== status) return false;
     const f = q.trim().toLowerCase();
@@ -72,6 +75,7 @@ export function Orders() {
     <div>
       <PageHeader icon="file-text" eyebrow="Work" title="Orders" subtitle="Take orders, send the confirmation, and print pick lists for the godown."
         actions={<>
+          <Button variant="secondary" size="sm" onClick={() => setPendingOpen(true)}><IconHourglass size={16} /> Pending items{pendingCount ? " (" + pendingCount + ")" : ""}</Button>
           <Button variant="secondary" size="sm" onClick={() => setPickOpen(true)}><IconClipboardList size={16} /> Pick list</Button>
           <Button size="sm" onClick={() => setEditing("new")}><IconPlus size={16} /> New order</Button>
         </>} />
@@ -98,7 +102,10 @@ export function Orders() {
                   <div className="text-xs font-bold text-brand-600 tabular-nums">{o.orderNo} · {msgDate(o.date)}</div>
                   <div className="truncate text-[15px] font-bold">{o.customerName || "—"}</div>
                 </div>
-                <StatusBadge status={o.status || "Pending"} />
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <StatusBadge status={o.status || "Pending"} />
+                  {orderPending(o).length > 0 && o.status !== "Cancelled" && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200">⏳ {orderPending(o).reduce((t, it) => t + pendingQty(it), 0)} pending</span>}
+                </div>
               </div>
               <div className="mt-2 line-clamp-2 text-xs text-neutral-500">{(o.items || []).map((it) => it.name + (it.qty ? " × " + it.qty : "")).join(", ")}</div>
               <div className="mt-2 flex items-center justify-between text-sm">
@@ -110,7 +117,75 @@ export function Orders() {
         </div>
       )}
       <PickListDialog open={pickOpen} onClose={() => setPickOpen(false)} />
+      <PendingDialog open={pendingOpen} onClose={() => setPendingOpen(false)} />
     </div>
+  );
+}
+
+const blankRow: Row = { name: "", qty: "", rate: "", avail: "" };
+
+// under each order line: how many can be packed now; the rest stays pending
+function StockLine({ row, onChange }: { row: Row; onChange: (avail: string) => void }) {
+  const qty = n(row.qty);
+  const avail = row.avail === "" ? qty : Math.min(qty, Math.max(0, n(row.avail)));
+  const pending = qty - avail;
+  return (
+    <div className="col-span-2 flex flex-wrap items-center gap-2 text-xs sm:col-span-5">
+      <span className="font-semibold text-neutral-500">Available now</span>
+      <input type="number" inputMode="decimal" min={0} max={qty} value={row.avail === "" ? String(qty) : row.avail}
+        onChange={(e) => onChange(e.target.value === "" || n(e.target.value) >= qty ? "" : e.target.value)}
+        className="h-8 w-20 rounded-lg border border-neutral-200 bg-white px-2 text-sm tabular-nums outline-none focus:border-brand-500" />
+      {pending > 0
+        ? <span className="rounded-full bg-amber-50 px-2 py-0.5 font-bold text-amber-700">⏳ {pending} pending</span>
+        : <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">✓ in stock</span>}
+      {pending < qty
+        ? <button type="button" onClick={() => onChange("0")} className="rounded-lg px-2 py-1 font-semibold text-neutral-500 hover:bg-neutral-100">No stock</button>
+        : <button type="button" onClick={() => onChange("")} className="rounded-lg px-2 py-1 font-semibold text-brand-600 hover:bg-brand-50">All available</button>}
+    </div>
+  );
+}
+
+// every pending item across open orders, by product; "Mark available" moves it to packing
+function PendingDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { orders } = useStore();
+  const toast = useToast();
+  const groups = useMemo(() => {
+    const m = new Map<string, { name: string; total: number; rows: { o: Order; idx: number; qty: number }[] }>();
+    orders.filter((o) => o.status !== "Cancelled" && o.status !== "Delivered").forEach((o) => (o.items || []).forEach((it, idx) => {
+      const q = pendingQty(it);
+      if (!q) return;
+      const k = normalizeName(it.name);
+      const g = m.get(k) || { name: it.name, total: 0, rows: [] };
+      g.total += q; g.rows.push({ o, idx, qty: q }); m.set(k, g);
+    }));
+    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [orders]);
+  async function markAvailable(o: Order, idx: number) {
+    const items = o.items.map((it, j) => { if (j !== idx) return it; const { avail: _drop, ...rest } = it; void _drop; return rest; });
+    try { await saveRecord("orders", { ...o, items }, o); toast(o.items[idx].name + " is ready to pack for order " + o.orderNo + "."); }
+    catch (e) { toast("Could not save: " + (e as Error).message); }
+  }
+  return (
+    <Dialog open={open} onClose={onClose} title={"Pending items" + (groups.length ? " · " + groups.reduce((t, g) => t + g.total, 0) + " pcs" : "")}
+      footer={<Button variant="ghost" onClick={onClose}>Close</Button>}>
+      {groups.length === 0 ? <p className="rounded-xl bg-neutral-50 p-6 text-center text-sm text-neutral-500">Nothing pending — every open order can be packed.</p> : (
+        <div className="space-y-3">
+          <p className="text-xs text-neutral-500">Items with no stock, kept in their orders. When stock arrives, mark them available and they join the pick list.</p>
+          {groups.map((g) => (
+            <div key={g.name} className="rounded-xl border border-neutral-100">
+              <div className="flex items-center justify-between bg-neutral-50 px-3 py-2 text-sm font-bold"><span className="min-w-0 truncate">{g.name}</span><span className="tabular-nums text-amber-700">{g.total} pending</span></div>
+              {g.rows.map(({ o, idx, qty }) => (
+                <div key={o.id + idx} className="flex items-center gap-3 border-t border-neutral-100 px-3 py-2 text-sm">
+                  <span className="min-w-0 flex-1"><span className="font-semibold">{o.orderNo}</span> · {o.customerName}<span className="block text-xs text-neutral-500">{msgDate(o.date)} · {o.status}</span></span>
+                  <span className="font-bold tabular-nums">× {qty}</span>
+                  <button onClick={() => markAvailable(o, idx)} className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 hover:bg-emerald-100"><IconPackage size={13} /> Mark available</button>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </Dialog>
   );
 }
 
@@ -127,15 +202,19 @@ function OrderEditor({ order, onClose }: { order: Order | null; onClose: () => v
     orderNo: order?.orderNo || nextOrderNo(orders, todayISO()), date: order?.date || todayISO(), deliveryDate: order?.deliveryDate || "",
     transport: order?.transport || "", transportPhone: order?.transportPhone || "", freightTerms: order?.freightTerms || "", freight: order?.freight ? String(order.freight) : "",
     status: order?.status || "Pending", advance: order?.advance ? String(order.advance) : "", notes: order?.notes || "",
-    items: order?.items?.length ? order.items.map((i) => ({ name: i.name, qty: i.qty ? String(i.qty) : "", rate: i.rate ? String(i.rate) : "" })) : [{ name: "", qty: "", rate: "" }, { name: "", qty: "", rate: "" }],
+    items: order?.items?.length ? order.items.map((i) => ({ name: i.name, qty: i.qty ? String(i.qty) : "", rate: i.rate ? String(i.rate) : "", avail: i.avail === undefined || i.avail === null || i.avail >= i.qty ? "" : String(i.avail) })) : [blankRow, blankRow],
   }));
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((x) => ({ ...x, [k]: v }));
   const setRow = (i: number, patch: Partial<Row>) => setF((x) => ({ ...x, items: x.items.map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
 
   const items: OrderItem[] = f.items.filter((r) => r.name.trim()).map((r) => {
     const qty = n(r.qty), rate = n(r.rate);
-    return { name: r.name.trim(), qty, rate, amount: Math.round(qty * rate * 100) / 100 };
+    const it: OrderItem = { name: r.name.trim(), qty, rate, amount: Math.round(qty * rate * 100) / 100 };
+    if (r.avail !== "" && n(r.avail) < qty) it.avail = Math.max(0, n(r.avail));
+    return it;
   });
+  const pendingLines = items.filter((it) => pendingQty(it) > 0);
+  const packValue = Math.round(items.reduce((t, it) => t + packQty(it) * it.rate, 0) * 100) / 100;
   const total = Math.round(items.reduce((t, i) => t + i.amount, 0) * 100) / 100;
   const refund = freightRefund(f.freightTerms, f.freight);
   const balance = Math.max(0, total + refund - n(f.advance));
@@ -221,10 +300,10 @@ function OrderEditor({ order, onClose }: { order: Order | null; onClose: () => v
           <Card className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold tracking-wide text-neutral-500 uppercase">Items</h3>
-              <Button size="sm" variant="secondary" onClick={() => set("items", [...f.items, { name: "", qty: "", rate: "" }])}><IconPlus size={15} /> Item</Button>
+              <Button size="sm" variant="secondary" onClick={() => set("items", [...f.items, blankRow])}><IconPlus size={15} /> Item</Button>
             </div>
             {f.items.map((r, i) => (
-              <div key={i} className="grid grid-cols-[1fr_auto] gap-2 rounded-xl border border-neutral-100 bg-neutral-50/60 p-2.5 sm:grid-cols-[1fr_5rem_6.5rem_5.5rem_auto] sm:items-center sm:border-0 sm:bg-transparent sm:p-0">
+              <div key={i} className="grid grid-cols-[1fr_auto] gap-2 rounded-xl border border-neutral-100 bg-neutral-50/60 p-2.5 sm:grid-cols-[1fr_5rem_6.5rem_5.5rem_auto] sm:items-center">
                 <SuggestInput value={r.name} onChange={(v) => setRow(i, { name: v })} onPick={(v) => pickProduct(i, v)} suggestions={productList} placeholder="Product (type to search)" />
                 <div className="sm:hidden"><RowRemove onClick={() => set("items", f.items.filter((_, j) => j !== i))} /></div>
                 <div className="col-span-2 grid grid-cols-[1fr_1fr_auto] items-center gap-2 sm:col-span-3 sm:grid-cols-[5rem_6.5rem_5.5rem]">
@@ -233,9 +312,14 @@ function OrderEditor({ order, onClose }: { order: Order | null; onClose: () => v
                   <span className="text-right text-sm font-semibold tabular-nums">{inr(Math.round(n(r.qty) * n(r.rate) * 100) / 100)}</span>
                 </div>
                 <div className="hidden sm:block"><RowRemove onClick={() => set("items", f.items.filter((_, j) => j !== i))} /></div>
+                {r.name.trim() && n(r.qty) > 0 && <StockLine row={r} onChange={(avail) => setRow(i, { avail })} />}
               </div>
             ))}
             <TotalLine strong label="Order total" value={inr(total)} />
+            {pendingLines.length > 0 && <>
+              <TotalLine label="To pack now" value={inr(packValue)} />
+              <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">⏳ Pending (no stock): {pendingLines.map((it) => it.name + " × " + pendingQty(it)).join(", ")}. Kept in this order; they go in the order message and leave the pick list until marked available.</p>
+            </>}
           </Card>
           <Card className="space-y-4">
             <div className="grid grid-cols-2 gap-3">

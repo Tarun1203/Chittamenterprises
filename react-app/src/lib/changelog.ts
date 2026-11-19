@@ -4,6 +4,15 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.6", date: "2026-11-19", title: "Orders: pack what's in stock, keep the rest pending",
+    items: [
+      "Each order line has “Available now” and a “No stock” button; whatever isn't available stays pending in that order.",
+      "The pick list packs only what's available and lists the pending items separately.",
+      "The order confirmation message lists pending items: “Pending — will be sent when stock arrives”.",
+      "Orders show a “pending” tag, and Pending items lists everything pending by product — “Mark available” when stock arrives.",
+    ],
+  },
+  {
     version: "3.5", date: "2026-11-19", title: "What's new",
     items: [
       "This page: every update to the app, newest first.",

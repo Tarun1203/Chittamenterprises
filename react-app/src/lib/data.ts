@@ -17,7 +17,9 @@ export interface Settings {
   paymentModes: string[];
 }
 
-export interface OrderItem { name: string; qty: number; rate: number; amount: number }
+// avail: how many can be packed now (no stock for the rest, which stays pending in
+// the order); missing = all of it
+export interface OrderItem { name: string; qty: number; rate: number; amount: number; avail?: number }
 export interface Order {
   id: string; orderNo: string; date: string; deliveryDate?: string;
   customerId: string; customerName: string; mobile?: string;

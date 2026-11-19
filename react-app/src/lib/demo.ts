@@ -32,7 +32,7 @@ export const demoOrders: Order[] = [
     items: [{ name: "Makwell - Stabilizer - Led Mini - 5 Yr.", qty: 4, rate: 740, amount: 2960 }, { name: "Remote - AC", qty: 10, rate: 95, amount: 950 }], total: 3910,
     transport: "VRL Logistics", transportPhone: "9845012345", freightTerms: "refund", freight: 350, notes: "Pack remotes separately" },
   { id: "o2", orderNo: no(0, 2), date: iso(0), customerId: "d4", customerName: "Ashok Reddy - Mantralayam", status: "Confirmed", advance: 0,
-    items: [{ name: "Remote - AC", qty: 5, rate: 95, amount: 475 }, { name: "Impex - Mixer Grinder - 750 W", qty: 2, rate: 2150, amount: 4300 }], total: 4775, transport: "Navata Road Transport", freightTerms: "to-pay" },
+    items: [{ name: "Remote - AC", qty: 5, rate: 95, amount: 475 }, { name: "Impex - Mixer Grinder - 750 W", qty: 2, rate: 2150, amount: 4300, avail: 0 }], total: 4775, transport: "Navata Road Transport", freightTerms: "to-pay" },
   { id: "o3", orderNo: no(-3, 1), date: iso(-3), customerId: "d12", customerName: "Sri Durga Electronics - Manvi", status: "Delivered", advance: 0,
     items: [{ name: "Cable - Hdmi 3 mtrs 4k", qty: 20, rate: 180, amount: 3600 }], total: 3600 },
 ];
