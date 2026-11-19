@@ -53,7 +53,7 @@ namespace ChittamEnterprises
     {
         public const string AppUrl = "https://tarun1203.github.io/Chittamenterprises/next/";
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
-        public const string DesktopVersion = "2.0";
+        public const string DesktopVersion = "2.1";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -201,6 +201,7 @@ namespace ChittamEnterprises
     class Voucher
     {
         public string Date, Type, Number, Party, Narration, Id;
+        public string Via = "";   // the other ledger(s): Cash, a bank, Sales… (how it was booked)
         public double Amount;
         public bool Debit;   // the customer's ledger was debited (sale) rather than credited (receipt)
     }
@@ -346,10 +347,18 @@ namespace ChittamEnterprises
                 var date = Text(v, "DATE");
                 if (date.Length != 8) continue;
                 var nar = Text(v, "NARRATION");
+                var others = new List<string>();
+                foreach (XmlNode e in entries)
+                {
+                    var ln = Text(e, "LEDGERNAME");
+                    if (ln.Length > 0 && Normalize(ln) != Normalize(party) && !others.Contains(ln)) others.Add(ln);
+                }
+                var via = string.Join(", ", others);
                 list.Add(new Voucher {
                     Date = date.Substring(0, 4) + "-" + date.Substring(4, 2) + "-" + date.Substring(6, 2),
                     Type = vtype, Number = Text(v, "VOUCHERNUMBER"), Party = party,
                     Narration = nar.Length > 80 ? nar.Substring(0, 80) : nar,
+                    Via = via.Length > 60 ? via.Substring(0, 60) : via,
                     Id = Text(v, "GUID").Length > 0 ? Text(v, "GUID") : Text(v, "MASTERID"),
                     // Tally shows debit as negative
                     Amount = Math.Round(Math.Abs(amount), 2), Debit = amount < 0
@@ -449,7 +458,7 @@ namespace ChittamEnterprises
             string now = Now();
             var values = vouchers.Select(v => (object)Map(new Dictionary<string, object> {
                 { "d", Str(v.Date) }, { "t", Str(v.Type) }, { "n", Str(v.Number) }, { "p", Str(v.Party) },
-                { "a", Dbl(v.Amount) }, { "dr", Bool(v.Debit) }, { "nar", Str(v.Narration) }, { "id", Str(v.Id) }
+                { "a", Dbl(v.Amount) }, { "dr", Bool(v.Debit) }, { "nar", Str(v.Narration) }, { "via", Str(v.Via) }, { "id", Str(v.Id) }
             })).ToArray();
             var fields = new Dictionary<string, object> {
                 { "company", Str(key) }, { "label", Str(label) }, { "tallyCompany", Str(company) },
@@ -569,7 +578,7 @@ namespace ChittamEnterprises
                 // newest first; keep the upload well inside Firestore's 1 MB limit
                 vouchers = vouchers.OrderByDescending(v => v.Date).Take(3000).ToList();
                 var vsig = string.Join("\n", vouchers.Select(v => v.Date + "|" + v.Type + "|" + v.Number + "|" + v.Party + "|" +
-                    v.Amount.ToString(CultureInfo.InvariantCulture) + "|" + v.Debit + "|" + v.Id + "|" + v.Narration));
+                    v.Amount.ToString(CultureInfo.InvariantCulture) + "|" + v.Debit + "|" + v.Id + "|" + v.Narration + "|" + v.Via));
                 string vhash = Hash(from.ToString("yyyyMMdd") + vsig), vkey = "v-" + key, vlast;
                 if (!force && Settings.LastHash.TryGetValue(vkey, out vlast) && vlast == vhash) { Log("[" + company + "] transactions: no change"); continue; }
                 if (token == null) token = Firebase.SignIn(Settings);

@@ -4,12 +4,12 @@
 // balance (and names that don't match between the app and Tally).
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { IconAlertTriangle, IconCheck, IconFileText, IconPlus, IconRefresh, IconSettings, IconUserQuestion } from "@tabler/icons-react";
-import { Button, Card, EmptyState, Field, PageHeader, useToast } from "@/components/kit";
-import { Select, Text } from "@/components/forms";
+import { IconAlertTriangle, IconCheck, IconFileText, IconLink, IconLinkOff, IconPlus, IconRefresh, IconSettings, IconUserQuestion } from "@tabler/icons-react";
+import { Button, Card, Dialog, EmptyState, Field, PageHeader, useToast } from "@/components/kit";
+import { CustomerPicker, Select, Text } from "@/components/forms";
 import { useStore } from "@/lib/store";
-import { loadTallyVouchers, normalizeName, saveRecord, uid, type Receipt, type TallyVoucherSet } from "@/lib/data";
-import { appDuplicates, appPayments, isReceipt, matchPayments, tallyDuplicates, tallyEntries, DAY_WINDOW, type Account, type AppPayment, type TallyEntry } from "@/lib/tallymatch";
+import { loadTallyVouchers, normalizeName, saveRecord, uid, type Customer, type Receipt, type TallyVoucherSet } from "@/lib/data";
+import { appDuplicates, appPayments, isReceipt, matchPayments, tallyDuplicates, tallyEntries, DAY_WINDOW, viaKind, type Account, type AppPayment, type Pair, type TallyEntry } from "@/lib/tallymatch";
 import { desktopSend, inDesktopApp, useDesktopStatus } from "@/lib/desktop";
 import { msgDate } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
@@ -133,13 +133,15 @@ function SyncInfo({ sets, accLabel, balancesAt }: { sets: Record<string, TallyVo
 }
 
 /* ---------------- payments vs Tally ---------------- */
-function Row({ left, right, sub, tone }: { left: React.ReactNode; right: React.ReactNode; sub?: React.ReactNode; tone?: "ok" | "warn" | "bad" }) {
+function Row({ left, right, sub, tone, note, actions }: { left: React.ReactNode; right: React.ReactNode; sub?: React.ReactNode; tone?: "ok" | "warn" | "bad"; note?: React.ReactNode; actions?: React.ReactNode }) {
   return (
     <div className="flex items-start gap-3 px-4 py-3">
       <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", tone === "ok" ? "bg-emerald-500" : tone === "warn" ? "bg-amber-400" : tone === "bad" ? "bg-rose-500" : "bg-neutral-300")} />
       <div className="min-w-0 flex-1">
         <div className="font-semibold">{left}</div>
         {sub && <div className="text-xs text-neutral-500">{sub}</div>}
+        {note && <div className="mt-1 text-xs font-semibold text-amber-700">{note}</div>}
+        {actions && <div className="mt-2 flex flex-wrap gap-2">{actions}</div>}
       </div>
       <div className="text-right font-bold tabular-nums">{right}</div>
     </div>
@@ -163,33 +165,166 @@ function Section({ title, hint, count, tone, children }: { title: string; hint: 
     </Card>
   );
 }
-const appSub = (p: AppPayment, accLabel: (a: Account) => string) => msgDate(p.date) + " · " + accLabel(p.account) + " · " + p.mode + " · " + p.source + (p.ref ? " " + p.ref : "");
-const tallySub = (t: TallyEntry, accLabel: (a: Account) => string) => msgDate(t.d) + " · " + accLabel(t.account) + " · " + t.t + (t.n ? " #" + t.n : "") + (t.nar ? " · " + t.nar : "");
+const appSub = (p: AppPayment, accLabel: (a: Account) => string) => msgDate(p.date) + " · " + accLabel(p.account) + " · " + p.mode + " · " + p.source + (p.ref ? " " + p.ref : "") + (p.tallyNo ? " · linked to Tally #" + p.tallyNo : "");
+const tallySub = (t: TallyEntry, accLabel: (a: Account) => string) => msgDate(t.d) + " · " + accLabel(t.account) + " · " + t.t + (t.n ? " #" + t.n : "") + (t.via ? " · booked to " + t.via : "") + (t.nar ? " · " + t.nar : "");
+const tallyRef = (t: TallyEntry) => "Tally " + t.t + (t.n ? " #" + t.n : "") + " on " + msgDate(t.d) + (t.via ? " (" + t.via + ")" : "");
+const ActionBtn = ({ onClick, children }: { onClick: () => void; children: React.ReactNode }) => (
+  <button onClick={onClick} className="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-700 hover:bg-brand-100">{children}</button>
+);
 
 function PaymentsView({ r, accLabel, hasVouchers }: { r: ReturnType<typeof matchPayments>; accLabel: (a: Account) => string; hasVouchers: boolean }) {
+  const { receipts, settings } = useStore();
+  const toast = useToast();
+  const [record, setRecord] = useState<TallyEntry | null>(null);
+  const [link, setLink] = useState<AppPayment | null>(null);
   if (!hasVouchers) return null;
   const sum = (xs: { amount?: number; a?: number }[]) => xs.reduce((t, x) => t + (x.amount ?? x.a ?? 0), 0);
+  const modes = settings.paymentModes.length ? settings.paymentModes : ["Cash", "UPI", "Bank Transfer", "Cheque"];
+  const cashMode = modes.find((m) => /cash/i.test(m)) || "Cash";
+  const bankMode = modes.find((m) => /upi/i.test(m)) || modes.find((m) => !/cash/i.test(m)) || "UPI";
+
+  // change the app's payment to the way Tally booked it
+  async function useTallyMode(p: Pair) {
+    const before = receipts.find((x) => x.id === p.app.receiptId);
+    if (!before) return;
+    const mode = viaKind(p.tally.via) === "cash" ? cashMode : bankMode;
+    try { await saveRecord("receipts", { ...before, mode, tallyNo: p.tally.n || before.tallyNo || "", tallyId: p.tally.id || before.tallyId || "" }, before); toast("Payment changed to " + mode + "."); }
+    catch (e) { toast("Could not save: " + (e as Error).message); }
+  }
+  async function unlink(p: AppPayment) {
+    const before = receipts.find((x) => x.id === p.receiptId);
+    if (!before) return;
+    try { await saveRecord("receipts", { ...before, tallyNo: "", tallyId: "" }, before); toast("Unlinked from the Tally voucher."); }
+    catch (e) { toast("Could not save: " + (e as Error).message); }
+  }
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap gap-2">
         <Chip strong label="Matched" value={r.matched.length + " · " + inr(sum(r.matched.map((m) => m.app)))} />
+        <Chip label="Details differ" value={String(r.detailsDiffer.length)} />
         <Chip label="Name differs" value={String(r.nameDiffers.length)} />
         <Chip label="Not in Tally" value={r.onlyApp.length + " · " + inr(sum(r.onlyApp))} />
         <Chip label="Not in app" value={r.onlyTally.length + " · " + inr(sum(r.onlyTally))} />
       </div>
-      <Section title="Recorded in the app, not found in Tally" hint={"No receipt in Tally for the same customer and amount within " + DAY_WINDOW + " days — enter it in Tally, or check the amount."} count={r.onlyApp.length} tone="bad">
-        {r.onlyApp.map((p) => <Row key={p.key} tone="bad" left={p.name} sub={appSub(p, accLabel)} right={inr(p.amount)} />)}
+      <Section title="Recorded in the app, not found in Tally" hint={"No receipt in Tally for the same customer and amount within " + DAY_WINDOW + " days. Enter it in Tally, or link it to the right voucher by its number."} count={r.onlyApp.length} tone="bad">
+        {r.onlyApp.map((p) => <Row key={p.key} tone="bad" left={p.name} sub={appSub(p, accLabel)} right={inr(p.amount)}
+          actions={<ActionBtn onClick={() => setLink(p)}><IconLink size={13} /> Link to Tally voucher</ActionBtn>} />)}
       </Section>
-      <Section title="In Tally, not recorded in the app" hint="A Tally receipt with no payment in the app — the customer may not have been sent a Payment Updated message." count={r.onlyTally.length} tone="warn">
-        {r.onlyTally.map((t) => <Row key={t.key} tone="warn" left={t.p} sub={tallySub(t, accLabel)} right={inr(t.a)} />)}
+      <Section title="In Tally, not recorded in the app" hint="A Tally receipt with no payment in the app. Record it in the app (the voucher number is saved with it), or link an existing payment to it." count={r.onlyTally.length} tone="warn">
+        {r.onlyTally.map((t) => <Row key={t.key} tone="warn" left={t.p} sub={tallySub(t, accLabel)} right={inr(t.a)}
+          actions={<ActionBtn onClick={() => setRecord(t)}><IconPlus size={13} /> Record in app</ActionBtn>} />)}
+      </Section>
+      <Section title="Matched, but details differ" hint="The same payment in both, but paid differently (UPI vs Cash), another amount, or dates far apart. Correct the voucher in Tally, or change the app to match." count={r.detailsDiffer.length} tone="warn">
+        {r.detailsDiffer.map((m) => <Row key={m.app.key} tone="warn" left={m.app.name} sub={appSub(m.app, accLabel) + "  ·  " + tallyRef(m.tally)} right={inr(m.app.amount)}
+          note={m.differs.join(" · ")}
+          actions={<>
+            {m.differs.some((d) => d.startsWith("Paid by")) && <ActionBtn onClick={() => useTallyMode(m)}><IconCheck size={13} /> Change app to {viaKind(m.tally.via) === "cash" ? cashMode : bankMode}</ActionBtn>}
+            {m.byVoucher && <ActionBtn onClick={() => unlink(m.app)}><IconLinkOff size={13} /> Unlink</ActionBtn>}
+          </>} />)}
       </Section>
       <Section title="Same amount and date, but the name differs" hint="Probably the same payment, with the customer named differently in the app and in Tally. Make the names match so balances fill in too." count={r.nameDiffers.length} tone="warn">
-        {r.nameDiffers.map((m) => <Row key={m.app.key} tone="warn" left={<>{m.app.name} <span className="font-normal text-neutral-400">↔</span> {m.tally.p}</>} sub={appSub(m.app, accLabel) + "  ·  Tally " + m.tally.t + (m.tally.n ? " #" + m.tally.n : "") + " on " + msgDate(m.tally.d)} right={inr(m.app.amount)} />)}
+        {r.nameDiffers.map((m) => <Row key={m.app.key} tone="warn" left={<>{m.app.name} <span className="font-normal text-neutral-400">↔</span> {m.tally.p}</>} sub={appSub(m.app, accLabel) + "  ·  " + tallyRef(m.tally)} right={inr(m.app.amount)} />)}
       </Section>
-      <Section title="Matched" hint="Same customer and amount in the app and in Tally." count={r.matched.length} tone="ok">
-        {r.matched.map((m) => <Row key={m.app.key} tone="ok" left={m.app.name} sub={appSub(m.app, accLabel) + "  ·  Tally " + m.tally.t + (m.tally.n ? " #" + m.tally.n : "") + (m.dayGap ? " on " + msgDate(m.tally.d) : "")} right={inr(m.app.amount)} />)}
+      <Section title="Matched" hint="Same payment in the app and in Tally (linked by voucher number, or same customer and amount)." count={r.matched.length} tone="ok">
+        {r.matched.map((m) => <Row key={m.app.key} tone="ok" left={m.app.name} sub={appSub(m.app, accLabel) + "  ·  " + tallyRef(m.tally)} right={inr(m.app.amount)}
+          actions={m.byVoucher ? <ActionBtn onClick={() => unlink(m.app)}><IconLinkOff size={13} /> Unlink</ActionBtn> : undefined} />)}
       </Section>
+
+      <RecordDialog entry={record} onClose={() => setRecord(null)} accLabel={accLabel} modes={modes} cashMode={cashMode} bankMode={bankMode} />
+      <LinkDialog payment={link} onClose={() => setLink(null)} candidates={r.onlyTally} accLabel={accLabel} />
     </div>
+  );
+}
+
+// a Tally receipt that isn't in the app → a payment in Payments Received, linked to the voucher
+function RecordDialog({ entry, onClose, accLabel, modes, cashMode, bankMode }: { entry: TallyEntry | null; onClose: () => void; accLabel: (a: Account) => string; modes: string[]; cashMode: string; bankMode: string }) {
+  const { customers } = useStore();
+  const toast = useToast();
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [mode, setMode] = useState("");
+  const [note, setNote] = useState("");
+  useEffect(() => {
+    if (!entry) return;
+    setCustomer(customers.find((c) => normalizeName(c.name) === normalizeName(entry.p)) || null);
+    setMode(viaKind(entry.via) === "cash" ? cashMode : viaKind(entry.via) === "bank" ? bankMode : modes[0]);
+    setNote(entry.nar || "");
+    // only when another voucher is opened
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry]);
+  async function save() {
+    if (!entry) return;
+    if (!customer) { toast("Pick the customer first."); return; }
+    const rec: Receipt = {
+      id: "rc_" + uid().slice(2), date: entry.d, customerId: customer.id, customerName: customer.name, mode,
+      business: entry.account === "business" ? entry.a : 0, cash: entry.account === "cash" ? entry.a : 0,
+      source: "Tally", ref: entry.n || "", note: note.trim(), cancelled: false, tallyNo: entry.n || "", tallyId: entry.id || "",
+    };
+    try { await saveRecord("receipts", rec, null); toast("Recorded in Payments Received and linked to Tally #" + (entry.n || "") + "."); onClose(); }
+    catch (e) { toast("Could not save: " + (e as Error).message); }
+  }
+  return (
+    <Dialog open={!!entry} onClose={onClose} title="Record Tally receipt in the app"
+      footer={<><Button variant="ghost" onClick={onClose}>Close</Button><Button onClick={save}>Save payment</Button></>}>
+      {entry && <>
+        <div className="rounded-xl bg-neutral-50 p-3 text-sm">
+          <div className="font-bold">{entry.p} · {inr(entry.a)}</div>
+          <div className="text-xs text-neutral-500">{tallySub(entry, accLabel)}</div>
+        </div>
+        <Field label="Customer in the app"><CustomerPicker value={customer} onPick={setCustomer} /></Field>
+        <Field label="Paid by" hint={entry.via ? "Tally has it booked to " + entry.via + ". If the customer paid another way, pick that here and correct the voucher in Tally." : undefined}>
+          <Select value={mode} onChange={setMode} options={modes} />
+        </Field>
+        <Field label="Note"><Text value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" /></Field>
+        <p className="text-xs text-neutral-500">Saved as a {inr(entry.a)} payment to the {accLabel(entry.account)} account on {msgDate(entry.d)}, with voucher number {entry.n || "—"}.</p>
+      </>}
+    </Dialog>
+  );
+}
+
+// an app payment → the Tally voucher it belongs to (pick one, or type its number)
+function LinkDialog({ payment, onClose, candidates, accLabel }: { payment: AppPayment | null; onClose: () => void; candidates: TallyEntry[]; accLabel: (a: Account) => string }) {
+  const { receipts } = useStore();
+  const toast = useToast();
+  const [no, setNo] = useState("");
+  useEffect(() => { setNo(payment?.tallyNo || ""); }, [payment]);
+  const list = useMemo(() => !payment ? [] : candidates.filter((t) => t.account === payment.account)
+    .map((t) => ({ t, score: (normalizeName(t.p) === normalizeName(payment.name) ? 0 : 10) + Math.min(9, Math.abs(t.a - payment.amount) / Math.max(1, payment.amount) * 10) }))
+    .sort((a, b) => a.score - b.score).slice(0, 12).map((x) => x.t), [payment, candidates]);
+  async function save(voucherNo: string, tallyId: string) {
+    if (!payment) return;
+    const before = receipts.find((x) => x.id === payment.receiptId);
+    if (!before) return;
+    if (!voucherNo.trim()) { toast("Enter the voucher number."); return; }
+    try { await saveRecord("receipts", { ...before, tallyNo: voucherNo.trim(), tallyId }, before); toast("Linked to Tally #" + voucherNo.trim() + "."); onClose(); }
+    catch (e) { toast("Could not save: " + (e as Error).message); }
+  }
+  return (
+    <Dialog open={!!payment} onClose={onClose} title="Link to a Tally voucher"
+      footer={<><Button variant="ghost" onClick={onClose}>Close</Button><Button onClick={() => save(no, "")}>Link by number</Button></>}>
+      {payment && <>
+        <div className="rounded-xl bg-neutral-50 p-3 text-sm">
+          <div className="font-bold">{payment.name} · {inr(payment.amount)}</div>
+          <div className="text-xs text-neutral-500">{appSub(payment, accLabel)}</div>
+        </div>
+        {list.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-xs font-semibold tracking-wide text-neutral-500 uppercase">Unmatched Tally receipts ({accLabel(payment.account)})</p>
+            <div className="max-h-64 divide-y divide-neutral-100 overflow-y-auto rounded-xl border border-neutral-100">
+              {list.map((t) => (
+                <button key={t.key} onClick={() => save(t.n || "", t.id || "")} className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-brand-50">
+                  <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{t.p}</span><span className="block text-xs text-neutral-500">{tallySub(t, accLabel)}</span></span>
+                  <span className="text-sm font-bold tabular-nums">{inr(t.a)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <Field label="Or type the Tally voucher number" hint="Used when the voucher is outside the dates shown, or the number is all you have.">
+          <Text value={no} onChange={(e) => setNo(e.target.value)} placeholder="e.g. RCPT/80-2026/27" />
+        </Field>
+      </>}
+    </Dialog>
   );
 }
 

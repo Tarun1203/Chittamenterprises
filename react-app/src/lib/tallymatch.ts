@@ -8,16 +8,22 @@ export const DAY_WINDOW = 3;          // a payment and its Tally entry may be a 
 const SAME_AMOUNT = (a: number, b: number) => Math.abs(a - b) < 1;
 const days = (a: string, b: string) => Math.abs(Math.round((new Date(a + "T00:00:00").getTime() - new Date(b + "T00:00:00").getTime()) / 86400000));
 
-export interface AppPayment { key: string; receiptId: string; account: Account; date: string; name: string; amount: number; mode: string; source: string; ref?: string }
+export interface AppPayment { key: string; receiptId: string; account: Account; date: string; name: string; amount: number; mode: string; source: string; ref?: string; tallyNo?: string; tallyId?: string }
 export interface TallyEntry extends TallyVoucher { key: string; account: Account }
 
 export const isReceipt = (v: TallyVoucher) => !v.dr && /receipt/i.test(v.t);
+
+// how a payment was made: cash, or bank (UPI, transfer, cheque…); "" when unknown
+export type PayKind = "cash" | "bank" | "";
+export const modeKind = (mode: string): PayKind => (!mode || /advance|^—$/i.test(mode) ? "" : /cash/i.test(mode) ? "cash" : "bank");
+// how Tally booked it, from the voucher's other ledger(s)
+export const viaKind = (via?: string): PayKind => (!via ? "" : /(^|[^a-z])cash([^a-z]|$)/i.test(via) ? "cash" : "bank");
 
 // one line per account: a payment split between both accounts is two lines
 export function appPayments(receipts: Receipt[], from: string, to: string): AppPayment[] {
   const out: AppPayment[] = [];
   receipts.filter((r) => !r.cancelled && r.date >= from && r.date <= to).forEach((r) => {
-    const base = { receiptId: r.id, date: r.date, name: r.customerName, mode: r.mode, source: r.source, ref: r.ref };
+    const base = { receiptId: r.id, date: r.date, name: r.customerName, mode: r.mode, source: r.source, ref: r.ref, tallyNo: r.tallyNo, tallyId: r.tallyId };
     if (Number(r.business) > 0) out.push({ ...base, key: r.id + ":b", account: "business", amount: Number(r.business) });
     if (Number(r.cash) > 0) out.push({ ...base, key: r.id + ":c", account: "cash", amount: Number(r.cash) });
   });
@@ -35,16 +41,34 @@ export function tallyEntries(sets: Record<string, TallyVoucherSet>, from: string
   return out;
 }
 
+export interface Pair { app: AppPayment; tally: TallyEntry; dayGap: number; byVoucher: boolean; differs: string[] }
 export interface MatchResult {
-  matched: { app: AppPayment; tally: TallyEntry; dayGap: number }[];
-  nameDiffers: { app: AppPayment; tally: TallyEntry; dayGap: number }[];  // same amount and date, different name
+  matched: Pair[];
+  detailsDiffer: Pair[];      // matched, but paid differently / other amount / dates far apart
+  nameDiffers: Pair[];        // same amount and date, different name
   onlyApp: AppPayment[];      // recorded in the app, not found in Tally
   onlyTally: TallyEntry[];    // in Tally, not recorded in the app
 }
 
+const sameNo = (a?: string, b?: string) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+
+function differences(a: AppPayment, t: TallyEntry, gap: number) {
+  const out: string[] = [];
+  const am = modeKind(a.mode), tm = viaKind(t.via);
+  if (am && tm && am !== tm) out.push("Paid by " + a.mode + " in the app, booked to " + t.via + " in Tally");
+  if (!SAME_AMOUNT(a.amount, t.a)) out.push("Amount differs");
+  if (gap > DAY_WINDOW) out.push("Dates " + gap + " days apart");
+  return out;
+}
+
 export function matchPayments(app: AppPayment[], tally: TallyEntry[]): MatchResult {
   const used = new Set<string>();
-  const res: MatchResult = { matched: [], nameDiffers: [], onlyApp: [], onlyTally: [] };
+  const res: MatchResult = { matched: [], detailsDiffer: [], nameDiffers: [], onlyApp: [], onlyTally: [] };
+  const add = (list: Pair[], a: AppPayment, t: TallyEntry, gap: number, byVoucher: boolean) => {
+    used.add(t.key);
+    const differs = differences(a, t, gap);
+    (differs.length && list === res.matched ? res.detailsDiffer : list).push({ app: a, tally: t, dayGap: gap, byVoucher, differs });
+  };
   const pick = (a: AppPayment, sameName: boolean) => {
     let best: TallyEntry | null = null, gap = Infinity;
     for (const t of tally) {
@@ -56,14 +80,22 @@ export function matchPayments(app: AppPayment[], tally: TallyEntry[]): MatchResu
     return best ? { tally: best, gap } : null;
   };
   const sorted = [...app].sort((x, y) => x.date.localeCompare(y.date));
-  const left: AppPayment[] = [];
+  // 1. payments linked to a Tally voucher (by its Tally id, else its voucher number)
+  const rest: AppPayment[] = [];
   for (const a of sorted) {
-    const m = pick(a, true);
-    if (m) { used.add(m.tally.key); res.matched.push({ app: a, tally: m.tally, dayGap: m.gap }); } else left.push(a);
+    const t = (a.tallyNo || a.tallyId) ? tally.find((v) => !used.has(v.key) && v.account === a.account && ((a.tallyId && v.id === a.tallyId) || sameNo(v.n, a.tallyNo))) : undefined;
+    if (t) add(res.matched, a, t, days(t.d, a.date), true); else rest.push(a);
   }
+  // 2. same customer and amount, within a few days
+  const left: AppPayment[] = [];
+  for (const a of rest) {
+    const m = pick(a, true);
+    if (m) add(res.matched, a, m.tally, m.gap, false); else left.push(a);
+  }
+  // 3. same amount and date but another name
   for (const a of left) {
     const m = pick(a, false);
-    if (m) { used.add(m.tally.key); res.nameDiffers.push({ app: a, tally: m.tally, dayGap: m.gap }); } else res.onlyApp.push(a);
+    if (m) add(res.nameDiffers, a, m.tally, m.gap, false); else res.onlyApp.push(a);
   }
   res.onlyTally = tally.filter((t) => !used.has(t.key));
   return res;

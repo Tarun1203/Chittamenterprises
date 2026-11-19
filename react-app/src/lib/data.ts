@@ -37,6 +37,7 @@ export interface ServiceJob {
 export interface Receipt {
   id: string; date: string; customerId: string; customerName: string; mode: string;
   business: number; cash: number; source: string; ref?: string; note?: string; cancelled?: boolean;
+  tallyNo?: string; tallyId?: string;   // the Tally voucher this payment is linked to
 }
 export interface BalanceSet {
   company: string; label?: string; file?: string; importedAt?: string; importedBy?: string;
@@ -213,7 +214,8 @@ export async function saveBalances(company: "business" | "cash", entry: BalanceS
 /* ---------------- Tally transactions (sent by the Windows app) ---------------- */
 // d date (yyyy-mm-dd), t voucher type, n number, p customer ledger, a amount,
 // dr customer debited (sale) / credited (receipt), nar narration, id Tally GUID
-export interface TallyVoucher { d: string; t: string; n: string; p: string; a: number; dr: boolean; nar?: string; id?: string }
+// via: the other ledger(s) in the voucher — Cash, a bank… (how it was booked)
+export interface TallyVoucher { d: string; t: string; n: string; p: string; a: number; dr: boolean; nar?: string; via?: string; id?: string }
 export interface TallyVoucherSet { company: string; label?: string; tallyCompany?: string; from?: string; to?: string; syncedAt?: string; count?: number; vouchers: TallyVoucher[] }
 // read once when the Tally Match page opens (a few hundred KB; not kept live)
 export async function loadTallyVouchers() {

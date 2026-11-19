@@ -49,6 +49,7 @@ export const demoReceipts: Receipt[] = [
   { id: "r1", date: iso(0), customerId: "d0", customerName: "AB Infinite", mode: "Advance", business: 2000, cash: 0, source: "Order advance", ref: no(0, 1) },
   { id: "r2", date: iso(-1), customerId: "d5", customerName: "Badrinath Allundi - Raichur", mode: "UPI", business: 15000, cash: 2500, source: "Payment Updated" },
   { id: "r3", date: iso(-1), customerId: "d9", customerName: "Kashi SLN", mode: "Cash", business: 0, cash: 4000, source: "Manual", note: "Paid at shop" },
+  { id: "r5", date: iso(-9), customerId: "d10", customerName: "Lokesh - Kallur", mode: "UPI", business: 0, cash: 3000, source: "Payment Updated", tallyNo: "11" },
   { id: "r4", date: iso(-4), customerId: "d7", customerName: "Deepak", mode: "Cheque", business: 8000, cash: 0, source: "Manual", cancelled: true, note: "Cheque bounced" },
 ];
 
@@ -75,15 +76,16 @@ export const demoActivity: ActivityEntry[] = [
 // one Tally-only receipt, a name that differs, and a duplicate sale
 export const demoTallyVouchers: Record<string, TallyVoucherSet> = {
   business: { company: "business", label: "Chittam Enterprises", tallyCompany: "Chittam Enterprises - 2026", from: iso(-90), to: iso(0), syncedAt: new Date(Date.now() - 1800e3).toISOString(), count: 6, vouchers: [
-    { d: iso(0), t: "Receipt", n: "45", p: "AB Infinite", a: 2000, dr: false, nar: "Advance against order", id: "v1" },
-    { d: iso(-1), t: "Receipt", n: "44", p: "Badrinath Allundi Raichur", a: 15000, dr: false, nar: "UPI", id: "v2" },
-    { d: iso(-2), t: "Receipt", n: "43", p: "Mallu Mobiles and Electronics - Pothnal", a: 9000, dr: false, nar: "Cheque 004512", id: "v3" },
+    { d: iso(0), t: "Receipt", n: "45", p: "AB Infinite", a: 2000, dr: false, nar: "Advance against order", via: "Axis Bank", id: "v1" },
+    { d: iso(-1), t: "Receipt", n: "44", p: "Badrinath Allundi Raichur", a: 15000, dr: false, nar: "UPI", via: "Axis Bank", id: "v2" },
+    { d: iso(-2), t: "Receipt", n: "43", p: "Mallu Mobiles and Electronics - Pothnal", a: 9000, dr: false, nar: "Cheque 004512", via: "Indian Bank", id: "v3" },
     { d: iso(-3), t: "Sales", n: "CE/245", p: "Kashi SLN", a: 12900, dr: true, id: "v4" },
     { d: iso(-2), t: "Sales", n: "CE/247", p: "Kashi SLN", a: 12900, dr: true, id: "v5" },
     { d: iso(-6), t: "Sales", n: "CE/240", p: "Deepak", a: 4300, dr: true, id: "v6" },
   ] },
   cash: { company: "cash", label: "Cash Bill", tallyCompany: "Cash", from: iso(-90), to: iso(0), syncedAt: new Date(Date.now() - 1800e3).toISOString(), count: 2, vouchers: [
-    { d: iso(-1), t: "Receipt", n: "12", p: "Badrinath Allundi - Raichur", a: 2500, dr: false, id: "c1" },
-    { d: iso(-1), t: "Receipt", n: "13", p: "Kashi SLN", a: 4000, dr: false, id: "c2" },
+    { d: iso(-1), t: "Receipt", n: "12", p: "Badrinath Allundi - Raichur", a: 2500, dr: false, via: "Cash", id: "c1" },
+    { d: iso(-3), t: "Receipt", n: "11", p: "Lokesh - Kallur", a: 3000, dr: false, via: "Cash", id: "c0" },
+    { d: iso(-1), t: "Receipt", n: "13", p: "Kashi SLN", a: 4000, dr: false, via: "Cash", id: "c2" },
   ] },
 };
