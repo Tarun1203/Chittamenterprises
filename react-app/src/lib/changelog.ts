@@ -4,6 +4,14 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.8", date: "2026-11-19", title: "Thermal pick list slips",
+    items: [
+      "Pick list → Thermal: a receipt-printer slip per order (80 mm or 58 mm paper) with the order number, dates, customer name, mobile, transport, items to pack with tick boxes, pending items, notes and Packed by / Checked by.",
+      "A day's pick list prints one slip per order. The paper width is remembered on each device.",
+      "The normal full-page print is now the A4 button.",
+    ],
+  },
+  {
     version: "3.7", date: "2026-11-19", title: "Pick list printing fixed",
     items: [
       "Print on the pick list works in the Windows app and on phones — no more “Allow pop-ups to print”.",

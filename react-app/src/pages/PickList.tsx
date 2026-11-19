@@ -1,7 +1,9 @@
 // Pick list for the godown: one order, or every open order of a day, with
-// the total of each product and the per-order breakdown. Copy or print.
+// the total of each product and the per-order breakdown. Copy, print on A4,
+// or print a thermal slip per order (80 / 58 mm receipt paper) with the
+// order number and the customer's details.
 import { useMemo, useState } from "react";
-import { IconCopy, IconPrinter } from "@tabler/icons-react";
+import { IconCopy, IconPrinter, IconReceipt } from "@tabler/icons-react";
 import { Button, Dialog, Field, useToast } from "@/components/kit";
 import { Text, copyText } from "@/components/forms";
 import { useStore } from "@/lib/store";
@@ -12,11 +14,32 @@ import { cn } from "@/lib/utils";
 
 const STATUSES = ["Pending", "Confirmed", "Packed", "Dispatched", "Delivered", "Cancelled"];
 const DEFAULT = ["Pending", "Confirmed", "Packed"];
+// thermal paper width, remembered on this device
+const readWidth = (): 80 | 58 => { try { return localStorage.getItem("ce_thermal_width") === "58" ? 58 : 80; } catch { return 80; } };
+
+// printed from a hidden frame in this page: no pop-up window needed (the
+// Windows app and some phones block pop-ups)
+function printHtml(html: string, fail: () => void) {
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(frame);
+  const doc = frame.contentWindow?.document;
+  if (!doc || !frame.contentWindow) { frame.remove(); fail(); return; }
+  doc.open(); doc.write(html); doc.close();
+  setTimeout(() => {
+    try { frame.contentWindow!.focus(); frame.contentWindow!.print(); } catch { fail(); }
+    setTimeout(() => frame.remove(), 60000);
+  }, 300);
+}
+
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 export function PickListDialog({ open, onClose, single }: { open: boolean; onClose: () => void; single?: Order | null }) {
-  const { orders } = useStore();
+  const { orders, customers, settings } = useStore();
   const toast = useToast();
+  const [width, setWidthState] = useState<80 | 58>(readWidth);
+  const setWidth = (w: 80 | 58) => { setWidthState(w); try { localStorage.setItem("ce_thermal_width", String(w)); } catch { /* private window */ } };
   const [date, setDate] = useState(todayISO());
   const [statuses, setStatuses] = useState<string[]>(DEFAULT);
 
@@ -48,26 +71,85 @@ export function PickListDialog({ open, onClose, single }: { open: boolean; onClo
       ${chosen.length > 1 ? "<h2>By order</h2>" + chosen.map((o) => `<div class="o"><b>${esc(o.orderNo)}</b> · ${esc(o.customerName)}${o.transport ? " · " + esc(o.transport) : ""}<br>${(o.items || []).filter((it) => packQty(it) > 0).map((it) => `${box}${esc(it.name)} × <b>${packQty(it)}</b>`).join("<br>")}</div>`).join("") : chosen[0].notes ? `<p>📝 ${esc(chosen[0].notes)}</p>` : ""}
       ${pend.length ? `<h2>⏳ Pending — no stock, not packed</h2><p>${pend.join("<br>")}</p>` : ""}
       </body></html>`;
-    // printed from a hidden frame in this page: no pop-up window needed (the
-    // Windows app and some phones block pop-ups)
-    const frame = document.createElement("iframe");
-    frame.setAttribute("aria-hidden", "true");
-    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
-    document.body.appendChild(frame);
-    const doc = frame.contentWindow?.document;
-    if (!doc || !frame.contentWindow) { frame.remove(); toast("Printing is not available here — use Copy instead."); return; }
-    doc.open(); doc.write(html); doc.close();
-    setTimeout(() => {
-      try { frame.contentWindow!.focus(); frame.contentWindow!.print(); }
-      catch { toast("Printing is not available here — use Copy instead."); }
-      setTimeout(() => frame.remove(), 60000);
-    }, 300);
+    printHtml(html, () => toast("Printing is not available here — use Copy instead."));
     logEvent("picklist-printed", {}).catch(() => {});
+  }
+
+  // one slip per order: business, order no., customer details, items to pack, pending
+  function printThermal() {
+    if (!chosen.length) { toast("Nothing to print."); return; }
+    const inner = width === 58 ? 48 : 72;   // printable width in mm
+    const base = width === 58 ? 11 : 12.5;  // font size in px
+    const now = new Date().toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const row = (k: string, v?: string) => (v ? `<tr><td class="k">${k}</td><td>${esc(v)}</td></tr>` : "");
+    const slips = chosen.map((o) => {
+      const c = customers.find((x) => x.id === o.customerId);
+      const mobile = o.mobile || c?.mobile || "";
+      const pack = (o.items || []).filter((it) => packQty(it) > 0);
+      const pend = orderPending(o);
+      const pcs = pack.reduce((t, it) => t + packQty(it), 0);
+      return `<section class="slip">
+        <div class="c b big">${esc(settings.businessName || "Chittam Enterprises")}</div>
+        ${settings.address ? `<div class="c sm">${esc(settings.address)}</div>` : ""}
+        <div class="c b title">PICK LIST</div>
+        <hr>
+        <table class="kv">
+          ${row("Order No.", o.orderNo)}
+          ${row("Order date", msgDate(o.date))}
+          ${row("Delivery", o.deliveryDate ? msgDate(o.deliveryDate) : "")}
+          ${row("Status", o.status)}
+        </table>
+        <hr>
+        <div class="b">${esc(o.customerName || "—")}</div>
+        <table class="kv">
+          ${row("Mobile", mobile)}
+          ${row("Transport", o.transport ? o.transport + (o.transportPhone ? " · " + o.transportPhone : "") : "")}
+        </table>
+        <hr>
+        <table class="items">
+          <tr><th>Item</th><th class="q">Qty</th></tr>
+          ${pack.map((it) => `<tr><td><span class="box"></span>${esc(it.name)}</td><td class="q">${packQty(it)}</td></tr>`).join("")}
+        </table>
+        <hr>
+        <div class="b">Total: ${pack.length} item${pack.length === 1 ? "" : "s"} · ${pcs} pcs</div>
+        ${pend.length ? `<hr><div class="b">PENDING — no stock, not packed</div>${pend.map((it) => `<div>• ${esc(it.name)} × <b>${pendingQty(it)}</b></div>`).join("")}` : ""}
+        ${o.notes ? `<hr><div>Note: ${esc(o.notes)}</div>` : ""}
+        <hr>
+        <div class="sign">Packed by: ____________</div>
+        <div class="sign">Checked by: ___________</div>
+        <div class="c sm muted">Printed ${esc(now)}</div>
+      </section>`;
+    }).join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>
+      @page { size: ${width}mm auto; margin: 0; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: #fff; }
+      body { width: ${inner}mm; margin: 0 auto; color: #000; font: ${base}px/1.35 "Segoe UI", Arial, sans-serif; -webkit-print-color-adjust: exact; }
+      .slip { padding: 3mm 0 5mm; break-after: page; page-break-after: always; }
+      .slip:last-child { break-after: auto; page-break-after: auto; }
+      .c { text-align: center; } .b { font-weight: 700; } .big { font-size: 1.25em; } .title { font-size: 1.15em; letter-spacing: .12em; margin-top: 1mm; }
+      .sm { font-size: .85em; } .muted { color: #333; margin-top: 2mm; }
+      hr { border: 0; border-top: 1px dashed #000; margin: 1.6mm 0; }
+      table { width: 100%; border-collapse: collapse; }
+      .kv td { padding: .3mm 0; vertical-align: top; } .kv td.k { width: 36%; color: #222; }
+      .items th { text-align: left; border-bottom: 1px solid #000; padding: .6mm 0; font-size: .9em; }
+      .items td { padding: 1mm 0; vertical-align: top; border-bottom: 1px dotted #999; }
+      .items .q { text-align: right; width: 12mm; font-weight: 700; font-size: 1.15em; }
+      .box { display: inline-block; width: 3mm; height: 3mm; border: 1px solid #000; margin-right: 1.5mm; vertical-align: -.4mm; }
+      .sign { margin-top: 3mm; }
+    </style></head><body>${slips}</body></html>`;
+    printHtml(html, () => toast("Printing is not available here — use Copy instead."));
+    logEvent("picklist-printed", { thermal: width, orders: chosen.length }).catch(() => {});
   }
 
   return (
     <Dialog open={open} onClose={onClose} title={title}
-      footer={<><Button variant="ghost" onClick={onClose}>Close</Button><Button variant="secondary" onClick={print}><IconPrinter size={16} /> Print</Button><Button onClick={copy}><IconCopy size={16} /> Copy</Button></>}>
+      footer={<>
+        <Button variant="ghost" onClick={onClose}>Close</Button>
+        <Button variant="secondary" onClick={print}><IconPrinter size={16} /> A4</Button>
+        <Button variant="secondary" onClick={printThermal}><IconReceipt size={16} /> Thermal {width} mm</Button>
+        <Button onClick={copy}><IconCopy size={16} /> Copy</Button>
+      </>}>
       {!single && (
         <div className="space-y-3">
           <Field label="Order date"><Text type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
@@ -116,6 +198,14 @@ export function PickListDialog({ open, onClose, single }: { open: boolean; onClo
             </div>
           )}
           {chosen.length === 1 && chosen[0].notes && <p className="mt-3 text-sm text-neutral-600">📝 {chosen[0].notes}</p>}
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+            <span className="font-semibold">Thermal paper</span>
+            {([80, 58] as const).map((w) => (
+              <button key={w} type="button" onClick={() => setWidth(w)}
+                className={cn("rounded-full border px-2.5 py-0.5 font-semibold", width === w ? "border-brand-500 bg-brand-50 text-brand-700" : "border-neutral-200")}>{w} mm</button>
+            ))}
+            <span>· one slip per order, with the customer's details</span>
+          </div>
         </div>
       )}
     </Dialog>
