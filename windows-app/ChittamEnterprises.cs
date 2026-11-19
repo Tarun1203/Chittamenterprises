@@ -15,6 +15,10 @@
 //    them up, since goods bought in one book are often sold in the other);
 //  - open invoices: bill-wise outstanding with due dates, for Payment
 //    Reminder;
+//  - customers and products: new Tally debtors are added as customers (with
+//    their mobile), new stock items as products (group + price); a customer
+//    without a mobile gets Tally's; a product's price follows Tally only
+//    when Tally has a selling price for it (its rate is the purchase cost);
 //  - transactions: the last N days of vouchers that involve a customer
 //    (receipts, sales, credit notes, journals), so the app's Tally Match page
 //    can match payments with Tally and point out possible duplicates.
@@ -57,7 +61,7 @@ namespace ChittamEnterprises
     {
         public const string AppUrl = "https://tarun1203.github.io/Chittamenterprises/next/";
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
-        public const string DesktopVersion = "2.2";
+        public const string DesktopVersion = "2.3";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -133,6 +137,7 @@ namespace ChittamEnterprises
         public int VoucherDays = 90;
         public bool SyncStock = true;
         public bool SyncBills = true;
+        public bool SyncMasters = true;   // customers + products
         public string TallyUrl = "http://localhost:9000";
         public string ProjectId = "chittam-enterprises";
         public string ApiKey = "AIzaSyCEk9hKMJzA05DdB0axSJ4k76-Jl9acmjc";
@@ -190,6 +195,7 @@ namespace ChittamEnterprises
                         if (s.VoucherDays < 7) s.VoucherDays = 90;
                         // settings saved before 2.2 have no stock / invoice options: turn them on
                         if (!text.Contains("\"SyncStock\"")) { s.SyncStock = true; s.SyncBills = true; }
+                        if (!text.Contains("\"SyncMasters\"")) s.SyncMasters = true;
                         return s;
                     }
                 }
@@ -214,7 +220,8 @@ namespace ChittamEnterprises
         public bool Debit;   // the customer's ledger was debited (sale) rather than credited (receipt)
     }
 
-    class StockLine { public string Name, Unit; public double Qty; }
+    class StockLine { public string Name, Unit, Group = ""; public double Qty, Rate, SellingPrice; }
+    class Debtor { public string Name, Mobile; }
     class Bill { public string Party, Ref, Date, Due; public double Amount; public int Overdue; }
 
     static class Tally
@@ -316,7 +323,7 @@ namespace ChittamEnterprises
                 "<BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>" +
                 "<SVCURRENTCOMPANY>" + System.Security.SecurityElement.Escape(company) + "</SVCURRENTCOMPANY></STATICVARIABLES>" +
                 "<TDL><TDLMESSAGE><COLLECTION NAME=\"ChittamStock\" ISMODIFY=\"No\"><TYPE>StockItem</TYPE>" +
-                "<FETCH>Name, BaseUnits, ClosingBalance</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
+                "<FETCH>Name, Parent, BaseUnits, ClosingBalance, ClosingRate, StandardPriceList</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
             return ParseStock(xml);
         }
 
@@ -331,9 +338,52 @@ namespace ChittamEnterprises
                 if (name.Length == 0) continue;
                 var unit = Text(e, "BASEUNITS");
                 var cb = Text(e, "CLOSINGBALANCE");
-                list.Add(new StockLine { Name = name, Unit = unit, Qty = Num(cb) });
+                // selling price: the latest standard price entry with a rate
+                double sp = 0;
+                foreach (XmlNode pl in e.SelectNodes("STANDARDPRICELIST.LIST"))
+                {
+                    var r = Num(Text(pl, "RATE").Split('/')[0]);
+                    if (r > 0) sp = r;
+                }
+                list.Add(new StockLine { Name = name, Unit = unit, Qty = Num(cb), Group = Text(e, "PARENT"),
+                    Rate = Num(Text(e, "CLOSINGRATE").Split('/')[0]), SellingPrice = sp });
             }
             return list;
+        }
+
+        // customer ledgers (everything under Sundry Debtors) with their mobile numbers
+        public static List<Debtor> Debtors(string url, string company)
+        {
+            var xml = Post(url, "<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>ChittamDebtors</ID></HEADER>" +
+                "<BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>" +
+                "<SVCURRENTCOMPANY>" + System.Security.SecurityElement.Escape(company) + "</SVCURRENTCOMPANY></STATICVARIABLES>" +
+                "<TDL><TDLMESSAGE><COLLECTION NAME=\"ChittamDebtors\" ISMODIFY=\"No\"><TYPE>Ledger</TYPE>" +
+                "<CHILDOF>$$GroupSundryDebtors</CHILDOF><BELONGSTO>Yes</BELONGSTO>" +
+                "<FETCH>Name, LedgerMobile, LedgerPhone</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
+            return ParseDebtors(xml);
+        }
+
+        public static List<Debtor> ParseDebtors(string xml)
+        {
+            var doc = new XmlDocument();
+            doc.LoadXml(xml);
+            var list = new List<Debtor>();
+            foreach (XmlElement e in doc.SelectNodes("//LEDGER"))
+            {
+                var name = e.GetAttribute("NAME").Trim();
+                if (name.Length == 0 || Regex.IsMatch(name, "bank a/c", RegexOptions.IgnoreCase)) continue;
+                list.Add(new Debtor { Name = name, Mobile = CleanMobile(Text(e, "LEDGERMOBILE")) ?? CleanMobile(Text(e, "LEDGERPHONE")) ?? "" });
+            }
+            return list;
+        }
+
+        // a 10-digit Indian mobile, or null (same rules as the app's Tally import)
+        static string CleanMobile(string s)
+        {
+            var d = Regex.Replace(s ?? "", "\\D", "");
+            if (d.Length == 12 && d.StartsWith("91")) d = d.Substring(2);
+            if (d.Length == 11 && d.StartsWith("0")) d = d.Substring(1);
+            return d.Length == 10 ? d : null;
         }
 
         // Tally's dates in reports look like 1-Apr-25 or 01-Apr-2025
@@ -530,6 +580,112 @@ namespace ChittamEnterprises
             Log(s, token, "balances-synced", label, new Dictionary<string, object> { { "name", Str(label) }, { "company", Str(company) }, { "names", Int(balances.Count) } });
         }
 
+        // name (and a few fields) of every document in a collection
+        public static List<Dictionary<string, object>> List(Settings s, string token, string coll, params string[] fields)
+        {
+            var all = new List<Dictionary<string, object>>();
+            string pageToken = "";
+            do
+            {
+                var url = BaseUrl(s) + coll + "?pageSize=1000" + string.Concat(fields.Select(f => "&mask.fieldPaths=" + f)) +
+                    (pageToken.Length > 0 ? "&pageToken=" + Uri.EscapeDataString(pageToken) : "");
+                var req = (HttpWebRequest)WebRequest.Create(url);
+                req.Headers["Authorization"] = "Bearer " + token;
+                string body;
+                try { using (var res = (HttpWebResponse)req.GetResponse()) using (var r = new StreamReader(res.GetResponseStream(), Encoding.UTF8)) body = r.ReadToEnd(); }
+                catch (WebException ex) { throw new Exception("Could not read " + coll + ": " + ex.Message); }
+                var obj = Json.Deserialize<Dictionary<string, object>>(body);
+                object docs;
+                if (obj != null && obj.TryGetValue("documents", out docs))
+                    foreach (Dictionary<string, object> d in (System.Collections.ArrayList)docs)
+                    {
+                        var row = new Dictionary<string, object>();
+                        var path = (string)d["name"];
+                        row["_id"] = path.Substring(path.LastIndexOf('/') + 1);
+                        object fv;
+                        if (d.TryGetValue("fields", out fv))
+                            foreach (var kv in (Dictionary<string, object>)fv)
+                            {
+                                var v = (Dictionary<string, object>)kv.Value;
+                                object x;
+                                if (v.TryGetValue("stringValue", out x)) row[kv.Key] = x;
+                                else if (v.TryGetValue("doubleValue", out x)) row[kv.Key] = Convert.ToDouble(x, CultureInfo.InvariantCulture);
+                                else if (v.TryGetValue("integerValue", out x)) row[kv.Key] = Convert.ToDouble(x, CultureInfo.InvariantCulture);
+                            }
+                        all.Add(row);
+                    }
+                object nt;
+                pageToken = obj != null && obj.TryGetValue("nextPageToken", out nt) ? (string)nt : "";
+            } while (pageToken.Length > 0);
+            return all;
+        }
+
+        static readonly Random Rnd = new Random();
+        static string RandomId(int n)
+        {
+            const string abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+            lock (Rnd) return new string(Enumerable.Range(0, n).Select(_ => abc[Rnd.Next(abc.Length)]).ToArray());
+        }
+        // same id style as the app: prefix + time in base 36 + 5 random letters
+        public static string AppId(string prefix)
+        {
+            long t = (long)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalMilliseconds;
+            const string b36 = "0123456789abcdefghijklmnopqrstuvwxyz";
+            var sb = new StringBuilder();
+            do { sb.Insert(0, b36[(int)(t % 36)]); t /= 36; } while (t > 0);
+            return prefix + sb + RandomId(5).ToLowerInvariant();
+        }
+
+        static object Value(object v)
+        {
+            if (v == null) return new Dictionary<string, object> { { "nullValue", null } };
+            if (v is double || v is int) return Dbl(Convert.ToDouble(v));
+            return Str(Convert.ToString(v, CultureInfo.InvariantCulture));
+        }
+        static Dictionary<string, object> Fields(Dictionary<string, object> rec)
+        {
+            var f = new Dictionary<string, object>();
+            foreach (var kv in rec) f[kv.Key] = Value(kv.Value);
+            return f;
+        }
+
+        // adds / updates records the way the app does: the record (with created/updated
+        // stamps) plus one activity entry each, so History shows every change
+        public static void SaveRecords(Settings s, string token, string coll, List<Tuple<string, Dictionary<string, object>, Dictionary<string, object>>> recs)
+        {
+            string root = "projects/" + s.ProjectId + "/databases/(default)/documents/";
+            for (int i = 0; i < recs.Count; i += 150)
+            {
+                string now = Now();
+                var writes = new List<object>();
+                foreach (var r in recs.Skip(i).Take(150))
+                {
+                    string id = r.Item1; var after = r.Item2; var before = r.Item3;
+                    var fields = Fields(after);
+                    fields["updatedAt"] = Ts(now); fields["updatedBy"] = Str(s.Email);
+                    var w = new Dictionary<string, object> { { "update", new Dictionary<string, object> { { "name", root + coll + "/" + id }, { "fields", fields } } } };
+                    if (before == null) { fields["createdAt"] = Ts(now); fields["createdBy"] = Str(s.Email); }
+                    else w["updateMask"] = new Dictionary<string, object> { { "fieldPaths", fields.Keys.ToArray() } };
+                    writes.Add(w);
+                    var full = new Dictionary<string, object>(before ?? new Dictionary<string, object>());
+                    foreach (var kv in after) full[kv.Key] = kv.Value;
+                    string label = Convert.ToString(full.ContainsKey("name") ? full["name"] : "");
+                    writes.Add(new Dictionary<string, object> { { "update", new Dictionary<string, object> { { "name", root + "activity/" + RandomId(20) }, { "fields", new Dictionary<string, object> {
+                        { "collection", Str(coll) }, { "docId", Str(id) }, { "action", Str(before == null ? "create" : "update") }, { "name", Str(label) },
+                        { "before", before == null ? (object)new Dictionary<string, object> { { "nullValue", null } } : Map(Fields(before)) },
+                        { "after", Map(Fields(full)) }, { "at", Ts(now) }, { "by", Str(s.Email) }, { "source", Str("Tally sync") }
+                    } } } } });
+                }
+                Send("POST", BaseUrl(s).TrimEnd('/') + ":commit", token, new Dictionary<string, object> { { "writes", writes } });
+            }
+        }
+
+        public static void LogMasters(Settings s, string token, int custAdded, int custUpdated, int prodAdded, int prodUpdated)
+        {
+            Log(s, token, "tally-masters-synced", "Customers and products", new Dictionary<string, object> {
+                { "customersAdded", Int(custAdded) }, { "customersUpdated", Int(custUpdated) }, { "productsAdded", Int(prodAdded) }, { "productsUpdated", Int(prodUpdated) } });
+        }
+
         public static void SaveStock(Settings s, string token, string key, string label, string company, List<StockLine> items)
         {
             string now = Now();
@@ -590,6 +746,7 @@ namespace ChittamEnterprises
         public bool Busy { get; private set; }
         public DateTime NextSync = DateTime.Now.AddSeconds(15);
         public string LastError = "";
+        public bool DryRun;   // report what customers / products would change, write nothing
         readonly List<string> recent = new List<string>();
 
         public SyncEngine(Settings s)
@@ -649,6 +806,8 @@ namespace ChittamEnterprises
         void Run(bool force)
         {
             string token = null;
+            var allDebtors = new List<Debtor>();
+            var allStock = new List<StockLine>();
             var jobs = new[] {
                 new[] { "business", Settings.BusinessCompany, Settings.BusinessLabel },
                 new[] { "cash", Settings.CashCompany, Settings.CashLabel }
@@ -681,6 +840,8 @@ namespace ChittamEnterprises
                     try
                     {
                         var stock = Tally.Stock(Settings.TallyUrl, company);
+                        // business company first, so its group / rate wins over Cash's
+                        if (key == "business") allStock.InsertRange(0, stock); else allStock.AddRange(stock);
                         var ssig = string.Join("|", stock.OrderBy(x => x.Name, StringComparer.Ordinal).Select(x => x.Name + "=" + x.Qty.ToString(CultureInfo.InvariantCulture) + x.Unit));
                         string shash = Hash(ssig), skey = "s-" + key, slast;
                         if (!force && Settings.LastHash.TryGetValue(skey, out slast) && slast == shash) Log("[" + company + "] stock: no change");
@@ -695,6 +856,13 @@ namespace ChittamEnterprises
                         }
                     }
                     catch (Exception ex) { Log("[" + company + "] stock skipped: " + ex.Message); }
+                }
+
+                // ---- customer ledgers (for adding customers) ----
+                if (Settings.SyncMasters)
+                {
+                    try { allDebtors.AddRange(Tally.Debtors(Settings.TallyUrl, company)); }
+                    catch (Exception ex) { Log("[" + company + "] customer list skipped: " + ex.Message); }
                 }
 
                 // ---- open invoices (bill-wise) ----
@@ -740,6 +908,142 @@ namespace ChittamEnterprises
                 Settings.Save();
                 Log("[" + company + "] uploaded " + vouchers.Count + " transactions (" + from.ToString("dd MMM") + " – " + to.ToString("dd MMM") + ")");
             }
+
+            if (Settings.SyncMasters && (allDebtors.Count > 0 || allStock.Count > 0))
+            {
+                try { SyncMasters(ref token, force, allDebtors, allStock); }
+                catch (Exception ex) { Log("Customers / products skipped: " + ex.Message); }
+            }
+        }
+
+        // new Tally customers and products into the app; mobiles and selling prices kept up to date
+        internal void SyncMasters(ref string token, bool force, List<Debtor> debtors, List<StockLine> stock)
+        {
+            var sig = string.Join("|", debtors.Select(d => d.Name + "=" + d.Mobile)) + "#" +
+                string.Join("|", stock.Select(x => x.Name + "=" + x.Group + "=" + x.Rate.ToString(CultureInfo.InvariantCulture) + "=" + x.SellingPrice.ToString(CultureInfo.InvariantCulture)));
+            string hash = Hash(sig), last;
+            if (!force && Settings.LastHash.TryGetValue("masters", out last) && last == hash) { Log("Customers / products: no change in Tally"); return; }
+            if (token == null) token = Firebase.SignIn(Settings);
+
+            // ---- customers
+            var existingC = Firebase.List(Settings, token, "customers", "name", "mobile");
+            // matched by name ignoring case, spaces and punctuation; a near-identical
+            // spelling (1-2 letters different) counts as the same customer, so no duplicate is added
+            var byName = new Dictionary<string, Dictionary<string, object>>();
+            foreach (var c in existingC) { var k = Key(Convert.ToString(c.ContainsKey("name") ? c["name"] : "")); if (k.Length > 0 && !byName.ContainsKey(k)) byName[k] = c; }
+            var similar = new List<string>();
+            var cWrites = new List<Tuple<string, Dictionary<string, object>, Dictionary<string, object>>>();
+            int cAdded = 0, cUpdated = 0;
+            var seen = new HashSet<string>();
+            foreach (var d in debtors)
+            {
+                var k = Key(d.Name);
+                if (k.Length == 0 || !seen.Add(k)) continue;
+                Dictionary<string, object> c;
+                if (!byName.TryGetValue(k, out c))
+                {
+                    var near = byName.Keys.FirstOrDefault(x => k.Length > 8 && Math.Abs(x.Length - k.Length) <= 2 && Distance(x, k) <= 2);
+                    if (near != null) { similar.Add(d.Name + " ≈ " + byName[near]["name"]); continue; }
+                }
+                if (c != null)
+                {
+                    var mob = Convert.ToString(c.ContainsKey("mobile") ? c["mobile"] : "");
+                    var tallyMob = d.Mobile.Length > 0 ? d.Mobile : debtors.Where(x => Key(x.Name) == k).Select(x => x.Mobile).FirstOrDefault(m => m.Length > 0) ?? "";
+                    if (mob.Length == 0 && tallyMob.Length > 0)
+                    {
+                        cWrites.Add(Tuple.Create((string)c["_id"], new Dictionary<string, object> { { "mobile", tallyMob } },
+                            new Dictionary<string, object> { { "id", c["_id"] }, { "name", c["name"] }, { "mobile", "" } }));
+                        cUpdated++;
+                    }
+                }
+                else
+                {
+                    var id = Firebase.AppId("c_");
+                    var mob = d.Mobile.Length > 0 ? d.Mobile : debtors.Where(x => Key(x.Name) == k).Select(x => x.Mobile).FirstOrDefault(m => m.Length > 0) ?? "";
+                    cWrites.Add(Tuple.Create(id, new Dictionary<string, object> { { "id", id }, { "name", d.Name }, { "mobile", mob } }, (Dictionary<string, object>)null));
+                    cAdded++;
+                }
+            }
+
+            // ---- products
+            var existingP = Firebase.List(Settings, token, "products", "name", "price", "category");
+            var pByName = new Dictionary<string, Dictionary<string, object>>();
+            foreach (var p in existingP) { var k = Key(Convert.ToString(p.ContainsKey("name") ? p["name"] : "")); if (k.Length > 0 && !pByName.ContainsKey(k)) pByName[k] = p; }
+            var pWrites = new List<Tuple<string, Dictionary<string, object>, Dictionary<string, object>>>();
+            int pAdded = 0, pUpdated = 0;
+            var pSeen = new HashSet<string>();
+            // stock of each item across both companies
+            var totalQty = new Dictionary<string, double>();
+            foreach (var x in stock) { var k = Key(x.Name); double q; totalQty.TryGetValue(k, out q); totalQty[k] = q + x.Qty; }
+            // Tally groups that aren't things for sale
+            Func<string, bool> notForSale = g => Regex.IsMatch(g ?? "", "ass?ets?|assest|dummy", RegexOptions.IgnoreCase);
+            foreach (var x in stock)
+            {
+                var k = Key(x.Name);
+                if (k.Length == 0 || !pSeen.Add(k)) continue;
+                double tallyPrice = x.SellingPrice > 0 ? x.SellingPrice : x.Rate;
+                Dictionary<string, object> p;
+                if (pByName.TryGetValue(k, out p))
+                {
+                    double cur = p.ContainsKey("price") ? Convert.ToDouble(p["price"]) : 0;
+                    var cat = Convert.ToString(p.ContainsKey("category") ? p["category"] : "");
+                    var change = new Dictionary<string, object>();
+                    // the price follows Tally only for a selling price, or when the app has none
+                    if (x.SellingPrice > 0 && Math.Abs(cur - x.SellingPrice) > 0.009) change["price"] = Math.Round(x.SellingPrice, 2);
+                    else if (cur <= 0 && tallyPrice > 0) change["price"] = Math.Round(tallyPrice, 2);
+                    if (cat.Length == 0 && x.Group.Length > 0 && !notForSale(x.Group)) change["category"] = x.Group;
+                    if (change.Count > 0)
+                    {
+                        pWrites.Add(Tuple.Create((string)p["_id"], change,
+                            new Dictionary<string, object> { { "id", p["_id"] }, { "name", p["name"] }, { "price", cur }, { "category", cat } }));
+                        pUpdated++;
+                    }
+                }
+                else
+                {
+                    // only items you sell: in stock in either company, or with a selling price; never assets / dummy items
+                    double tq; totalQty.TryGetValue(k, out tq);
+                    if (notForSale(x.Group) || (tq <= 0 && x.SellingPrice <= 0)) continue;
+                    var id = Firebase.AppId("p_");
+                    pWrites.Add(Tuple.Create(id, new Dictionary<string, object> { { "id", id }, { "name", x.Name }, { "category", x.Group }, { "price", Math.Round(tallyPrice, 2) } }, (Dictionary<string, object>)null));
+                    pAdded++;
+                }
+            }
+
+            if (DryRun)
+            {
+                Log("[dry run] would add " + cAdded + " customers, fill " + cUpdated + " mobiles, add " + pAdded + " products, update " + pUpdated + " products");
+                if (cAdded > 0) Log("[dry run] new customers: " + string.Join(", ", cWrites.Where(w => w.Item3 == null).Select(w => w.Item2["name"])));
+                if (cUpdated > 0) Log("[dry run] mobiles filled: " + string.Join(", ", cWrites.Where(w => w.Item3 != null).Select(w => w.Item3["name"] + " " + w.Item2["mobile"])));
+                if (pUpdated > 0) Log("[dry run] products updated: " + string.Join(", ", pWrites.Where(w => w.Item3 != null).Select(w => w.Item3["name"] + " " + string.Join("/", w.Item2.Select(kv => kv.Key + "=" + kv.Value)))));
+                if (similar.Count > 0) Log("[dry run] not added, almost the same name: " + string.Join("; ", similar));
+                return;
+            }
+            if (cWrites.Count > 0) Firebase.SaveRecords(Settings, token, "customers", cWrites);
+            if (pWrites.Count > 0) Firebase.SaveRecords(Settings, token, "products", pWrites);
+            if (cWrites.Count > 0 || pWrites.Count > 0) Firebase.LogMasters(Settings, token, cAdded, cUpdated, pAdded, pUpdated);
+            Settings.LastHash["masters"] = hash;
+            Settings.LastStatus["masters"] = DateTime.Now.ToString("dd MMM yyyy, h:mm tt") + " · " + cAdded + " customers added, " + cUpdated + " mobiles filled, " + pAdded + " products added, " + pUpdated + " updated";
+            Settings.Save();
+            Log("Customers: " + cAdded + " added, " + cUpdated + " mobiles filled · Products: " + pAdded + " added, " + pUpdated + " updated");
+            if (cAdded > 0) Log("  New customers: " + string.Join(", ", cWrites.Where(w => w.Item3 == null).Select(w => w.Item2["name"])));
+            if (pAdded > 0) Log("  New products: " + string.Join(", ", pWrites.Where(w => w.Item3 == null).Take(40).Select(w => w.Item2["name"])) + (pAdded > 40 ? " …" : ""));
+            if (similar.Count > 0) Log("  Not added, spelled almost like an existing customer (rename one to match): " + string.Join("; ", similar));
+        }
+
+        // name key: lower case, letters and digits only
+        static string Key(string s) { return Regex.Replace((s ?? "").ToLowerInvariant(), "[^a-z0-9]", ""); }
+
+        // how many single-letter edits turn one into the other
+        static int Distance(string a, string b)
+        {
+            var d = new int[a.Length + 1, b.Length + 1];
+            for (int i = 0; i <= a.Length; i++) d[i, 0] = i;
+            for (int j = 0; j <= b.Length; j++) d[0, j] = j;
+            for (int i = 1; i <= a.Length; i++)
+                for (int j = 1; j <= b.Length; j++)
+                    d[i, j] = Math.Min(Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1), d[i - 1, j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1));
+            return d[a.Length, b.Length];
         }
 
         // what the app page shows about the sync
@@ -750,7 +1054,7 @@ namespace ChittamEnterprises
                 { "type", "tally-status" }, { "desktopVersion", Program.DesktopVersion },
                 { "configured", s.Configured }, { "busy", Busy }, { "error", LastError },
                 { "nextSync", NextSync.ToString("h:mm tt") }, { "intervalMinutes", s.IntervalMinutes },
-                { "syncVouchers", s.SyncVouchers }, { "voucherDays", s.VoucherDays }, { "syncStock", s.SyncStock }, { "syncBills", s.SyncBills },
+                { "syncVouchers", s.SyncVouchers }, { "voucherDays", s.VoucherDays }, { "syncStock", s.SyncStock }, { "syncBills", s.SyncBills }, { "syncMasters", s.SyncMasters }, { "masters", LastText("masters") },
                 { "companies", new object[] {
                     new Dictionary<string, object> { { "key", "business" }, { "company", s.BusinessCompany }, { "label", s.BusinessLabel }, { "balances", LastText("business") }, { "vouchers", LastText("v-business") }, { "stock", LastText("s-business") }, { "bills", LastText("b-business") } },
                     new Dictionary<string, object> { { "key", "cash" }, { "company", s.CashCompany }, { "label", s.CashLabel }, { "balances", LastText("cash") }, { "vouchers", LastText("v-cash") }, { "stock", LastText("s-cash") }, { "bills", LastText("b-cash") } }
@@ -839,7 +1143,7 @@ namespace ChittamEnterprises
         TextBox txtEmail, txtPassword, txtLog;
         ComboBox cboBusiness, cboCash;
         NumericUpDown numInterval, numDays;
-        CheckBox chkStartup, chkVouchers, chkStock, chkBills;
+        CheckBox chkStartup, chkVouchers, chkStock, chkBills, chkMasters;
         Label lblBusiness, lblCash, lblNext, lblDot;
         Button btnSave, btnSync;
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -857,7 +1161,7 @@ namespace ChittamEnterprises
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(900, 670);
+            ClientSize = new Size(900, 702);
             BackColor = Look.Page;
             Font = Look.UI(9.75f);
 
@@ -890,7 +1194,7 @@ namespace ChittamEnterprises
             cCo.Controls.Add(lnkLoad);
             Controls.Add(cCo);
 
-            var cSch = Look.Card(L, 416, W, 190, "Schedule and what to send");
+            var cSch = Look.Card(L, 416, W, 222, "Schedule and what to send");
             cSch.Controls.Add(Look.FieldLabel("Every", 16, 44));
             numInterval = new NumericUpDown { Left = 110, Top = 40, Width = 64, Minimum = 5, Maximum = 240, Value = Math.Max(5, Math.Min(240, s.IntervalMinutes)) };
             cSch.Controls.Add(numInterval);
@@ -908,14 +1212,16 @@ namespace ChittamEnterprises
             cSch.Controls.Add(chkStock);
             chkBills = new CheckBox { Text = "Also send open invoices with due dates (Payment Reminder)", Left = 16, Top = 146, AutoSize = true, Checked = s.SyncBills, BackColor = Color.White };
             cSch.Controls.Add(chkBills);
+            chkMasters = new CheckBox { Text = "Add new customers and products from Tally", Left = 16, Top = 178, AutoSize = true, Checked = s.SyncMasters, BackColor = Color.White };
+            cSch.Controls.Add(chkMasters);
             Controls.Add(cSch);
 
             btnSave = Look.Primary("Save");
-            btnSave.SetBounds(L, 618, 130, 36);
+            btnSave.SetBounds(L, 650, 130, 36);
             btnSave.Click += delegate { Save(true); };
             Controls.Add(btnSave);
             var btnClose = Look.Secondary("Close");
-            btnClose.SetBounds(L + 140, 618, 110, 36);
+            btnClose.SetBounds(L + 140, 650, 110, 36);
             btnClose.Click += delegate { Close(); };
             Controls.Add(btnClose);
 
@@ -936,12 +1242,12 @@ namespace ChittamEnterprises
             cStatus.Controls.Add(lblCash);
             Controls.Add(cStatus);
 
-            var cLog = Look.Card(R, 254, RW, 400, "Activity");
-            txtLog = new TextBox { Left = 14, Top = 38, Width = RW - 28, Height = 322, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+            var cLog = Look.Card(R, 254, RW, 432, "Activity");
+            txtLog = new TextBox { Left = 14, Top = 38, Width = RW - 28, Height = 354, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
                 BorderStyle = BorderStyle.None, BackColor = Color.FromArgb(250, 250, 250), Font = new Font("Consolas", 8.75f), ForeColor = Color.FromArgb(64, 64, 64) };
             txtLog.Text = string.Join(Environment.NewLine, sync.RecentLog()) + Environment.NewLine;
             cLog.Controls.Add(txtLog);
-            var lnkLog = new LinkLabel { Text = "Open the full log", Left = 14, Top = 370, AutoSize = true, LinkColor = Look.Brand, BackColor = Color.White };
+            var lnkLog = new LinkLabel { Text = "Open the full log", Left = 14, Top = 402, AutoSize = true, LinkColor = Look.Brand, BackColor = Color.White };
             lnkLog.LinkClicked += delegate { try { Process.Start("notepad.exe", "\"" + SyncEngine.LogPath + "\""); } catch { } };
             cLog.Controls.Add(lnkLog);
             Controls.Add(cLog);
@@ -1026,7 +1332,7 @@ namespace ChittamEnterprises
             bool loginChanged = s.Email != txtEmail.Text.Trim() || s.Password != txtPassword.Text;
             bool companiesChanged = s.BusinessCompany != cboBusiness.Text.Trim() || s.CashCompany != cboCash.Text.Trim();
             bool vouchersChanged = s.SyncVouchers != chkVouchers.Checked || s.VoucherDays != (int)numDays.Value ||
-                (!s.SyncStock && chkStock.Checked) || (!s.SyncBills && chkBills.Checked);
+                (!s.SyncStock && chkStock.Checked) || (!s.SyncBills && chkBills.Checked) || (!s.SyncMasters && chkMasters.Checked);
             s.Email = txtEmail.Text.Trim();
             s.Password = txtPassword.Text;
             s.BusinessCompany = cboBusiness.Text.Trim();
@@ -1036,6 +1342,7 @@ namespace ChittamEnterprises
             s.VoucherDays = (int)numDays.Value;
             s.SyncStock = chkStock.Checked;
             s.SyncBills = chkBills.Checked;
+            s.SyncMasters = chkMasters.Checked;
             if (companiesChanged) s.LastHash.Clear();   // upload fresh figures for the new companies
             s.Save();
             SetStartup(chkStartup.Checked);

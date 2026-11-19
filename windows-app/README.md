@@ -1,4 +1,4 @@
-# Chittam Enterprises for Windows (2.2)
+# Chittam Enterprises for Windows (2.3)
 
 The Chittam app in its own window, with **Tally sync built in**.
 
@@ -18,6 +18,12 @@ The Chittam app in its own window, with **Tally sync built in**.
   Payment Updated, Payment Reminder and Balance Confirmation; transactions feed
   the app's **Tally Match** page (payments vs Tally, possible duplicates).
   Uploads happen only when something changed, and each shows in History.
+- **Customers and products:** a new customer ledger in Tally (Sundry Debtors)
+  is added to Customers with its mobile; a customer without a mobile gets
+  Tally's. New stock items you sell (in stock, or with a selling price; not
+  Asset/Dummy groups) are added to Products. Prices follow Tally only where it
+  has a selling price (its item rate is the purchase cost). Near-identical
+  spellings are not added twice; the log lists them.
 - **In the app:** Tally Match shows this PC's sync status with **Sync now**
   and **Sync settings** buttons.
 - **Tray:** closing the window keeps the sync running near the clock.

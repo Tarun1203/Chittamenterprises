@@ -4,6 +4,16 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.11", date: "2026-11-19", title: "New customers and products come from Tally", windows: "2.3",
+    items: [
+      "A customer ledger created in Tally (under Sundry Debtors) appears in Customers by itself, with its mobile; a customer without a mobile gets Tally's.",
+      "New Tally stock items you sell (in stock, or with a selling price; not assets or dummy items) appear in Products with their group and price.",
+      "Prices follow Tally only where Tally has a selling price — Tally's item rate is the purchase cost, so your own prices aren't overwritten.",
+      "Names spelled almost the same as an existing customer aren't added twice; the Tally Sync log lists them so one can be renamed.",
+      "Every addition and change shows in History.",
+    ],
+  },
+  {
     version: "3.10", date: "2026-11-19", title: "Tally Match: payments entered twice",
     items: [
       "A payment whose Tally receipt is already matched to another payment of the same customer now shows under “Recorded twice in the app”, saying which payment it repeats — instead of “not found in Tally”.",
