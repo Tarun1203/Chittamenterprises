@@ -49,13 +49,14 @@ export const demoReceipts: Receipt[] = [
   { id: "r1", date: iso(0), customerId: "d0", customerName: "AB Infinite", mode: "Advance", business: 2000, cash: 0, source: "Order advance", ref: no(0, 1) },
   { id: "r2", date: iso(-1), customerId: "d5", customerName: "Badrinath Allundi - Raichur", mode: "UPI", business: 15000, cash: 2500, source: "Payment Updated" },
   { id: "r3", date: iso(-1), customerId: "d9", customerName: "Kashi SLN", mode: "Cash", business: 0, cash: 4000, source: "Manual", note: "Paid at shop" },
+  { id: "r7", date: iso(-2), customerId: "d1", customerName: "Kashi SLN", mode: "UPI", business: 1500, cash: 0, source: "Payment Updated", note: "GPay" },
   { id: "r6", date: iso(0), customerId: "d0", customerName: "AB Infinite", mode: "Cash", business: 2000, cash: 0, source: "Tally", ref: "45", tallyNo: "45" },
   { id: "r5", date: iso(-9), customerId: "d10", customerName: "Lokesh - Kallur", mode: "UPI", business: 0, cash: 3000, source: "Payment Updated", tallyNo: "11" },
   { id: "r4", date: iso(-4), customerId: "d7", customerName: "Deepak", mode: "Cheque", business: 8000, cash: 0, source: "Manual", cancelled: true, note: "Cheque bounced" },
 ];
 
 export const demoBalances: Record<string, BalanceSet> = {
-  business: { company: "business", label: "Chittam Enterprises - 2026", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 48250, "kashi sln": 12900, "deepak": 0 } },
+  business: { company: "business", label: "Chittam Enterprises - 2026", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 48250, "kashi sln": 12900, "deepak": 0 }, names: { "ab infinite": "AB Infinite", "kashi sln": "Kashi SLN", "deepak": "Deepak" } },
   cash: { company: "cash", label: "Cash", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 6400, "kashi sln": 1500 } },
 };
 

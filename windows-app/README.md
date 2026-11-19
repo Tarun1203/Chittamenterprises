@@ -1,4 +1,4 @@
-# Chittam Enterprises for Windows (2.5)
+# Chittam Enterprises for Windows (2.6)
 
 The Chittam app in its own window, with **Tally sync built in**.
 
@@ -24,19 +24,30 @@ The Chittam app in its own window, with **Tally sync built in**.
   Asset/Dummy groups) are added to Products. Prices follow Tally only where it
   has a selling price (its item rate is the purchase cost). Near-identical
   spellings are not added twice; the log lists them.
+- **Posting receipts:** in Tally Match, a payment recorded in the app but not in
+  Tally has **Post to Tally** (only inside this app, on the Tally PC). It creates
+  a Receipt voucher (customer's Tally ledger, received into the Cash or bank
+  ledger you pick, On Account) after a confirmation showing the whole voucher.
 - **In the app:** Tally Match shows this PC's sync status with **Sync now**
   and **Sync settings** buttons.
 - **Tray:** closing the window keeps the sync running near the clock.
   Double-click the icon to open the app again; right-click → **Exit** to stop.
 
 ## Install
-```
-powershell -ExecutionPolicy Bypass -File .\build.ps1
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-This puts the app in `%LOCALAPPDATA%\Programs\Chittam Enterprises` with Start
-menu and Desktop shortcuts. (`dist\Chittam Enterprises.exe` also runs straight
-from the build folder.)
+Download **ChittamEnterprisesSetup.exe** from
+`https://tarun1203.github.io/Chittamenterprises/desktop/ChittamEnterprisesSetup.exe`
+and run it. It installs for the current Windows user (no administrator
+needed) in `%LOCALAPPDATA%\Programs\Chittam Enterprises`, adds Start menu and
+Desktop shortcuts, can start with Windows, and appears in **Settings → Apps**
+(Uninstall from there; uninstalling can keep or remove this PC's settings).
+`ChittamEnterprisesSetup.exe /S` installs silently.
+
+The program isn't code-signed yet, so Windows may show "Windows protected your
+PC" the first time: click **More info → Run anyway**. Signing needs a
+code-signing certificate bought in the business's name.
+
+For development: `build.ps1` builds `dist\` (the app and the setup);
+`install.ps1` copies `dist\` in place directly.
 
 ## Set up Tally sync (once)
 1. **Tally:** keep both companies open, with Tally's server on port 9000
@@ -72,6 +83,8 @@ then commit and push (the `desktop/` folder).
 ## Files
 - `ChittamEnterprises.cs`: the program (C# 5 / .NET Framework 4.x)
 - `app.manifest`, `app.config`: display-scaling settings built into / copied next to the program
+- `Setup.cs`: the installer / uninstaller (the program files are packed inside it)
+- `publish.ps1`: copies a build to `desktop/` for automatic updates and downloads
 - `build.ps1`: builds it with the C# compiler that comes with Windows
 - `lib\`: Microsoft WebView2 SDK files (from NuGet `Microsoft.Web.WebView2`
   1.0.4314.35, signed by Microsoft; see `WebView2-LICENSE.txt`)

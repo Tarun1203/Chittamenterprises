@@ -33,3 +33,15 @@ export function useDesktopStatus() {
   }, []);
   return status;
 }
+
+// a request with details (e.g. posting a voucher), and listening for the reply
+export const desktopPost = (msg: Record<string, unknown>) => webview()?.postMessage(msg);
+export function useDesktopReply<T>(type: string, onReply: (data: T) => void) {
+  useEffect(() => {
+    const wv = webview();
+    if (!wv) return;
+    const on = (e: { data: unknown }) => { const d = e.data as { type?: string }; if (d?.type === type) onReply(d as T); };
+    wv.addEventListener("message", on);
+    return () => wv.removeEventListener("message", on);
+  });
+}

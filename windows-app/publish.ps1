@@ -22,6 +22,8 @@ $files = foreach ($n in $names) {
   Copy-Item $p (Join-Path $out $n) -Force
   [ordered]@{ name = $n; sha256 = (Get-FileHash $p -Algorithm SHA256).Hash.ToLower() }
 }
+# the installer, for new PCs (not part of the update itself)
+Copy-Item (Join-Path $dist 'ChittamEnterprisesSetup.exe') (Join-Path $out 'ChittamEnterprisesSetup.exe') -Force
 $json = [ordered]@{ version = $version; published = (Get-Date).ToString('yyyy-MM-dd HH:mm'); files = @($files) } | ConvertTo-Json -Depth 4
 [IO.File]::WriteAllText((Join-Path $out 'version.json'), $json, (New-Object Text.UTF8Encoding $false))
 Write-Host "Published version $version to $out ($($files.Count) files). Commit and push to make it live."

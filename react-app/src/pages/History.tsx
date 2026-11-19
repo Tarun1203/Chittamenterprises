@@ -20,7 +20,7 @@ const EVENT_LABELS: Record<string, string> = {
   "import-customers": "Customers imported", "import-products": "Products imported", "backup-export": "Backup downloaded",
   "backup-restore": "Backup restored", "sheet-push": "Pushed to Sheet", "sheet-pull": "Pulled from Sheet", "sheet-url-changed": "Sheet URL changed",
   "catalog-photo": "Catalog photo added", "catalog-copy": "Catalog copied", "catalog-share": "Catalog shared", "app-installed": "App installed",
-  "balances-imported": "Tally balances imported", "balances-synced": "Tally balances synced", "tally-vouchers-synced": "Tally transactions synced", "tally-stock-synced": "Tally stock synced", "tally-company-switched": "Tally new financial year", "tally-masters-synced": "Customers / products from Tally", "tally-bills-synced": "Tally open invoices synced", "picklist-copied": "Pick list copied",
+  "balances-imported": "Tally balances imported", "balances-synced": "Tally balances synced", "tally-vouchers-synced": "Tally transactions synced", "tally-stock-synced": "Tally stock synced", "tally-voucher-posted": "Receipt posted to Tally", "tally-company-switched": "Tally new financial year", "tally-masters-synced": "Customers / products from Tally", "tally-bills-synced": "Tally open invoices synced", "picklist-copied": "Pick list copied",
   "picklist-printed": "Pick list printed", "receipts-report-copied": "Payments report copied", "receipts-report-downloaded": "Payments report downloaded",
   "sign-in": "Signed in", "sign-out": "Signed out",
 };
@@ -69,6 +69,7 @@ function eventInfo(action: string, d: Record<string, unknown>) {
     case "balances-imported": return (d.file ? d.file + " — " : "") + d.matched + " customers matched" + (d.unmatched ? ", " + d.unmatched + " other names" : "");
     case "tally-masters-synced": return d.customersAdded + " customers added, " + d.customersUpdated + " mobiles filled, " + d.productsAdded + " products added, " + d.productsUpdated + " products updated";
     case "tally-company-switched": return "Now syncing " + d.to + " (was " + d.from + ")";
+    case "tally-voucher-posted": return "₹" + Number(d.amount || 0).toLocaleString("en-IN") + " into " + d.into + " · " + d.company + " · " + d.date;
     case "tally-stock-synced": return (d.company ? "From Tally company " + d.company + " — " : "") + (d.count || 0) + " stock items";
     case "tally-bills-synced": return (d.company ? "From Tally company " + d.company + " — " : "") + (d.count || 0) + " open invoices";
     case "tally-vouchers-synced": return (d.company ? "From Tally company " + d.company + " — " : "") + (d.count || 0) + " transactions" + (d.from ? ", " + d.from + " to " + d.to : "");

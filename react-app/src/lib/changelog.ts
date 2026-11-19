@@ -4,6 +4,13 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.14", date: "2026-11-19", title: "Post receipts to Tally; Windows installer", windows: "2.6",
+    items: [
+      "Tally Match (in the Windows app on the Tally PC): “Post to Tally” on a payment that isn't in Tally creates the Receipt voucher — customer's Tally ledger, received into Cash or a bank ledger you pick, narration — after a confirmation showing the whole voucher. Logged in History.",
+      "The Windows app now has a proper installer (ChittamEnterprisesSetup.exe): installs without admin rights, shows in Settings → Apps with Uninstall, adds shortcuts and can start with Windows.",
+    ],
+  },
+  {
     version: "3.13", date: "2026-11-19", title: "Windows app updates itself; new financial year by itself", windows: "2.5",
     items: [
       "The Windows app checks for a new version at start-up and every 6 hours, downloads it in the background (checked against its checksum) and installs it the next time it starts — or right away from the tray: Restart to update.",

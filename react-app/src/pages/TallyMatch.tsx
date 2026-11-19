@@ -4,13 +4,13 @@
 // balance (and names that don't match between the app and Tally).
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { IconAlertTriangle, IconCheck, IconFileText, IconLink, IconLinkOff, IconPlus, IconRefresh, IconSettings, IconUserQuestion, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCheck, IconFileText, IconLink, IconLinkOff, IconPlus, IconRefresh, IconSend, IconSettings, IconUserQuestion, IconX } from "@tabler/icons-react";
 import { Button, Card, Dialog, EmptyState, Field, PageHeader, useToast } from "@/components/kit";
 import { CustomerPicker, Select, Text } from "@/components/forms";
 import { useStore } from "@/lib/store";
 import { loadLatest, loadTallyVouchers, normalizeName, saveRecord, uid, type Customer, type MessageEntry, type Receipt, type TallyVoucherSet } from "@/lib/data";
 import { appDuplicates, appPayments, isReceipt, matchPayments, matchSales, type SentMessage, type SalesResult, tallyDuplicates, tallyEntries, DAY_WINDOW, viaKind, type Account, type AppPayment, type Pair, type TallyEntry } from "@/lib/tallymatch";
-import { desktopSend, inDesktopApp, useDesktopStatus } from "@/lib/desktop";
+import { desktopPost, desktopSend, inDesktopApp, useDesktopReply, useDesktopStatus } from "@/lib/desktop";
 import { msgDate } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -191,6 +191,7 @@ function PaymentsView({ r, accLabel, hasVouchers }: { r: ReturnType<typeof match
   const toast = useToast();
   const [record, setRecord] = useState<TallyEntry | null>(null);
   const [link, setLink] = useState<AppPayment | null>(null);
+  const [post, setPost] = useState<AppPayment | null>(null);
   if (!hasVouchers) return null;
   const sum = (xs: { amount?: number; a?: number }[]) => xs.reduce((t, x) => t + (x.amount ?? x.a ?? 0), 0);
   const modes = settings.paymentModes.length ? settings.paymentModes : ["Cash", "UPI", "Bank Transfer", "Cheque"];
@@ -242,7 +243,10 @@ function PaymentsView({ r, accLabel, hasVouchers }: { r: ReturnType<typeof match
       )}
       <Section title="Recorded in the app, not found in Tally" hint={"No receipt in Tally for the same customer and amount within " + DAY_WINDOW + " days. Enter it in Tally, or link it to the right voucher by its number."} count={r.onlyApp.length} tone="bad">
         {r.onlyApp.map((p) => <Row key={p.key} tone="bad" left={p.name} sub={appSub(p, accLabel)} right={inr(p.amount)}
-          actions={<ActionBtn onClick={() => setLink(p)}><IconLink size={13} /> Link to Tally voucher</ActionBtn>} />)}
+          actions={<>
+            <ActionBtn onClick={() => setLink(p)}><IconLink size={13} /> Link to Tally voucher</ActionBtn>
+            {inDesktopApp() && <ActionBtn onClick={() => setPost(p)}><IconSend size={13} /> Post to Tally</ActionBtn>}
+          </>} />)}
       </Section>
       <Section title="In Tally, not recorded in the app" hint="A Tally receipt with no payment in the app. Record it in the app (the voucher number is saved with it), or link an existing payment to it." count={r.onlyTally.length} tone="warn">
         {r.onlyTally.map((t) => <Row key={t.key} tone="warn" left={t.p} sub={tallySub(t, accLabel)} right={inr(t.a)}
@@ -266,6 +270,7 @@ function PaymentsView({ r, accLabel, hasVouchers }: { r: ReturnType<typeof match
 
       <RecordDialog entry={record} onClose={() => setRecord(null)} accLabel={accLabel} modes={modes} cashMode={cashMode} bankMode={bankMode} />
       <LinkDialog payment={link} onClose={() => setLink(null)} candidates={r.onlyTally} accLabel={accLabel} />
+      <PostDialog payment={post} onClose={() => setPost(null)} accLabel={accLabel} />
     </div>
   );
 }
@@ -310,6 +315,71 @@ function RecordDialog({ entry, onClose, accLabel, modes, cashMode, bankMode }: {
         </Field>
         <Field label="Note"><Text value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" /></Field>
         <p className="text-xs text-neutral-500">Saved as a {inr(entry.a)} payment to the {accLabel(entry.account)} account on {msgDate(entry.d)}, with voucher number {entry.n || "—"}.</p>
+      </>}
+    </Dialog>
+  );
+}
+
+// an app payment -> a Receipt voucher in Tally (Windows app on the Tally PC only).
+// The Windows app shows its own confirmation with the whole voucher before creating it.
+function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null; onClose: () => void; accLabel: (a: Account) => string }) {
+  const { balances, receipts } = useStore();
+  const toast = useToast();
+  const [ledgers, setLedgers] = useState<string[] | null>(null);
+  const [into, setInto] = useState("");
+  const [narration, setNarration] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const receipt = payment ? receipts.find((x) => x.id === payment.receiptId) : undefined;
+  // the customer's ledger as spelled in Tally (from the balance sync)
+  const tallyName = payment ? balances[payment.account]?.names?.[normalizeName(payment.name)] || "" : "";
+  useEffect(() => {
+    if (!payment) return;
+    setLedgers(null); setErr(""); setBusy(false);
+    setNarration((payment.mode || "") + (payment.ref ? " " + payment.ref : "") + " — recorded in Chittam app" + (receipt?.note ? ": " + receipt.note : ""));
+    desktopPost({ type: "tally-cashbank", key: payment.account });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payment]);
+  useDesktopReply<{ key: string; ledgers: string[]; error?: string }>("tally-cashbank", (d) => {
+    if (!payment || d.key !== payment.account) return;
+    setLedgers(d.ledgers || []);
+    if (d.error) setErr("Couldn't read Tally's cash / bank ledgers: " + d.error);
+    const cash = /cash/i.test(payment.mode || "");
+    setInto((d.ledgers || []).find((l) => (cash ? /^cash$/i.test(l) : /bank|phone\s*pe|upi|gpay/i.test(l))) || (d.ledgers || [])[0] || "");
+  });
+  useDesktopReply<{ receiptId: string; ok: boolean; error: string }>("tally-post-result", (d) => {
+    if (!payment || d.receiptId !== payment.receiptId) return;
+    setBusy(false);
+    if (d.ok) { toast("Posted to Tally. It shows as matched after the sync finishes (a few seconds)."); onClose(); }
+    else if (d.error !== "Not posted.") setErr(d.error);
+  });
+  function send() {
+    if (!payment || !tallyName || !into) return;
+    setBusy(true); setErr("");
+    desktopPost({ type: "tally-post-receipt", key: payment.account, date: payment.date, party: tallyName, into, amount: payment.amount, narration, receiptId: payment.receiptId });
+  }
+  return (
+    <Dialog open={!!payment} onClose={onClose} title="Post to Tally"
+      footer={<><Button variant="ghost" onClick={onClose}>Close</Button><Button onClick={send} disabled={busy || !tallyName || !into}><IconSend size={16} /> {busy ? "Waiting for confirmation…" : "Post receipt"}</Button></>}>
+      {payment && <>
+        <div className="rounded-xl bg-neutral-50 p-3 text-sm">
+          <div className="font-bold">{payment.name} · {inr(payment.amount)}</div>
+          <div className="text-xs text-neutral-500">{appSub(payment, accLabel)}</div>
+        </div>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+          <dt className="text-neutral-500">Company</dt><dd className="font-semibold">{accLabel(payment.account)}</dd>
+          <dt className="text-neutral-500">Voucher</dt><dd className="font-semibold">Receipt · {msgDate(payment.date)}</dd>
+          <dt className="text-neutral-500">Received from</dt>
+          <dd className="font-semibold">{tallyName || <span className="text-rose-600">No ledger named “{payment.name}” in Tally — create it in Tally (or fix the spelling) first.</span>}</dd>
+          <dt className="text-neutral-500">Amount</dt><dd className="font-semibold">{inr(payment.amount)}</dd>
+        </dl>
+        <Field label="Received into (Tally ledger)">
+          {ledgers === null ? <p className="text-sm text-neutral-500">Reading Tally's cash and bank ledgers…</p>
+            : <Select value={into} onChange={setInto} options={ledgers.length ? ledgers : [{ value: "", label: "No cash / bank ledgers found" }]} />}
+        </Field>
+        <Field label="Narration"><Text value={narration} onChange={(e) => setNarration(e.target.value)} /></Field>
+        {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{err}</p>}
+        <p className="text-xs text-neutral-500">The Windows app asks you to confirm the whole voucher before it's created. The customer is credited “On Account”; bills can be adjusted in Tally afterwards.</p>
       </>}
     </Dialog>
   );

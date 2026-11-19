@@ -34,6 +34,10 @@
 // %LOCALAPPDATA%\ChittamEnterprises\update, and installs them when the app next
 // starts or from the tray (Restart to update).
 //
+// Posting receipts: from Tally Match, a payment recorded in the app can be
+// posted to Tally as a Receipt voucher - only from this window, and only
+// after a confirmation here showing the whole voucher.
+//
 // Settings live in %APPDATA%\ChittamEnterprises\settings.json; the sync
 // password is encrypted with Windows DPAPI for the current Windows user.
 //
@@ -62,6 +66,12 @@ using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Win32;
 
 [assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8")]
+[assembly: System.Reflection.AssemblyTitle("Chittam Enterprises")]
+[assembly: System.Reflection.AssemblyProduct("Chittam Enterprises")]
+[assembly: System.Reflection.AssemblyCompany("Chittam Enterprises")]
+// keep in step with Program.DesktopVersion (build.ps1 checks)
+[assembly: System.Reflection.AssemblyVersion("2.6.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.6")]
 
 namespace ChittamEnterprises
 {
@@ -71,7 +81,7 @@ namespace ChittamEnterprises
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
         // where new versions of this program are published (desktop/ folder of the site)
         public const string UpdateUrl = "https://tarun1203.github.io/Chittamenterprises/desktop/version.json";
-        public const string DesktopVersion = "2.5";
+        public const string DesktopVersion = "2.6";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -454,6 +464,48 @@ namespace ChittamEnterprises
             return list;
         }
 
+        // the ledgers money can be received into: Cash-in-Hand and Bank Accounts
+        public static List<string> CashBankLedgers(string url, string company)
+        {
+            var list = new List<string>();
+            foreach (var grp in new[] { "$$GroupCash", "$$GroupBank" })
+            {
+                var xml = Post(url, "<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>ChittamCashBank</ID></HEADER>" +
+                    "<BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>" +
+                    "<SVCURRENTCOMPANY>" + System.Security.SecurityElement.Escape(company) + "</SVCURRENTCOMPANY></STATICVARIABLES>" +
+                    "<TDL><TDLMESSAGE><COLLECTION NAME=\"ChittamCashBank\" ISMODIFY=\"No\"><TYPE>Ledger</TYPE>" +
+                    "<CHILDOF>" + grp + "</CHILDOF><BELONGSTO>Yes</BELONGSTO><FETCH>Name</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
+                var doc = new XmlDocument();
+                doc.LoadXml(xml);
+                foreach (XmlElement e in doc.SelectNodes("//LEDGER")) { var n = e.GetAttribute("NAME").Trim(); if (n.Length > 0 && !list.Contains(n)) list.Add(n); }
+            }
+            return list;
+        }
+
+        // creates one Receipt voucher (customer credited, cash / bank debited), "On Account"
+        // against the customer's bills; returns null when Tally created it, else Tally's reason
+        public static string PostReceipt(string url, string company, DateTime date, string party, string intoLedger, double amount, string narration)
+        {
+            Func<string, string> x = v => System.Security.SecurityElement.Escape(v ?? "");
+            string amt = amount.ToString("0.00", CultureInfo.InvariantCulture);
+            var xml = "<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME>" +
+                "<STATICVARIABLES><SVCURRENTCOMPANY>" + x(company) + "</SVCURRENTCOMPANY></STATICVARIABLES></REQUESTDESC><REQUESTDATA>" +
+                "<TALLYMESSAGE xmlns:UDF=\"TallyUDF\"><VOUCHER VCHTYPE=\"Receipt\" ACTION=\"Create\">" +
+                "<DATE>" + date.ToString("yyyyMMdd") + "</DATE><EFFECTIVEDATE>" + date.ToString("yyyyMMdd") + "</EFFECTIVEDATE>" +
+                "<VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME><PARTYLEDGERNAME>" + x(party) + "</PARTYLEDGERNAME>" +
+                "<NARRATION>" + x(narration) + "</NARRATION>" +
+                "<ALLLEDGERENTRIES.LIST><LEDGERNAME>" + x(party) + "</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><ISPARTYLEDGER>Yes</ISPARTYLEDGER><AMOUNT>" + amt + "</AMOUNT>" +
+                "<BILLALLOCATIONS.LIST><NAME>On Account</NAME><BILLTYPE>On Account</BILLTYPE><AMOUNT>" + amt + "</AMOUNT></BILLALLOCATIONS.LIST></ALLLEDGERENTRIES.LIST>" +
+                "<ALLLEDGERENTRIES.LIST><LEDGERNAME>" + x(intoLedger) + "</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-" + amt + "</AMOUNT></ALLLEDGERENTRIES.LIST>" +
+                "</VOUCHER></TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>";
+            string res;
+            try { res = Post(url, xml); } catch (Exception ex) { return ex.Message; }
+            var created = Regex.Match(res, "<CREATED>\\s*(\\d+)\\s*</CREATED>");
+            if (created.Success && created.Groups[1].Value != "0") return null;
+            var errs = Regex.Matches(res, "<LINEERROR>(.*?)</LINEERROR>").Cast<Match>().Select(m => WebUtility.HtmlDecode(m.Groups[1].Value)).ToList();
+            return errs.Count > 0 ? string.Join("; ", errs) : "Tally did not create the voucher (" + Regex.Replace(res, "\\s+", " ").Trim().Substring(0, Math.Min(200, Regex.Replace(res, "\\s+", " ").Trim().Length)) + ")";
+        }
+
         // customer ledgers (everything under Sundry Debtors) with their mobile numbers
         public static List<Debtor> Debtors(string url, string company)
         {
@@ -800,6 +852,12 @@ namespace ChittamEnterprises
         }
 
         // a tiny "last checked" note, written on every sync even when nothing changed
+        public static void LogVoucherPosted(Settings s, string token, string company, string party, double amount, string into, string date, string receiptId)
+        {
+            Log(s, token, "tally-voucher-posted", party, new Dictionary<string, object> {
+                { "name", Str(party) }, { "company", Str(company) }, { "amount", Dbl(amount) }, { "into", Str(into) }, { "date", Str(date) }, { "receiptId", Str(receiptId) } });
+        }
+
         public static void LogCompanySwitch(Settings s, string token, string label, string from, string to)
         {
             Log(s, token, "tally-company-switched", label, new Dictionary<string, object> { { "name", Str(label) }, { "from", Str(from) }, { "to", Str(to) } });
@@ -1736,19 +1794,72 @@ namespace ChittamEnterprises
             if (!e.Source.StartsWith("https://tarun1203.github.io/", StringComparison.OrdinalIgnoreCase) &&
                 !e.Source.StartsWith("http://localhost:", StringComparison.OrdinalIgnoreCase)) return;
             string type = "";
+            Dictionary<string, object> obj;
             try
             {
-                var obj = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(e.WebMessageAsJson);
+                obj = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(e.WebMessageAsJson);
                 object v; if (obj != null && obj.TryGetValue("type", out v) && v != null) type = v.ToString();
             }
             catch { return; }
+            if (obj == null) return;
             switch (type)
             {
                 case "tally-status": PostStatus(); break;
                 case "tally-sync-now": SyncNow(); break;
                 case "tally-settings": OpenSyncSettings(); break;
                 case "tally-log": try { Process.Start("notepad.exe", "\"" + SyncEngine.LogPath + "\""); } catch { } break;
+                case "tally-cashbank": SendCashBank(Str(obj, "key")); break;
+                case "tally-post-receipt": PostReceipt(obj); break;
             }
+        }
+
+        static string Str(Dictionary<string, object> o, string k) { object v; return o.TryGetValue(k, out v) && v != null ? Convert.ToString(v, CultureInfo.InvariantCulture) : ""; }
+        string CompanyFor(string key) { return key == "cash" ? sync.Settings.CashCompany : sync.Settings.BusinessCompany; }
+        void Reply(Dictionary<string, object> o) { try { if (web.CoreWebView2 != null) web.CoreWebView2.PostWebMessageAsJson(new JavaScriptSerializer().Serialize(o)); } catch { } }
+
+        void SendCashBank(string key)
+        {
+            var company = CompanyFor(key);
+            ThreadPool.QueueUserWorkItem(delegate {
+                var reply = new Dictionary<string, object> { { "type", "tally-cashbank" }, { "key", key }, { "company", company } };
+                try { reply["ledgers"] = Tally.CashBankLedgers(sync.Settings.TallyUrl, company).ToArray(); }
+                catch (Exception ex) { reply["error"] = ex.Message; reply["ledgers"] = new string[0]; }
+                BeginInvoke((Action)delegate { Reply(reply); });
+            });
+        }
+
+        // a payment from the app -> a Receipt voucher in Tally, after a confirmation here
+        void PostReceipt(Dictionary<string, object> o)
+        {
+            string key = Str(o, "key"), party = Str(o, "party"), into = Str(o, "into"), narration = Str(o, "narration"), receiptId = Str(o, "receiptId"), dateIso = Str(o, "date");
+            double amount; double.TryParse(Str(o, "amount"), NumberStyles.Any, CultureInfo.InvariantCulture, out amount);
+            DateTime date;
+            var company = CompanyFor(key);
+            Action<string> done = err => Reply(new Dictionary<string, object> { { "type", "tally-post-result" }, { "receiptId", receiptId }, { "ok", err == null }, { "error", err ?? "" } });
+            if (!DateTime.TryParseExact(dateIso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date) || amount <= 0 || party.Length == 0 || into.Length == 0)
+            { done("Some details are missing."); return; }
+            var msg = "Create this voucher in Tally?\n\n" +
+                "Company:  " + company + "\n" +
+                "Voucher:  Receipt\n" +
+                "Date:  " + date.ToString("dd MMM yyyy") + "\n" +
+                "Received from:  " + party + "\n" +
+                "Received into:  " + into + "\n" +
+                "Amount:  ₹" + amount.ToString("N2", CultureInfo.GetCultureInfo("en-IN")) + "\n" +
+                (narration.Length > 0 ? "Narration:  " + narration + "\n" : "") +
+                "\nThe customer is credited \"On Account\"; you can adjust bills in Tally afterwards.";
+            ShowWindow();
+            if (MessageBox.Show(this, msg, "Post to Tally", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            { done("Not posted."); return; }
+            ThreadPool.QueueUserWorkItem(delegate {
+                string err = Tally.PostReceipt(sync.Settings.TallyUrl, company, date, party, into, amount, narration);
+                sync.Log(err == null ? "Posted to Tally: Receipt " + party + " ₹" + amount.ToString("0.##", CultureInfo.InvariantCulture) + " into " + into + " (" + company + ")" : "Posting to Tally failed: " + err);
+                if (err == null)
+                {
+                    try { var token = Firebase.SignIn(sync.Settings); Firebase.LogVoucherPosted(sync.Settings, token, company, party, amount, into, dateIso, receiptId); } catch { }
+                    sync.Start(true);   // bring the new voucher back so Tally Match shows it matched
+                }
+                BeginInvoke((Action)delegate { done(err); });
+            });
         }
 
         void PostStatus()
