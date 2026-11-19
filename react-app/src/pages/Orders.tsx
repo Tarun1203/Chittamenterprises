@@ -14,6 +14,7 @@ import { FREIGHT_TERMS, findTransport, freightRefund, msgDate, orderConfirmation
 import { inr, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Chip } from "./ReceiptsReport";
+import { stockOf, syncedWhen, useTallyStock } from "@/lib/tallydata";
 import { PickListDialog } from "./PickList";
 
 export const ORDER_STATUSES = ["Pending", "Confirmed", "Packed", "Dispatched", "Delivered", "Cancelled"];
@@ -125,7 +126,7 @@ export function Orders() {
 const blankRow: Row = { name: "", qty: "", rate: "", avail: "" };
 
 // under each order line: how many can be packed now; the rest stays pending
-function StockLine({ row, onChange }: { row: Row; onChange: (avail: string) => void }) {
+function StockLine({ row, onChange, stock }: { row: Row; onChange: (avail: string) => void; stock: ReturnType<typeof stockOf> }) {
   const qty = n(row.qty);
   const avail = row.avail === "" ? qty : Math.min(qty, Math.max(0, n(row.avail)));
   const pending = qty - avail;
@@ -141,6 +142,12 @@ function StockLine({ row, onChange }: { row: Row; onChange: (avail: string) => v
       {pending < qty
         ? <button type="button" onClick={() => onChange("0")} className="rounded-lg px-2 py-1 font-semibold text-neutral-500 hover:bg-neutral-100">No stock</button>
         : <button type="button" onClick={() => onChange("")} className="rounded-lg px-2 py-1 font-semibold text-brand-600 hover:bg-brand-50">All available</button>}
+      {stock && (
+        <span className={cn("ml-auto rounded-full px-2 py-0.5 font-semibold", stock.total <= 0 ? "bg-rose-50 text-rose-700" : stock.total < qty ? "bg-amber-50 text-amber-700" : "bg-neutral-100 text-neutral-600")}
+          title={"Chittam: " + (stock.business ?? "—") + " · Cash: " + (stock.cash ?? "—")}>
+          Tally stock {stock.total} {stock.unit}
+        </span>
+      )}
     </div>
   );
 }
@@ -194,6 +201,13 @@ function OrderEditor({ order, onClose }: { order: Order | null; onClose: () => v
   const toast = useToast();
   const productList = useProductSuggestions();
   const transportList = useTransportSuggestions();
+  const tallyStock = useTallyStock();
+  // "available now" from Tally's stock: all of it if there's enough, else what there is
+  const autoAvail = (name: string, qty: number) => {
+    const st = stockOf(tallyStock, name);
+    if (!st || !qty || qty <= st.total) return "";
+    return String(Math.max(0, Math.floor(st.total)));
+  };
   const [saved, setSaved] = useState<Order | null>(order);
   const [pickOrder, setPickOrder] = useState<Order | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(() =>
@@ -225,7 +239,7 @@ function OrderEditor({ order, onClose }: { order: Order | null; onClose: () => v
   }
   function pickProduct(i: number, name: string) {
     const p = products.find((x) => normalizeName(x.name) === normalizeName(name));
-    if (p && !f.items[i].rate) setRow(i, { rate: p.price ? String(p.price) : "" });
+    setRow(i, { ...(p && !f.items[i].rate ? { rate: p.price ? String(p.price) : "" } : {}), avail: autoAvail(name, n(f.items[i].qty)) });
   }
   function pickTransport(name: string) {
     const t = findTransport(transports, name);
@@ -307,15 +321,18 @@ function OrderEditor({ order, onClose }: { order: Order | null; onClose: () => v
                 <SuggestInput value={r.name} onChange={(v) => setRow(i, { name: v })} onPick={(v) => pickProduct(i, v)} suggestions={productList} placeholder="Product (type to search)" />
                 <div className="sm:hidden"><RowRemove onClick={() => set("items", f.items.filter((_, j) => j !== i))} /></div>
                 <div className="col-span-2 grid grid-cols-[1fr_1fr_auto] items-center gap-2 sm:col-span-3 sm:grid-cols-[5rem_6.5rem_5.5rem]">
-                  <Money placeholder="Qty" value={r.qty} onChange={(v) => setRow(i, { qty: v })} />
+                  <Money placeholder="Qty" value={r.qty} onChange={(v) => setRow(i, { qty: v, avail: autoAvail(r.name, n(v)) })} />
                   <Money placeholder="Rate" value={r.rate} onChange={(v) => setRow(i, { rate: v })} />
                   <span className="text-right text-sm font-semibold tabular-nums">{inr(Math.round(n(r.qty) * n(r.rate) * 100) / 100)}</span>
                 </div>
                 <div className="hidden sm:block"><RowRemove onClick={() => set("items", f.items.filter((_, j) => j !== i))} /></div>
-                {r.name.trim() && n(r.qty) > 0 && <StockLine row={r} onChange={(avail) => setRow(i, { avail })} />}
+                {r.name.trim() && n(r.qty) > 0 && <StockLine row={r} stock={stockOf(tallyStock, r.name)} onChange={(avail) => setRow(i, { avail })} />}
               </div>
             ))}
             <TotalLine strong label="Order total" value={inr(total)} />
+            {tallyStock && (tallyStock.business || tallyStock.cash) && (
+              <p className="text-xs text-neutral-400">Tally stock (Chittam + Cash) as of {syncedWhen(tallyStock.business?.syncedAt || tallyStock.cash?.syncedAt)} — “Available now” fills in from it; change it if needed.</p>
+            )}
             {pendingLines.length > 0 && <>
               <TotalLine label="To pack now" value={inr(packValue)} />
               <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">⏳ Pending (no stock): {pendingLines.map((it) => it.name + " × " + pendingQty(it)).join(", ")}. Kept in this order; they go in the order message and leave the pick list until marked available.</p>

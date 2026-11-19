@@ -5,7 +5,7 @@ rules_version = '2';
 //
 // - Only signed-in users can read or write.
 // - Customers, products, orders, service jobs, transports, receipts, Tally
-//   balances and transactions, and settings can be added and edited, never deleted.
+//   balances, transactions, stock and open invoices, and settings can be added and edited, never deleted.
 // - Message history and the change log can only be added to — never edited
 //   or deleted — and each entry must carry the signed-in user's email.
 service cloud.firestore {
@@ -31,6 +31,15 @@ service cloud.firestore {
     }
     // Tally transactions sent by the Windows app (for Tally Match)
     match /tallyVouchers/{id} {
+      allow read, create, update: if signedIn();
+      allow delete: if false;
+    }
+    // Tally stock quantities and open invoices sent by the Windows app
+    match /tallyStock/{id} {
+      allow read, create, update: if signedIn();
+      allow delete: if false;
+    }
+    match /tallyBills/{id} {
       allow read, create, update: if signedIn();
       allow delete: if false;
     }

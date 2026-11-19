@@ -1,4 +1,4 @@
-# Chittam Enterprises for Windows (2.0)
+# Chittam Enterprises for Windows (2.2)
 
 The Chittam app in its own window, with **Tally sync built in**.
 
@@ -10,8 +10,11 @@ The Chittam app in its own window, with **Tally sync built in**.
   with the website. WhatsApp links open the WhatsApp app / browser. F5
   reloads; Ctrl + / Ctrl − zoom.
 - **Tally sync:** every 30 minutes it reads both companies' **Sundry Debtors**
-  balances and, if ticked, the **last 90 days of transactions** that involve a
-  customer (receipts, sales, credit notes, journals). Balances fill in on
+  balances, **stock quantities** (both companies; the app adds them up), **open
+  invoices with due dates** (bill-wise outstanding) and, if ticked, the **last 90
+  days of transactions** that involve a customer (receipts, sales, credit notes,
+  journals). Stock fills in “Available now” on orders; open invoices fill in
+  Payment Reminder. Balances fill in on
   Payment Updated, Payment Reminder and Balance Confirmation; transactions feed
   the app's **Tally Match** page (payments vs Tally, possible duplicates).
   Uploads happen only when something changed, and each shows in History.

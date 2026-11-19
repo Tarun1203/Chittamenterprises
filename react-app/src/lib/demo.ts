@@ -89,3 +89,28 @@ export const demoTallyVouchers: Record<string, TallyVoucherSet> = {
     { d: iso(-1), t: "Receipt", n: "13", p: "Kashi SLN", a: 4000, dr: false, via: "Cash", id: "c2" },
   ] },
 };
+
+// Tally stock (both companies) and open invoices
+const synced = new Date(Date.now() - 900e3).toISOString();
+export const demoTallyStock = {
+  business: { company: "business", label: "Chittam Enterprises", syncedAt: synced, items: {
+    "remote - ac": { n: "Remote - AC", q: 40, u: "Pcs" },
+    "impex - mixer grinder - 750 w": { n: "Impex - Mixer Grinder - 750 W", q: 1, u: "Pcs" },
+    "makwell - stabilizer - led mini - 5 yr.": { n: "Makwell - Stabilizer - Led Mini - 5 Yr.", q: 6, u: "Pcs" },
+    "cable - hdmi 3 mtrs 4k": { n: "Cable - Hdmi 3 mtrs 4k", q: 0, u: "Pcs" },
+  } },
+  cash: { company: "cash", label: "Cash Bill", syncedAt: synced, items: {
+    "remote - ac": { n: "Remote - AC", q: -5, u: "Pcs" },
+    "makwell - stabilizer - led mini - 5 yr.": { n: "Makwell - Stabilizer - Led Mini - 5 Yr.", q: -2, u: "Pcs" },
+  } },
+};
+export const demoTallyBills = {
+  business: { company: "business", label: "Chittam Enterprises", syncedAt: synced, asOn: iso(0), bills: [
+    { p: "Kashi SLN", n: "2026-27/MKWL/12", d: iso(-52), due: iso(-37), a: 8400, od: 37 },
+    { p: "Kashi SLN", n: "2026-27/HR/31", d: iso(-12), due: iso(3), a: 4500, od: 0 },
+    { p: "AB Infinite", n: "2026-27/MKWL/40", d: iso(-20), due: iso(-5), a: 48250, od: 5 },
+  ] },
+  cash: { company: "cash", label: "Cash Bill", syncedAt: synced, asOn: iso(0), bills: [
+    { p: "Kashi SLN", n: "C/88", d: iso(-18), due: iso(-18), a: 1500, od: 18 },
+  ] },
+};

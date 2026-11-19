@@ -4,6 +4,14 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.9", date: "2026-11-19", title: "Tally stock in orders, Tally invoices in reminders", windows: "2.2",
+    items: [
+      "Orders: each line shows Tally stock (Chittam + Cash added up), and “Available now” fills in from it — the rest stays pending.",
+      "Payment Reminder: picking a customer fills in their open invoices from Tally with bill dates and due dates, and the pending days.",
+      "The Windows app (2.2) sends stock and open invoices from Tally along with the balances.",
+    ],
+  },
+  {
     version: "3.8", date: "2026-11-19", title: "Thermal pick list slips",
     items: [
       "Pick list → Thermal: a receipt-printer slip per order (80 mm or 58 mm paper) with the order number, dates, customer name, mobile, transport, items to pack with tick boxes, pending items, notes and Packed by / Checked by.",

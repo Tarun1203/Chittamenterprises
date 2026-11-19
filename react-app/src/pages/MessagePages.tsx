@@ -14,6 +14,7 @@ import {
   serviceMaterial, stockReturn, stockUpdate, type Invoice,
 } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
+import { billsOf, syncedWhen, useTallyBills } from "@/lib/tallydata";
 
 const NEED_CUSTOMER = "!Please select a customer first.";
 function useForm<T extends Record<string, unknown>>(init: T) {
@@ -47,8 +48,10 @@ function Section({ title, children, action }: { title: string; children: React.R
 export function PaymentReminder() {
   const { settings } = useStore();
   const tally = useTallyFill();
+  const tallyBills = useTallyBills();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [note, setNote] = useState("");
+  const [billNote, setBillNote] = useState("");
   const [f, set, setF] = useForm({ date: todayISO(), dueDate: "", eb: "", ed: "", cb: "", cd: "" });
   const inv = useRows<Invoice>([]);
   function pick(c: Customer | null) {
@@ -56,6 +59,19 @@ export function PaymentReminder() {
     const t = tally(c);
     setNote(t.note);
     if (t.business !== null || t.cash !== null) setF((x) => ({ ...x, eb: t.business === null ? "" : String(t.business), cb: t.cash === null ? "" : String(t.cash) }));
+    // open invoices from Tally: invoice-wise due dates, and days pending since the oldest
+    setBillNote("");
+    if (!c || !tallyBills) return;
+    const biz = billsOf(tallyBills, "business", c.name), cash = billsOf(tallyBills, "cash", c.name);
+    if (!biz.length && !cash.length) return;
+    const age = (iso?: string) => (iso ? Math.max(0, Math.round((new Date(todayISO() + "T00:00:00").getTime() - new Date(iso + "T00:00:00").getTime()) / 86400000)) : 0);
+    inv.setRows([
+      ...biz.map((b) => ({ no: b.n, billDate: b.d, due: b.due || b.d, amt: b.a, account: "business" as const })),
+      ...cash.map((b) => ({ no: b.n, billDate: b.d, due: b.due || b.d, amt: b.a, account: "cash" as const })),
+    ]);
+    setF((x) => ({ ...x, ...(biz.length ? { ed: String(age(biz[0].d)) } : {}), ...(cash.length ? { cd: String(age(cash[0].d)) } : {}) }));
+    const when = syncedWhen(tallyBills.business?.syncedAt || tallyBills.cash?.syncedAt);
+    setBillNote("🧾 " + (biz.length + cash.length) + " open invoice" + (biz.length + cash.length === 1 ? "" : "s") + " and pending days filled in from Tally (synced " + when + "). Check before sending.");
   }
   return (
     <div>
@@ -63,7 +79,7 @@ export function PaymentReminder() {
       <TwoColumn
         form={<>
           <Card className="space-y-4">
-            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} /></Field>
+            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} />{billNote && <BalanceNote note={"📒" + billNote.slice(2)} />}</Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="As on"><Text type="date" value={f.date} onChange={(e) => set("date")(e.target.value)} /></Field>
               <Field label="Pay by (optional)"><Text type="date" value={f.dueDate} onChange={(e) => set("dueDate")(e.target.value)} /></Field>

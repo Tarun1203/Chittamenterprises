@@ -11,6 +11,10 @@
 // Tally sync is built in and keeps running in the tray (near the clock):
 //  - balances: each company's Sundry Debtors closing balances, so Payment
 //    Updated / Payment Reminder / Balance Confirmation fill them in;
+//  - stock: each stock item's closing quantity (both companies; the app adds
+//    them up, since goods bought in one book are often sold in the other);
+//  - open invoices: bill-wise outstanding with due dates, for Payment
+//    Reminder;
 //  - transactions: the last N days of vouchers that involve a customer
 //    (receipts, sales, credit notes, journals), so the app's Tally Match page
 //    can match payments with Tally and point out possible duplicates.
@@ -53,7 +57,7 @@ namespace ChittamEnterprises
     {
         public const string AppUrl = "https://tarun1203.github.io/Chittamenterprises/next/";
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
-        public const string DesktopVersion = "2.1";
+        public const string DesktopVersion = "2.2";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -127,6 +131,8 @@ namespace ChittamEnterprises
         public int IntervalMinutes = 30;
         public bool SyncVouchers = true;
         public int VoucherDays = 90;
+        public bool SyncStock = true;
+        public bool SyncBills = true;
         public string TallyUrl = "http://localhost:9000";
         public string ProjectId = "chittam-enterprises";
         public string ApiKey = "AIzaSyCEk9hKMJzA05DdB0axSJ4k76-Jl9acmjc";
@@ -182,6 +188,8 @@ namespace ChittamEnterprises
                         // settings saved by version 1.0 have no transaction options: turn them on
                         if (!text.Contains("\"SyncVouchers\"")) { s.SyncVouchers = true; s.VoucherDays = 90; }
                         if (s.VoucherDays < 7) s.VoucherDays = 90;
+                        // settings saved before 2.2 have no stock / invoice options: turn them on
+                        if (!text.Contains("\"SyncStock\"")) { s.SyncStock = true; s.SyncBills = true; }
                         return s;
                     }
                 }
@@ -205,6 +213,9 @@ namespace ChittamEnterprises
         public double Amount;
         public bool Debit;   // the customer's ledger was debited (sale) rather than credited (receipt)
     }
+
+    class StockLine { public string Name, Unit; public double Qty; }
+    class Bill { public string Party, Ref, Date, Due; public double Amount; public int Overdue; }
 
     static class Tally
     {
@@ -296,6 +307,72 @@ namespace ChittamEnterprises
                 balances[k] = amount;
                 names[k] = name;
             }
+        }
+
+        // every stock item's closing quantity
+        public static List<StockLine> Stock(string url, string company)
+        {
+            var xml = Post(url, "<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>ChittamStock</ID></HEADER>" +
+                "<BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>" +
+                "<SVCURRENTCOMPANY>" + System.Security.SecurityElement.Escape(company) + "</SVCURRENTCOMPANY></STATICVARIABLES>" +
+                "<TDL><TDLMESSAGE><COLLECTION NAME=\"ChittamStock\" ISMODIFY=\"No\"><TYPE>StockItem</TYPE>" +
+                "<FETCH>Name, BaseUnits, ClosingBalance</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
+            return ParseStock(xml);
+        }
+
+        public static List<StockLine> ParseStock(string xml)
+        {
+            var doc = new XmlDocument();
+            doc.LoadXml(xml);
+            var list = new List<StockLine>();
+            foreach (XmlElement e in doc.SelectNodes("//STOCKITEM"))
+            {
+                var name = e.GetAttribute("NAME").Trim();
+                if (name.Length == 0) continue;
+                var unit = Text(e, "BASEUNITS");
+                var cb = Text(e, "CLOSINGBALANCE");
+                list.Add(new StockLine { Name = name, Unit = unit, Qty = Num(cb) });
+            }
+            return list;
+        }
+
+        // Tally's dates in reports look like 1-Apr-25 or 01-Apr-2025
+        static string IsoDate(string s)
+        {
+            DateTime d;
+            if (DateTime.TryParseExact((s ?? "").Trim(), new[] { "d-MMM-yy", "d-MMM-yyyy", "dd-MMM-yy", "dd-MMM-yyyy", "yyyyMMdd" },
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out d)) return d.ToString("yyyy-MM-dd");
+            return "";
+        }
+
+        // open invoices (bill-wise outstanding) of all customers, as on a date
+        public static List<Bill> Bills(string url, string company, DateTime asOn)
+        {
+            var xml = Post(url, "<ENVELOPE><HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER><BODY><EXPORTDATA><REQUESTDESC>" +
+                "<REPORTNAME>Bills Receivable</REPORTNAME><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>" +
+                "<SVCURRENTCOMPANY>" + System.Security.SecurityElement.Escape(company) + "</SVCURRENTCOMPANY>" +
+                "<SVTODATE>" + asOn.ToString("yyyyMMdd") + "</SVTODATE></STATICVARIABLES></REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>");
+            return ParseBills(xml);
+        }
+
+        public static List<Bill> ParseBills(string xml)
+        {
+            var doc = new XmlDocument();
+            doc.LoadXml(xml);
+            var list = new List<Bill>();
+            foreach (XmlNode f in doc.SelectNodes("//BILLFIXED"))
+            {
+                var b = new Bill { Party = Text(f, "BILLPARTY"), Ref = Text(f, "BILLREF"), Date = IsoDate(Text(f, "BILLDATE")) };
+                // the amounts follow BILLFIXED as siblings, up to the next BILLFIXED
+                for (var n = f.NextSibling; n != null && n.Name != "BILLFIXED"; n = n.NextSibling)
+                {
+                    if (n.Name == "BILLCL") b.Amount = Math.Round(-Num(n.InnerText), 2);   // debit (owed to us) is negative
+                    else if (n.Name == "BILLDUE") b.Due = IsoDate(n.InnerText);
+                    else if (n.Name == "BILLOVERDUE") b.Overdue = (int)Num(n.InnerText);
+                }
+                if (b.Party.Length > 0 && b.Amount != 0) list.Add(b);
+            }
+            return list;
         }
 
         // vouchers between two dates that involve one of the given customer
@@ -453,6 +530,36 @@ namespace ChittamEnterprises
             Log(s, token, "balances-synced", label, new Dictionary<string, object> { { "name", Str(label) }, { "company", Str(company) }, { "names", Int(balances.Count) } });
         }
 
+        public static void SaveStock(Settings s, string token, string key, string label, string company, List<StockLine> items)
+        {
+            string now = Now();
+            var map = new Dictionary<string, object>();
+            foreach (var it in items)
+                map[Tally.Normalize(it.Name)] = Map(new Dictionary<string, object> { { "n", Str(it.Name) }, { "q", Dbl(it.Qty) }, { "u", Str(it.Unit) } });
+            var fields = new Dictionary<string, object> {
+                { "company", Str(key) }, { "label", Str(label) }, { "tallyCompany", Str(company) }, { "syncedAt", Str(now) },
+                { "count", Int(items.Count) }, { "items", Map(map) }, { "at", Ts(now) }, { "by", Str(s.Email) }
+            };
+            Send("PATCH", BaseUrl(s) + "tallyStock/" + key, token, new Dictionary<string, object> { { "fields", fields } });
+            Log(s, token, "tally-stock-synced", label, new Dictionary<string, object> { { "name", Str(label) }, { "company", Str(company) }, { "count", Int(items.Count) } });
+        }
+
+        public static void SaveBills(Settings s, string token, string key, string label, string company, List<Bill> bills)
+        {
+            string now = Now();
+            var values = bills.Select(b => (object)Map(new Dictionary<string, object> {
+                { "p", Str(b.Party) }, { "n", Str(b.Ref) }, { "d", Str(b.Date) }, { "due", Str(b.Due) }, { "a", Dbl(b.Amount) }, { "od", Int(b.Overdue) }
+            })).ToArray();
+            var fields = new Dictionary<string, object> {
+                { "company", Str(key) }, { "label", Str(label) }, { "tallyCompany", Str(company) }, { "syncedAt", Str(now) },
+                { "asOn", Str(DateTime.Today.ToString("yyyy-MM-dd")) }, { "count", Int(bills.Count) },
+                { "bills", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", values } } } } },
+                { "at", Ts(now) }, { "by", Str(s.Email) }
+            };
+            Send("PATCH", BaseUrl(s) + "tallyBills/" + key, token, new Dictionary<string, object> { { "fields", fields } });
+            Log(s, token, "tally-bills-synced", label, new Dictionary<string, object> { { "name", Str(label) }, { "company", Str(company) }, { "count", Int(bills.Count) } });
+        }
+
         public static void SaveVouchers(Settings s, string token, string key, string label, string company, DateTime from, DateTime to, List<Voucher> vouchers)
         {
             string now = Now();
@@ -568,6 +675,51 @@ namespace ChittamEnterprises
                     Log("[" + company + "] uploaded " + bal.Count + " balances");
                 }
 
+                // ---- stock ----
+                if (Settings.SyncStock)
+                {
+                    try
+                    {
+                        var stock = Tally.Stock(Settings.TallyUrl, company);
+                        var ssig = string.Join("|", stock.OrderBy(x => x.Name, StringComparer.Ordinal).Select(x => x.Name + "=" + x.Qty.ToString(CultureInfo.InvariantCulture) + x.Unit));
+                        string shash = Hash(ssig), skey = "s-" + key, slast;
+                        if (!force && Settings.LastHash.TryGetValue(skey, out slast) && slast == shash) Log("[" + company + "] stock: no change");
+                        else
+                        {
+                            if (token == null) token = Firebase.SignIn(Settings);
+                            Firebase.SaveStock(Settings, token, key, label, company, stock);
+                            Settings.LastHash[skey] = shash;
+                            Settings.LastStatus[skey] = DateTime.Now.ToString("dd MMM yyyy, h:mm tt") + " · " + stock.Count + " stock items";
+                            Settings.Save();
+                            Log("[" + company + "] uploaded stock of " + stock.Count + " items");
+                        }
+                    }
+                    catch (Exception ex) { Log("[" + company + "] stock skipped: " + ex.Message); }
+                }
+
+                // ---- open invoices (bill-wise) ----
+                if (Settings.SyncBills)
+                {
+                    try
+                    {
+                        var bills = Tally.Bills(Settings.TallyUrl, company, DateTime.Today);
+                        var bsig = string.Join("|", bills.Select(b => b.Party + ";" + b.Ref + ";" + b.Date + ";" + b.Due + ";" + b.Amount.ToString(CultureInfo.InvariantCulture)));
+                        // the overdue days change every day, so the day is part of what counts as a change
+                        string bhash = Hash(DateTime.Today.ToString("yyyyMMdd") + bsig), bkey = "b-" + key, blast;
+                        if (!force && Settings.LastHash.TryGetValue(bkey, out blast) && blast == bhash) Log("[" + company + "] invoices: no change");
+                        else
+                        {
+                            if (token == null) token = Firebase.SignIn(Settings);
+                            Firebase.SaveBills(Settings, token, key, label, company, bills);
+                            Settings.LastHash[bkey] = bhash;
+                            Settings.LastStatus[bkey] = DateTime.Now.ToString("dd MMM yyyy, h:mm tt") + " · " + bills.Count + " open invoices";
+                            Settings.Save();
+                            Log("[" + company + "] uploaded " + bills.Count + " open invoices");
+                        }
+                    }
+                    catch (Exception ex) { Log("[" + company + "] invoices skipped: " + ex.Message); }
+                }
+
                 // ---- transactions ----
                 if (!Settings.SyncVouchers) continue;
                 var to = DateTime.Today;
@@ -598,10 +750,10 @@ namespace ChittamEnterprises
                 { "type", "tally-status" }, { "desktopVersion", Program.DesktopVersion },
                 { "configured", s.Configured }, { "busy", Busy }, { "error", LastError },
                 { "nextSync", NextSync.ToString("h:mm tt") }, { "intervalMinutes", s.IntervalMinutes },
-                { "syncVouchers", s.SyncVouchers }, { "voucherDays", s.VoucherDays },
+                { "syncVouchers", s.SyncVouchers }, { "voucherDays", s.VoucherDays }, { "syncStock", s.SyncStock }, { "syncBills", s.SyncBills },
                 { "companies", new object[] {
-                    new Dictionary<string, object> { { "key", "business" }, { "company", s.BusinessCompany }, { "label", s.BusinessLabel }, { "balances", LastText("business") }, { "vouchers", LastText("v-business") } },
-                    new Dictionary<string, object> { { "key", "cash" }, { "company", s.CashCompany }, { "label", s.CashLabel }, { "balances", LastText("cash") }, { "vouchers", LastText("v-cash") } }
+                    new Dictionary<string, object> { { "key", "business" }, { "company", s.BusinessCompany }, { "label", s.BusinessLabel }, { "balances", LastText("business") }, { "vouchers", LastText("v-business") }, { "stock", LastText("s-business") }, { "bills", LastText("b-business") } },
+                    new Dictionary<string, object> { { "key", "cash" }, { "company", s.CashCompany }, { "label", s.CashLabel }, { "balances", LastText("cash") }, { "vouchers", LastText("v-cash") }, { "stock", LastText("s-cash") }, { "bills", LastText("b-cash") } }
                 } },
                 { "log", RecentLog().Skip(Math.Max(0, RecentLog().Count - 30)).ToArray() }
             };
@@ -687,7 +839,7 @@ namespace ChittamEnterprises
         TextBox txtEmail, txtPassword, txtLog;
         ComboBox cboBusiness, cboCash;
         NumericUpDown numInterval, numDays;
-        CheckBox chkStartup, chkVouchers;
+        CheckBox chkStartup, chkVouchers, chkStock, chkBills;
         Label lblBusiness, lblCash, lblNext, lblDot;
         Button btnSave, btnSync;
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -705,7 +857,7 @@ namespace ChittamEnterprises
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(900, 600);
+            ClientSize = new Size(900, 670);
             BackColor = Look.Page;
             Font = Look.UI(9.75f);
 
@@ -738,7 +890,7 @@ namespace ChittamEnterprises
             cCo.Controls.Add(lnkLoad);
             Controls.Add(cCo);
 
-            var cSch = Look.Card(L, 416, W, 120, "Schedule");
+            var cSch = Look.Card(L, 416, W, 190, "Schedule and what to send");
             cSch.Controls.Add(Look.FieldLabel("Every", 16, 44));
             numInterval = new NumericUpDown { Left = 110, Top = 40, Width = 64, Minimum = 5, Maximum = 240, Value = Math.Max(5, Math.Min(240, s.IntervalMinutes)) };
             cSch.Controls.Add(numInterval);
@@ -752,14 +904,18 @@ namespace ChittamEnterprises
             cSch.Controls.Add(new Label { Text = "days", Left = 332, Top = 81, AutoSize = true, BackColor = Color.White });
             chkVouchers.CheckedChanged += delegate { numDays.Enabled = chkVouchers.Checked; };
             numDays.Enabled = chkVouchers.Checked;
+            chkStock = new CheckBox { Text = "Also send stock quantities (fills in orders)", Left = 16, Top = 114, AutoSize = true, Checked = s.SyncStock, BackColor = Color.White };
+            cSch.Controls.Add(chkStock);
+            chkBills = new CheckBox { Text = "Also send open invoices with due dates (Payment Reminder)", Left = 16, Top = 146, AutoSize = true, Checked = s.SyncBills, BackColor = Color.White };
+            cSch.Controls.Add(chkBills);
             Controls.Add(cSch);
 
             btnSave = Look.Primary("Save");
-            btnSave.SetBounds(L, 548, 130, 36);
+            btnSave.SetBounds(L, 618, 130, 36);
             btnSave.Click += delegate { Save(true); };
             Controls.Add(btnSave);
             var btnClose = Look.Secondary("Close");
-            btnClose.SetBounds(L + 140, 548, 110, 36);
+            btnClose.SetBounds(L + 140, 618, 110, 36);
             btnClose.Click += delegate { Close(); };
             Controls.Add(btnClose);
 
@@ -780,12 +936,12 @@ namespace ChittamEnterprises
             cStatus.Controls.Add(lblCash);
             Controls.Add(cStatus);
 
-            var cLog = Look.Card(R, 254, RW, 330, "Activity");
-            txtLog = new TextBox { Left = 14, Top = 38, Width = RW - 28, Height = 252, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+            var cLog = Look.Card(R, 254, RW, 400, "Activity");
+            txtLog = new TextBox { Left = 14, Top = 38, Width = RW - 28, Height = 322, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
                 BorderStyle = BorderStyle.None, BackColor = Color.FromArgb(250, 250, 250), Font = new Font("Consolas", 8.75f), ForeColor = Color.FromArgb(64, 64, 64) };
             txtLog.Text = string.Join(Environment.NewLine, sync.RecentLog()) + Environment.NewLine;
             cLog.Controls.Add(txtLog);
-            var lnkLog = new LinkLabel { Text = "Open the full log", Left = 14, Top = 300, AutoSize = true, LinkColor = Look.Brand, BackColor = Color.White };
+            var lnkLog = new LinkLabel { Text = "Open the full log", Left = 14, Top = 370, AutoSize = true, LinkColor = Look.Brand, BackColor = Color.White };
             lnkLog.LinkClicked += delegate { try { Process.Start("notepad.exe", "\"" + SyncEngine.LogPath + "\""); } catch { } };
             cLog.Controls.Add(lnkLog);
             Controls.Add(cLog);
@@ -869,7 +1025,8 @@ namespace ChittamEnterprises
             }
             bool loginChanged = s.Email != txtEmail.Text.Trim() || s.Password != txtPassword.Text;
             bool companiesChanged = s.BusinessCompany != cboBusiness.Text.Trim() || s.CashCompany != cboCash.Text.Trim();
-            bool vouchersChanged = s.SyncVouchers != chkVouchers.Checked || s.VoucherDays != (int)numDays.Value;
+            bool vouchersChanged = s.SyncVouchers != chkVouchers.Checked || s.VoucherDays != (int)numDays.Value ||
+                (!s.SyncStock && chkStock.Checked) || (!s.SyncBills && chkBills.Checked);
             s.Email = txtEmail.Text.Trim();
             s.Password = txtPassword.Text;
             s.BusinessCompany = cboBusiness.Text.Trim();
@@ -877,6 +1034,8 @@ namespace ChittamEnterprises
             s.IntervalMinutes = (int)numInterval.Value;
             s.SyncVouchers = chkVouchers.Checked;
             s.VoucherDays = (int)numDays.Value;
+            s.SyncStock = chkStock.Checked;
+            s.SyncBills = chkBills.Checked;
             if (companiesChanged) s.LastHash.Clear();   // upload fresh figures for the new companies
             s.Save();
             SetStartup(chkStartup.Checked);
@@ -885,7 +1044,7 @@ namespace ChittamEnterprises
             if (announce)
             {
                 sync.Log("Settings saved.");
-                if (loginChanged || companiesChanged || (vouchersChanged && s.SyncVouchers)) sync.Start(true);
+                if (loginChanged || companiesChanged || vouchersChanged) sync.Start(true);
             }
             return true;
         }
