@@ -19,7 +19,7 @@ const readWidth = (): 80 | 58 => { try { return localStorage.getItem("ce_thermal
 
 // printed from a hidden frame in this page: no pop-up window needed (the
 // Windows app and some phones block pop-ups)
-function printHtml(html: string, fail: () => void) {
+export function printHtml(html: string, fail: () => void) {
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
   frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";

@@ -545,7 +545,7 @@ function BalancesView() {
           <div className="max-h-[60vh] divide-y divide-neutral-100 overflow-y-auto">
             {shown.map((r, i) => (
               <motion.div key={r.c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i, 20) * 0.01 }} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-4 px-4 py-2.5 text-sm">
-                <span className="min-w-0 truncate font-semibold">{r.c.name}{!r.inTally && <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">not in Tally</span>}</span>
+                <span className="min-w-0 truncate font-semibold">{r.inTally ? <a href={"#/ledger?c=" + r.c.id} className="hover:text-brand-700 hover:underline" title="Ledger statement">{r.c.name}</a> : r.c.name}{!r.inTally && <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">not in Tally</span>}</span>
                 <span className="w-20 text-right tabular-nums sm:w-24">{r.b === undefined ? "—" : inr(r.b)}</span>
                 <span className="w-20 text-right tabular-nums sm:w-24">{r.cash === undefined ? "—" : inr(r.cash)}</span>
                 <span className={cn("w-20 text-right font-bold tabular-nums sm:w-24", r.total < 0 && "text-emerald-700")}>{r.inTally ? inr(r.total) : "—"}</span>

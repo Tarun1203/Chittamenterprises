@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import { motion } from "motion/react";
 import { IconPencil, IconPhone, IconPlus, IconUpload } from "@tabler/icons-react";
 import { Button, Dialog, EmptyState, Field, PageHeader, useToast } from "@/components/kit";
@@ -16,6 +17,7 @@ function initials(name: string) {
 export function Customers() {
   const { customers } = useStore();
   const toast = useToast();
+  const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Customer | null>(null);
   const [isNew, setIsNew] = useState(false);
@@ -104,7 +106,7 @@ export function Customers() {
         open={!!editing}
         onClose={() => setEditing(null)}
         title={isNew ? "Add customer" : "Edit customer"}
-        footer={<><Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button><Button onClick={save}>Save</Button></>}
+        footer={<>{!isNew && editing && <Button variant="secondary" className="mr-auto" onClick={() => navigate("/ledger?c=" + editing.id)}>Ledger statement</Button>}<Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button><Button onClick={save}>Save</Button></>}
       >
         <Field label="Customer name"><input className="field-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus /></Field>
         <Field label="Mobile number" hint="10-digit mobile — used to open the WhatsApp chat"><input className="field-input tabular-nums" type="tel" value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} /></Field>

@@ -81,7 +81,7 @@ export function PaymentReminder() {
       <TwoColumn
         form={<>
           <Card className="space-y-4">
-            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} />{customer && <TallyFreshness className="mt-2" />}{billNote && <BalanceNote note={"📒" + billNote.slice(2)} />}</Field>
+            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} />{customer && <TallyFreshness className="mt-2" />}{billNote && <BalanceNote note={"📒" + billNote.slice(2)} />}{customer && <a href={"#/ledger?c=" + customer.id} className="mt-2 inline-block text-xs font-semibold text-brand-600 hover:underline">Share the full ledger (both companies) →</a>}</Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="As on"><Text type="date" value={f.date} onChange={(e) => set("date")(e.target.value)} /></Field>
               <Field label="Pay by (optional)"><Text type="date" value={f.dueDate} onChange={(e) => set("dueDate")(e.target.value)} /></Field>

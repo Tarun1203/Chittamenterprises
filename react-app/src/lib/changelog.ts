@@ -4,6 +4,15 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.15", date: "2026-11-19", title: "Ledger statement for both companies",
+    items: [
+      "New Messages → Ledger Statement: a customer's account in Chittam Enterprises and Cash — opening balance, every transaction with a running balance, closing balance and the total outstanding.",
+      "Share it on WhatsApp, copy it, or Print / PDF (an A4 statement; choose “Save as PDF” to send it as a file).",
+      "Opened straight from a customer (Customers → edit → Ledger statement), from Tally Match → Balances (tap the name) and from Payment Reminder.",
+      "Built from the synced Tally transactions and balances; covers the synced period (last 90 days by default, up to 366 in the Windows app's Tally Sync settings).",
+    ],
+  },
+  {
     version: "3.14", date: "2026-11-19", title: "Post receipts to Tally; Windows installer", windows: "2.6",
     items: [
       "Tally Match (in the Windows app on the Tally PC): “Post to Tally” on a payment that isn't in Tally creates the Receipt voucher — customer's Tally ledger, received into Cash or a bank ledger you pick, narration — after a confirmation showing the whole voucher. Logged in History.",
