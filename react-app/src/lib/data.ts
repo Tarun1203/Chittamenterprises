@@ -17,6 +17,32 @@ export interface Settings {
   paymentModes: string[];
 }
 
+export interface OrderItem { name: string; qty: number; rate: number; amount: number }
+export interface Order {
+  id: string; orderNo: string; date: string; deliveryDate?: string;
+  customerId: string; customerName: string; mobile?: string;
+  status: string; advance: number; items: OrderItem[]; total: number; notes?: string;
+  transport?: string; transportPhone?: string; freightTerms?: string; freight?: number;
+}
+export interface ServiceItem {
+  product: string; qty: number; serial?: string; issue?: string;
+  action: string; replProduct?: string; replSerial?: string; charges: number;
+}
+export interface ServiceJob {
+  id: string; jobNo: string; receivedDate: string; inTransport?: string;
+  customerId: string; customerName: string; mobile?: string;
+  status: string; timeline?: string; items: ServiceItem[]; totalCharges: number;
+  sentDate?: string; outTransport?: string; notes?: string;
+}
+export interface Receipt {
+  id: string; date: string; customerId: string; customerName: string; mode: string;
+  business: number; cash: number; source: string; ref?: string; note?: string; cancelled?: boolean;
+}
+export interface BalanceSet {
+  company: string; label?: string; file?: string; importedAt?: string; importedBy?: string;
+  balances: Record<string, number>; names?: Record<string, string>;
+}
+
 export const defaultSettings: Settings = {
   businessName: "Chittam Enterprises",
   address: "",
@@ -139,4 +165,22 @@ export async function logEvent(action: string, details: Record<string, unknown> 
     at: serverTimestamp(),
     by: user.email || "",
   });
+}
+
+// every generated message is kept (text + the form's fields) and logged;
+// pressing Generate twice with the same text saves it once
+const lastMessage: Record<string, string> = {};
+export async function logMessage(type: string, customer: Customer | null, text: string, inputs: Record<string, unknown>) {
+  const user = auth.currentUser;
+  if (!user || lastMessage[type] === text) return;
+  lastMessage[type] = text;
+  const who = { customerId: customer?.id || "", customerName: customer?.name || "", mobile: customer?.mobile || "" };
+  const batch = writeBatch(db);
+  const msgRef = doc(collection(db, "messages"));
+  batch.set(msgRef, { type, text, inputs: stable(inputs), ...who, at: serverTimestamp(), by: user.email || "" });
+  batch.set(doc(collection(db, "activity")), {
+    collection: "app", action: "message-generated", name: who.customerName,
+    details: { type, messageId: msgRef.id, ...who }, at: serverTimestamp(), by: user.email || "",
+  });
+  await batch.commit();
 }

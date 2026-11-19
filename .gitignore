@@ -2,3 +2,4 @@
 windows-app/dist/
 # React app: dependencies (the built app is committed in next/)
 react-app/node_modules/
+react-app/*.tsbuildinfo

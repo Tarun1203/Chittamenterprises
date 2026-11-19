@@ -1,6 +1,6 @@
 // Layout: Aceternity sidebar on desktop (icons, expands on hover), and on
 // phones a top bar, a bottom tab bar and a slide-in menu.
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { IconX } from "@tabler/icons-react";
@@ -16,20 +16,20 @@ export const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "Work",
     items: [
-      { to: "/orders", label: "Orders", icon: "file-text", soon: 3 },
-      { to: "/service-jobs", label: "Service Jobs", icon: "tool", soon: 3 },
+      { to: "/orders", label: "Orders", icon: "file-text" },
+      { to: "/service-jobs", label: "Service Jobs", icon: "tool" },
     ],
   },
   {
     group: "Messages",
     items: [
-      { to: "/payment-updated", label: "Payment Updated", icon: "money-bag", soon: 2 },
-      { to: "/payment-reminder", label: "Payment Reminder", icon: "calender", soon: 2 },
-      { to: "/balance-confirmation", label: "Balance Confirmation", icon: "notebook", soon: 2 },
-      { to: "/dispatch", label: "Dispatch Confirmation", icon: "rocket", soon: 2 },
-      { to: "/stock-update", label: "Stock Update", icon: "bag", soon: 2 },
-      { to: "/stock-return", label: "Stock Return", icon: "back", soon: 2 },
-      { to: "/service-material", label: "Service Material", icon: "gift", soon: 2 },
+      { to: "/payment-updated", label: "Payment Updated", icon: "money-bag" },
+      { to: "/payment-reminder", label: "Payment Reminder", icon: "calender" },
+      { to: "/balance-confirmation", label: "Balance Confirmation", icon: "notebook" },
+      { to: "/dispatch", label: "Dispatch Confirmation", icon: "rocket" },
+      { to: "/stock-update", label: "Stock Update", icon: "bag" },
+      { to: "/stock-return", label: "Stock Return", icon: "back" },
+      { to: "/service-material", label: "Service Material", icon: "gift" },
       { to: "/catalog", label: "Product Catalog", icon: "picture", soon: 4 },
     ],
   },
@@ -186,6 +186,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [sideOpen, setSideOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const loc = useLocation();
+  useEffect(() => { window.scrollTo(0, 0); }, [loc.pathname]);
   return (
     <div className="flex min-h-full w-full">
       <SidebarProvider open={sideOpen} setOpen={setSideOpen}>

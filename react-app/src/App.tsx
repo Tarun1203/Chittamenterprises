@@ -8,6 +8,10 @@ import { Customers } from "@/pages/Customers";
 import { Products } from "@/pages/Products";
 import { Transports } from "@/pages/Transports";
 import { Soon } from "@/pages/Soon";
+import { PaymentUpdated } from "@/pages/PaymentUpdated";
+import { BalanceConfirmation, Dispatch, PaymentReminder, ServiceMaterial, StockReturn, StockUpdate } from "@/pages/MessagePages";
+import { Orders } from "@/pages/Orders";
+import { ServiceJobs } from "@/pages/ServiceJobs";
 
 function Gate() {
   const { user, authReady } = useStore();
@@ -27,6 +31,15 @@ function Gate() {
         <Route path="/customers" element={<Customers />} />
         <Route path="/products" element={<Products />} />
         <Route path="/transports" element={<Transports />} />
+        <Route path="/orders" element={<Orders />} />
+        <Route path="/service-jobs" element={<ServiceJobs />} />
+        <Route path="/payment-updated" element={<PaymentUpdated />} />
+        <Route path="/payment-reminder" element={<PaymentReminder />} />
+        <Route path="/balance-confirmation" element={<BalanceConfirmation />} />
+        <Route path="/dispatch" element={<Dispatch />} />
+        <Route path="/stock-update" element={<StockUpdate />} />
+        <Route path="/stock-return" element={<StockReturn />} />
+        <Route path="/service-material" element={<ServiceMaterial />} />
         {soon.map((s) => <Route key={s.to} path={s.to} element={<Soon path={s.to} />} />)}
         <Route path="*" element={<Dashboard />} />
       </Routes>

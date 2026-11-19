@@ -39,8 +39,11 @@ button:focus, a:focus { outline: none; }
 button:focus-visible, a:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(36, 99, 235, 0.3); }
 
 /* inputs */
-.field-input {
-  @apply w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-[15px] text-neutral-900 shadow-sm transition outline-none placeholder:text-neutral-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
+/* in the components layer, so a page can still set its width etc. */
+@layer components {
+  .field-input {
+    @apply w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-[15px] text-neutral-900 shadow-sm transition outline-none placeholder:text-neutral-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -10,5 +10,5 @@ export default defineConfig({
   base: "/Chittamenterprises/next/",
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
-  build: { outDir: "../next", emptyOutDir: true, chunkSizeWarningLimit: 1200 },
+  build: { outDir: "../next", emptyOutDir: true, chunkSizeWarningLimit: 1400 },
 });

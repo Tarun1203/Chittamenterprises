@@ -17,8 +17,8 @@ the old one.
 ## Milestones
 1. Foundation: shell, sign-in, data layer, Dashboard, Customers, Products, Transports (done)
 2. Messages: Payment Updated + payments report, Reminder, Balance Confirmation,
-   Dispatch, Stock Update, Stock Return, Service Material, Tally balance fill-in
-3. Orders (with pick lists) and Service Jobs
+   Dispatch, Stock Update, Stock Return, Service Material, Tally balance fill-in (done)
+3. Orders (with pick lists) and Service Jobs (done)
 4. History, Settings, Catalog
 5. Offline/installable app, version updates, switch-over
 

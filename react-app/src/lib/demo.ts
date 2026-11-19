@@ -1,6 +1,6 @@
 // Sample data for local development only (?demo). Never part of the published build.
 import type { User } from "firebase/auth";
-import type { Customer, Product, Transport } from "./data";
+import type { BalanceSet, Customer, Order, Product, Receipt, ServiceJob, Transport } from "./data";
 
 export const demoUser = { email: "demo@example.com", uid: "demo" } as unknown as User;
 
@@ -23,3 +23,36 @@ export const demoTransports: Transport[] = [
   { id: "t2", name: "Navata Road Transport", phone: "9123456780", branch: "Raichur" },
   { id: "t3", name: "Sri Durga Transport", phone: "9000011111", branch: "Manvi" },
 ];
+
+const iso = (offset: number) => { const d = new Date(); d.setDate(d.getDate() + offset); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+const no = (offset: number, k: number, pre = "") => { const [, m, d] = iso(offset).split("-"); return pre + d + "/" + m + "-" + String(k).padStart(2, "0"); };
+
+export const demoOrders: Order[] = [
+  { id: "o1", orderNo: no(0, 1), date: iso(0), customerId: "d0", customerName: "AB Infinite", mobile: "9845012345", status: "Pending", advance: 2000,
+    items: [{ name: "Makwell - Stabilizer - Led Mini - 5 Yr.", qty: 4, rate: 740, amount: 2960 }, { name: "Remote - AC", qty: 10, rate: 95, amount: 950 }], total: 3910,
+    transport: "VRL Logistics", transportPhone: "9845012345", freightTerms: "refund", freight: 350, notes: "Pack remotes separately" },
+  { id: "o2", orderNo: no(0, 2), date: iso(0), customerId: "d4", customerName: "Ashok Reddy - Mantralayam", status: "Confirmed", advance: 0,
+    items: [{ name: "Remote - AC", qty: 5, rate: 95, amount: 475 }, { name: "Impex - Mixer Grinder - 750 W", qty: 2, rate: 2150, amount: 4300 }], total: 4775, transport: "Navata Road Transport", freightTerms: "to-pay" },
+  { id: "o3", orderNo: no(-3, 1), date: iso(-3), customerId: "d12", customerName: "Sri Durga Electronics - Manvi", status: "Delivered", advance: 0,
+    items: [{ name: "Cable - Hdmi 3 mtrs 4k", qty: 20, rate: 180, amount: 3600 }], total: 3600 },
+];
+
+export const demoServices: ServiceJob[] = [
+  { id: "s1", jobNo: no(-2, 1, "SV-"), receivedDate: iso(-2), customerId: "d2", customerName: "Adil Mobile Center", status: "Under Service", timeline: "7 days", inTransport: "VRL Logistics",
+    items: [{ product: "Makwell - Stabilizer - RF500VA - 5 Yr.", qty: 1, serial: "MK55021", issue: "No output", action: "Replaced", replProduct: "Makwell - Stabilizer - RF500VA - 5 Yr.", replSerial: "MK60433", charges: 0 },
+      { product: "Impex - Mixer Grinder - 750 W", qty: 1, serial: "IMX901", issue: "Motor noise", action: "Pending", charges: 250 }], totalCharges: 250 },
+  { id: "s2", jobNo: no(-9, 1, "SV-"), receivedDate: iso(-9), customerId: "d13", customerName: "Vijay Radios - Lingasugur", status: "Sent Back", sentDate: iso(-1), outTransport: "Sri Durga Transport",
+    items: [{ product: "Haier - EI3V - C1 - White", qty: 1, serial: "HR7781", issue: "Display dead", action: "Repaired", charges: 400 }], totalCharges: 400 },
+];
+
+export const demoReceipts: Receipt[] = [
+  { id: "r1", date: iso(0), customerId: "d0", customerName: "AB Infinite", mode: "Advance", business: 2000, cash: 0, source: "Order advance", ref: no(0, 1) },
+  { id: "r2", date: iso(-1), customerId: "d5", customerName: "Badrinath Allundi - Raichur", mode: "UPI", business: 15000, cash: 2500, source: "Payment Updated" },
+  { id: "r3", date: iso(-1), customerId: "d9", customerName: "Kashi SLN", mode: "Cash", business: 0, cash: 4000, source: "Manual", note: "Paid at shop" },
+  { id: "r4", date: iso(-4), customerId: "d7", customerName: "Deepak", mode: "Cheque", business: 8000, cash: 0, source: "Manual", cancelled: true, note: "Cheque bounced" },
+];
+
+export const demoBalances: Record<string, BalanceSet> = {
+  business: { company: "business", label: "Chittam Enterprises - 2026", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 48250, "kashi sln": 12900, "deepak": 0 } },
+  cash: { company: "cash", label: "Cash", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 6400, "kashi sln": 1500 } },
+};
