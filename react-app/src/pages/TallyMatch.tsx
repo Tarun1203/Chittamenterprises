@@ -333,6 +333,8 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
   // bill-wise adjustment: amount against each open bill (ref -> rupees as typed)
   const [adj, setAdj] = useState<Record<string, string>>({});
   const [txn, setTxn] = useState({ type: "Others", number: "", date: "", bank: "" });
+  // what the amount beyond the chosen bills becomes in Tally
+  const [rest, setRest] = useState({ type: "On Account", ref: "" });
   const [narration, setNarration] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -360,6 +362,7 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
     const m = payment.mode || "";
     setTxn({ type: /cheque|dd|draft/i.test(m) ? "Cheque" : /upi|neft|rtgs|imps|transfer|gpay|phone\s*pe|paytm|online/i.test(m) ? "e-Fund Transfer" : "Others",
       number: receipt?.txnRef || "", date: payment.date, bank: "" });
+    setRest({ type: "On Account", ref: "" });
     desktopPost({ type: "tally-cashbank", key: payment.account });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payment]);
@@ -369,7 +372,9 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
     setBanks(d.banks || []);
     if (d.error) setErr("Couldn't read Tally's cash / bank ledgers: " + d.error);
     const cash = /cash/i.test(payment.mode || "");
-    setInto((d.ledgers || []).find((l) => (cash ? /^cash$/i.test(l) : /bank|phone\s*pe|upi|gpay/i.test(l))) || (d.ledgers || [])[0] || "");
+    const ls = d.ledgers || [], bk = d.banks || [];
+    setInto((cash ? ls.find((l) => /^cash$/i.test(l)) || ls.find((l) => !bk.includes(l))
+      : ls.find((l) => bk.includes(l) && /phone\s*pe|upi|gpay/i.test(l) && /upi|gpay|phone\s*pe/i.test(payment.mode || "")) || bk[0] || ls.find((l) => /bank|phone\s*pe|upi|gpay/i.test(l))) || ls[0] || "");
   });
   useDesktopReply<{ receiptId: string; ok: boolean; error: string }>("tally-post-result", (d) => {
     if (!payment || d.receiptId !== payment.receiptId) return;
@@ -378,12 +383,14 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
     else if (d.error !== "Not posted.") setErr(d.error);
   });
   const tooMuch = onAccount < -0.004;
+  const needsRef = onAccount > 0.004 && rest.type !== "On Account";
+  const restRef = rest.ref.trim() || (payment ? (rest.type === "Advance" ? "ADV" : "REF") + "/" + payment.date.replace(/-/g, "").slice(2) + "/" + (receipt?.ref || payment.receiptId).replace(/[^A-Za-z0-9]/g, "").slice(-6) : "");
   function send() {
     if (!payment || !tallyName || !into || tooMuch) return;
     setBusy(true); setErr("");
     const bills = openBills.filter((b) => num(adj[b.n] || "") > 0).map((b) => ({ ref: b.n, amount: num(adj[b.n] || "") }));
     desktopPost({ type: "tally-post-receipt", key: payment.account, date: payment.date, party: tallyName, into, amount: payment.amount, narration, receiptId: payment.receiptId,
-      bills, bank: isBank ? { type: txn.type, number: txn.number.trim(), date: txn.date || payment.date, bank: txn.bank.trim() } : undefined });
+      bills, rest: onAccount > 0.004 ? { type: rest.type, ref: rest.type === "On Account" ? "" : restRef } : undefined, bank: isBank ? { type: txn.type, number: txn.number.trim(), date: txn.date || payment.date, bank: txn.bank.trim() } : undefined });
   }
   return (
     <Dialog open={!!payment} onClose={onClose} title="Post to Tally"
@@ -436,8 +443,17 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
               </div>}
           <div className="flex justify-between border-t border-neutral-100 pt-2 text-sm">
             <span className="text-neutral-500">Against bills {inr(against)}</span>
-            <span className={cn("font-semibold", tooMuch && "text-rose-600")}>{tooMuch ? "More than the payment by " + inr(-onAccount) : "On Account " + inr(onAccount)}</span>
+            <span className={cn("font-semibold", tooMuch && "text-rose-600")}>{tooMuch ? "More than the payment by " + inr(-onAccount) : onAccount > 0.004 ? "Extra " + inr(onAccount) : "Fully adjusted"}</span>
           </div>
+          {onAccount > 0.004 && (
+            <div className="grid gap-3 border-t border-neutral-100 pt-3 sm:grid-cols-2">
+              <Field label={"Extra " + inr(onAccount) + " as"}>
+                <Select value={rest.type} onChange={(v) => setRest((x) => ({ ...x, type: v }))}
+                  options={[{ value: "On Account", label: "On Account" }, { value: "New Ref", label: "New Ref (a new reference)" }, { value: "Advance", label: "Advance payment" }]} />
+              </Field>
+              {needsRef && <Field label="Reference name"><Text value={rest.ref} onChange={(e) => setRest((x) => ({ ...x, ref: e.target.value }))} placeholder={restRef} /></Field>}
+            </div>
+          )}
         </div>
         <Field label="Narration"><Text value={narration} onChange={(e) => setNarration(e.target.value)} /></Field>
         {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{err}</p>}

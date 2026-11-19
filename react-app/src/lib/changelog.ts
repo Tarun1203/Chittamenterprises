@@ -4,6 +4,16 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.17", date: "2026-11-19", title: "PDFs straight to WhatsApp; advance payments in Tally", windows: "2.8",
+    items: [
+      "Ledger Statement: “Send ledger PDF on WhatsApp” makes a proper PDF of both accounts. On a phone, pick WhatsApp from the share sheet. In the Windows app, the PDF is saved and copied and the customer's WhatsApp chat opens — just press Ctrl+V, then Send.",
+      "Payment receipts as PDF: “Send receipt PDF on WhatsApp” on Payment Updated (with both balances), and a PDF button on every payment in Payments Received.",
+      "Post to Tally: any amount beyond the chosen bills can go On Account, as a New Ref, or as an Advance payment, under a reference you can name.",
+      "Bank payments now default to one of Tally's bank ledgers.",
+      "The Windows app keeps every PDF in Documents → Chittam Enterprises → Ledgers / Receipts.",
+    ],
+  },
+  {
     version: "3.16", date: "2026-11-19", title: "Payment details and bill-wise posting to Tally", windows: "2.7",
     items: [
       "Payment Updated and Receipts: “Received by” for cash payments, and “Transaction ID / UTR / Cheque no.” for other modes. Shown in the customer's message and the receipts list.",

@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { Card, Field, PageHeader, useToast } from "@/components/kit";
+import { Button, Card, Field, PageHeader, useToast } from "@/components/kit";
 import { BalanceNote, CustomerPicker, MessagePanel, Money, Select, Text, TotalLine, TwoColumn, n, useTallyFill } from "@/components/forms";
 import { useStore } from "@/lib/store";
-import { saveRecord, type Customer, type Receipt } from "@/lib/data";
+import { logEvent, saveRecord, type Customer, type Receipt } from "@/lib/data";
+import { receiptPdf, receiptNo, safeFileName, sharePdf } from "@/lib/pdf";
+import { IconBrandWhatsapp } from "@tabler/icons-react";
 import { isCashMode, payRefLabel, paymentUpdated } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
 import { ReceiptsReport } from "./ReceiptsReport";
@@ -39,7 +41,25 @@ export function PaymentUpdated() {
       mode: f.mode || "—", business: n(f.eamt), cash: n(f.camt), source: "Payment Updated", ref: before?.ref || "", note: before?.note || "", cancelled: false,
       receivedBy: isCashMode(f.mode) ? f.receivedBy.trim() : "", txnRef: isCashMode(f.mode) ? "" : f.txnRef.trim(),
     };
-    try { await saveRecord("receipts", rec, before); } catch (e) { toast("Payment not saved: " + (e as Error).message); }
+    try { await saveRecord("receipts", rec, before); return rec; } catch (e) { toast("Payment not saved: " + (e as Error).message); return null; }
+  }
+
+  // the payment receipt as a PDF, with both balances
+  const [making, setMaking] = useState(false);
+  async function sendReceipt() {
+    if (!customer) { toast("Please select a customer first."); return; }
+    if (!n(f.eamt) && !n(f.camt)) { toast("Enter the amount received."); return; }
+    setMaking(true);
+    try {
+      const rec = await recordReceipt();
+      if (!rec) return;
+      const blob = await receiptPdf(settings, rec, customer.mobile, {
+        business: n(f.eamt) ? [n(f.eprev), efinal] : undefined, cash: n(f.camt) ? [n(f.cprev), cfinal] : undefined });
+      const r = await sharePdf(blob, safeFileName("Receipt " + receiptNo(rec) + " " + customer.name) + ".pdf", { mobile: customer.mobile, kind: "Receipts", text: "Payment receipt – " + name });
+      if (r.message) toast(r.message);
+      logEvent("receipt-pdf-shared", { customerName: customer.name, mobile: customer.mobile || "", receiptId: rec.id, savedTo: r.path || "" }).catch(() => {});
+    } catch (e) { toast("Could not make the PDF: " + (e as Error).message); }
+    finally { setMaking(false); }
   }
 
   return (
@@ -75,15 +95,16 @@ export function PaymentUpdated() {
             <TotalLine strong label="Total outstanding" value={inr(efinal + cfinal)} />
           </Card>
         }
-        message={
+        message={<div className="space-y-4">
           <MessagePanel
             type="payment-updated" customer={customer} inputs={{ customer: customer?.name || "", ...f }}
             build={() => customer
               ? paymentUpdated(settings, { name: customer.name, mode: f.mode, date: f.date, eprev: n(f.eprev), eamt: n(f.eamt), cprev: n(f.cprev), camt: n(f.camt), receivedBy: f.receivedBy, txnRef: f.txnRef })
               : "!Please select a customer first."}
-            onGenerated={recordReceipt}
+            onGenerated={async () => { await recordReceipt(); }}
           />
-        }
+          <Button variant="whatsapp" className="w-full" onClick={sendReceipt} disabled={making}><IconBrandWhatsapp size={18} /> {making ? "Making PDF…" : "Send receipt PDF on WhatsApp"}</Button>
+        </div>}
       />
       <ReceiptsReport />
     </div>

@@ -45,3 +45,16 @@ export function useDesktopReply<T>(type: string, onReply: (data: T) => void) {
     return () => wv.removeEventListener("message", on);
   });
 }
+
+// one request and its reply, as a promise (rejects if the Windows app doesn't answer)
+export function desktopRequest<T>(msg: Record<string, unknown>, replyType: string, timeoutMs = 15000): Promise<T> {
+  return new Promise((ok, fail) => {
+    const wv = webview();
+    if (!wv) { fail(new Error("Not in the Windows app.")); return; }
+    const on = (e: { data: unknown }) => { const d = e.data as { type?: string }; if (d?.type === replyType) { done(); ok(d as T); } };
+    const timer = setTimeout(() => { done(); fail(new Error("The Windows app didn't answer — update it (Tally Match → Sync).")); }, timeoutMs);
+    const done = () => { clearTimeout(timer); wv.removeEventListener("message", on); };
+    wv.addEventListener("message", on);
+    wv.postMessage(msg);
+  });
+}

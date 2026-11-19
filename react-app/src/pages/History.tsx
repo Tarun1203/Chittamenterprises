@@ -20,7 +20,7 @@ const EVENT_LABELS: Record<string, string> = {
   "import-customers": "Customers imported", "import-products": "Products imported", "backup-export": "Backup downloaded",
   "backup-restore": "Backup restored", "sheet-push": "Pushed to Sheet", "sheet-pull": "Pulled from Sheet", "sheet-url-changed": "Sheet URL changed",
   "catalog-photo": "Catalog photo added", "catalog-copy": "Catalog copied", "catalog-share": "Catalog shared", "app-installed": "App installed",
-  "balances-imported": "Tally balances imported", "balances-synced": "Tally balances synced", "tally-vouchers-synced": "Tally transactions synced", "tally-stock-synced": "Tally stock synced", "ledger-printed": "Ledger printed", "tally-voucher-posted": "Receipt posted to Tally", "tally-company-switched": "Tally new financial year", "tally-masters-synced": "Customers / products from Tally", "tally-bills-synced": "Tally open invoices synced", "picklist-copied": "Pick list copied",
+  "balances-imported": "Tally balances imported", "balances-synced": "Tally balances synced", "tally-vouchers-synced": "Tally transactions synced", "tally-stock-synced": "Tally stock synced", "ledger-printed": "Ledger printed", "ledger-pdf-shared": "Ledger PDF shared", "receipt-pdf-shared": "Receipt PDF shared", "tally-voucher-posted": "Receipt posted to Tally", "tally-company-switched": "Tally new financial year", "tally-masters-synced": "Customers / products from Tally", "tally-bills-synced": "Tally open invoices synced", "picklist-copied": "Pick list copied",
   "picklist-printed": "Pick list printed", "receipts-report-copied": "Payments report copied", "receipts-report-downloaded": "Payments report downloaded",
   "sign-in": "Signed in", "sign-out": "Signed out",
 };

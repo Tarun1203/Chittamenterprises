@@ -1,7 +1,8 @@
 // Payments received: every payment, date-wise. Added by Payment Updated
 // messages, order advances and "Add payment". Edit or cancel — never delete.
 import { useMemo, useState } from "react";
-import { IconCopy, IconDownload, IconPencil, IconPlus } from "@tabler/icons-react";
+import { IconCopy, IconDownload, IconFileTypePdf, IconPencil, IconPlus } from "@tabler/icons-react";
+import { receiptPdf, receiptNo, safeFileName, sharePdf } from "@/lib/pdf";
 import { Button, Card, Dialog, Field, useToast } from "@/components/kit";
 import { CustomerPicker, Money, Select, Text, copyText, n } from "@/components/forms";
 import { useStore } from "@/lib/store";
@@ -15,6 +16,17 @@ const total = (r: Receipt) => n(r.business) + n(r.cash);
 export function ReceiptsReport() {
   const { receipts, customers, settings } = useStore();
   const toast = useToast();
+  // the payment receipt as a PDF, to WhatsApp
+  async function sendReceipt(r: Receipt) {
+    const c = customers.find((x) => x.id === r.customerId);
+    try {
+      toast("Making the receipt PDF…");
+      const blob = await receiptPdf(settings, r, c?.mobile);
+      const res = await sharePdf(blob, safeFileName("Receipt " + receiptNo(r) + " " + r.customerName) + ".pdf", { mobile: c?.mobile, kind: "Receipts", text: "Payment receipt – " + settings.businessName });
+      if (res.message) toast(res.message);
+      logEvent("receipt-pdf-shared", { customerName: r.customerName, mobile: c?.mobile || "", receiptId: r.id, savedTo: res.path || "" }).catch(() => {});
+    } catch (e) { toast("Could not make the PDF: " + (e as Error).message); }
+  }
   const biz = settings.businessName || "Business";
   const [from, setFrom] = useState(todayISO().slice(0, 8) + "01");
   const [to, setTo] = useState(todayISO());
@@ -152,6 +164,7 @@ export function ReceiptsReport() {
                       <div className="font-bold tabular-nums">{inr(total(r))}</div>
                       {r.cancelled && <div className="text-[11px] font-bold text-rose-600 uppercase">Cancelled</div>}
                     </div>
+                    {!r.cancelled && <button onClick={() => sendReceipt(r)} className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100" aria-label="Receipt PDF to WhatsApp" title="Receipt PDF to WhatsApp"><IconFileTypePdf size={16} /></button>}
                     <button onClick={() => open(r)} className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100" aria-label="Edit payment"><IconPencil size={16} /></button>
                   </div>
                 ))}

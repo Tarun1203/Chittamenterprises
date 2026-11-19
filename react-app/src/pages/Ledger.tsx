@@ -4,7 +4,7 @@
 // WhatsApp, copy it, or print it / save it as a PDF.
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
-import { IconPrinter } from "@tabler/icons-react";
+import { IconBrandWhatsapp, IconPrinter } from "@tabler/icons-react";
 import { Button, Card, Field, PageHeader, useToast } from "@/components/kit";
 import { CustomerPicker, MessagePanel, Text } from "@/components/forms";
 import { TallyFreshness } from "@/components/TallyFreshness";
@@ -15,6 +15,7 @@ import { msgDate } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { printHtml } from "./PickList";
+import { ledgerPdf, safeFileName, sharePdf } from "@/lib/pdf";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
@@ -52,6 +53,20 @@ export function Ledger() {
   const total = parts.reduce((t, p) => t + p.closing, 0);
   const tooEarly = range.from && from < range.from;
 
+  const [making, setMaking] = useState(false);
+  async function sendPdf() {
+    if (!customer || !parts.length) { toast("Pick a customer with Tally entries first."); return; }
+    setMaking(true);
+    try {
+      const blob = await ledgerPdf(settings, customer, from, to, parts);
+      const r = await sharePdf(blob, safeFileName("Ledger " + customer.name + " " + from + " to " + to) + ".pdf",
+        { mobile: customer.mobile, kind: "Ledgers", text: "Ledger statement – " + biz });
+      if (r.message) toast(r.message);
+      logEvent("ledger-pdf-shared", { customerName: customer.name, mobile: customer.mobile || "", from, to, savedTo: r.path || "" }).catch(() => {});
+    } catch (e) { toast("Could not make the PDF: " + (e as Error).message); }
+    finally { setMaking(false); }
+  }
+
   function print() {
     if (!customer || !parts.length) { toast("Pick a customer with Tally entries first."); return; }
     const table = (p: LedgerPart) => `<h2>${esc(p.label)}</h2><table><thead><tr><th>Date</th><th>Particulars</th><th class="n">Debit</th><th class="n">Credit</th><th class="n">Balance</th></tr></thead><tbody>
@@ -78,7 +93,8 @@ export function Ledger() {
   return (
     <div>
       <PageHeader icon="notebook" eyebrow="Messages" title="Ledger Statement" subtitle="A customer's account in both companies — opening balance, every transaction, closing balance — to share on WhatsApp or print as a PDF."
-        actions={<Button variant="secondary" size="sm" onClick={print}><IconPrinter size={16} /> Print / PDF</Button>} />
+        actions={<><Button variant="whatsapp" size="sm" onClick={sendPdf} disabled={making}><IconBrandWhatsapp size={16} /> {making ? "Making PDF…" : "PDF to WhatsApp"}</Button>
+          <Button variant="secondary" size="sm" onClick={print}><IconPrinter size={16} /> Print</Button></>} />
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <div className="space-y-5">
           <Card className="space-y-4">
@@ -110,9 +126,12 @@ export function Ledger() {
             </Card>
           ))}
           {parts.length > 0 && (
-            <Card className="flex items-center justify-between">
-              <span className="font-bold">Total outstanding (both companies)</span>
-              <span className="text-lg font-extrabold tabular-nums">{drcr(total)}</span>
+            <Card className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-bold">Total outstanding (both companies)</span>
+                <span className="text-lg font-extrabold tabular-nums">{drcr(total)}</span>
+              </div>
+              <Button variant="whatsapp" className="w-full" onClick={sendPdf} disabled={making}><IconBrandWhatsapp size={18} /> {making ? "Making PDF…" : "Send ledger PDF on WhatsApp"}</Button>
             </Card>
           )}
         </div>

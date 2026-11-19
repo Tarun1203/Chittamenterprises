@@ -70,8 +70,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyProduct("Chittam Enterprises")]
 [assembly: System.Reflection.AssemblyCompany("Chittam Enterprises")]
 // keep in step with Program.DesktopVersion (build.ps1 checks)
-[assembly: System.Reflection.AssemblyVersion("2.7.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("2.7")]
+[assembly: System.Reflection.AssemblyVersion("2.8.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.8")]
 
 namespace ChittamEnterprises
 {
@@ -81,7 +81,7 @@ namespace ChittamEnterprises
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
         // where new versions of this program are published (desktop/ folder of the site)
         public const string UpdateUrl = "https://tarun1203.github.io/Chittamenterprises/desktop/version.json";
-        public const string DesktopVersion = "2.7";
+        public const string DesktopVersion = "2.8";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -495,13 +495,16 @@ namespace ChittamEnterprises
         public class BankDetails { public string Type, Number, Bank; public DateTime Date; }
 
         public static string PostReceipt(string url, string company, DateTime date, string party, string intoLedger, double amount, string narration)
-        { return PostReceipt(url, company, date, party, intoLedger, amount, narration, null, null); }
+        { return PostReceipt(url, company, date, party, intoLedger, amount, narration, null, null, null, null); }
 
         // bills: amounts against the customer's invoices (Agst Ref); the rest goes On Account.
         // bank: instrument details for a bank ledger (Tally's bank allocation)
         public static string PostReceipt(string url, string company, DateTime date, string party, string intoLedger, double amount, string narration,
-            List<BillPart> bills, BankDetails bank)
+            List<BillPart> bills, BankDetails bank, string restType, string restRef)
         {
+            // the amount beyond the bills: On Account, or a New Ref / Advance under its own reference
+            if (restType != "New Ref" && restType != "Advance") restType = "On Account";
+            if (restType != "On Account" && string.IsNullOrEmpty(restRef)) restType = "On Account";
             Func<string, string> x = v => System.Security.SecurityElement.Escape(v ?? "");
             Func<double, string> f2 = v => v.ToString("0.00", CultureInfo.InvariantCulture);
             string amt = f2(amount);
@@ -513,7 +516,7 @@ namespace ChittamEnterprises
                 against += b.Amount;
             }
             double rest = Math.Round(amount - against, 2);
-            if (rest > 0.004) allocs.Append("<BILLALLOCATIONS.LIST><NAME>On Account</NAME><BILLTYPE>On Account</BILLTYPE><AMOUNT>" + f2(rest) + "</AMOUNT></BILLALLOCATIONS.LIST>");
+            if (rest > 0.004) allocs.Append("<BILLALLOCATIONS.LIST><NAME>" + x(restType == "On Account" ? "On Account" : restRef) + "</NAME><BILLTYPE>" + restType + "</BILLTYPE><AMOUNT>" + f2(rest) + "</AMOUNT></BILLALLOCATIONS.LIST>");
             var bankXml = bank == null ? "" :
                 "<BANKALLOCATIONS.LIST><DATE>" + date.ToString("yyyyMMdd") + "</DATE><INSTRUMENTDATE>" + bank.Date.ToString("yyyyMMdd") + "</INSTRUMENTDATE>" +
                 "<TRANSACTIONTYPE>" + x(bank.Type) + "</TRANSACTIONTYPE><PAYMENTFAVOURING>" + x(party) + "</PAYMENTFAVOURING>" +
@@ -1828,7 +1831,7 @@ namespace ChittamEnterprises
             Dictionary<string, object> obj;
             try
             {
-                obj = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(e.WebMessageAsJson);
+                obj = new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Deserialize<Dictionary<string, object>>(e.WebMessageAsJson);
                 object v; if (obj != null && obj.TryGetValue("type", out v) && v != null) type = v.ToString();
             }
             catch { return; }
@@ -1841,7 +1844,46 @@ namespace ChittamEnterprises
                 case "tally-log": try { Process.Start("notepad.exe", "\"" + SyncEngine.LogPath + "\""); } catch { } break;
                 case "tally-cashbank": SendCashBank(Str(obj, "key")); break;
                 case "tally-post-receipt": PostReceipt(obj); break;
+                case "share-file": ShareFile(obj); break;
             }
+        }
+
+        // A PDF from the page (ledger / receipt): saved in Documents\Chittam Enterprises\<folder>,
+        // put on the clipboard as a file, and the customer's WhatsApp chat opened, so Ctrl+V
+        // in the chat attaches it.
+        void ShareFile(Dictionary<string, object> o)
+        {
+            var reply = new Dictionary<string, object> { { "type", "share-file-result" }, { "ok", false } };
+            try
+            {
+                var folder = Str(o, "folder") == "Ledgers" ? "Ledgers" : "Receipts";
+                var name = Regex.Replace(Str(o, "name"), @"[\\/:*?""<>|\x00-\x1f]+", " ").Trim();
+                if (name.Length == 0) name = "Document";
+                if (!name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) name += ".pdf";
+                byte[] bytes = Convert.FromBase64String(Str(o, "data"));
+                if (bytes.Length < 5 || Encoding.ASCII.GetString(bytes, 0, 5) != "%PDF-") throw new Exception("That isn't a PDF.");
+                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Chittam Enterprises", folder);
+                Directory.CreateDirectory(dir);
+                var path = Path.Combine(dir, name);
+                // never overwrite an earlier file: add (2), (3)…
+                for (int i = 2; File.Exists(path); i++) path = Path.Combine(dir, Path.GetFileNameWithoutExtension(name) + " (" + i + ").pdf");
+                File.WriteAllBytes(path, bytes);
+                var files = new System.Collections.Specialized.StringCollection(); files.Add(path);
+                Clipboard.SetFileDropList(files);
+                var phone = Regex.Replace(Str(o, "phone"), "[^0-9]", "");
+                bool app = false;
+                try { using (var k = Registry.ClassesRoot.OpenSubKey("whatsapp")) app = k != null; } catch { }
+                try
+                {
+                    if (app) Process.Start(phone.Length > 0 ? "whatsapp://send?phone=" + phone : "whatsapp://");
+                    else Process.Start(phone.Length > 0 ? "https://web.whatsapp.com/send?phone=" + phone : "https://web.whatsapp.com/");
+                }
+                catch { }
+                reply["ok"] = true; reply["path"] = path; reply["whatsapp"] = true;
+                sync.Log("Saved " + folder.ToLower().TrimEnd('s') + " PDF " + path + " and opened WhatsApp" + (phone.Length > 0 ? " for " + phone : ""));
+            }
+            catch (Exception ex) { reply["error"] = ex.Message; }
+            Reply(reply);
         }
 
         static string Str(Dictionary<string, object> o, string k) { object v; return o.TryGetValue(k, out v) && v != null ? Convert.ToString(v, CultureInfo.InvariantCulture) : ""; }
@@ -1893,10 +1935,18 @@ namespace ChittamEnterprises
                 if (!DateTime.TryParseExact(Str(d, "date"), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out idt)) idt = date;
                 bank = new Tally.BankDetails { Type = Str(d, "type").Length > 0 ? Str(d, "type") : "Others", Number = Str(d, "number"), Bank = Str(d, "bank"), Date = idt };
             }
+            string restType = "On Account", restRef = "";
+            object ro;
+            if (o.TryGetValue("rest", out ro) && ro is Dictionary<string, object>)
+            {
+                var d = (Dictionary<string, object>)ro;
+                if (Str(d, "type") == "New Ref" || Str(d, "type") == "Advance") { restType = Str(d, "type"); restRef = Str(d, "ref"); }
+                if (restRef.Length == 0) restType = "On Account";
+            }
             var inr = CultureInfo.GetCultureInfo("en-IN");
             double onAccount = Math.Round(amount - bills.Sum(b => b.Amount), 2);
             var billText = string.Concat(bills.Select(b => "   Against " + b.Ref + ":  ₹" + b.Amount.ToString("N2", inr) + "\n")) +
-                (onAccount > 0.004 ? "   On Account:  ₹" + onAccount.ToString("N2", inr) + "\n" : "");
+                (onAccount > 0.004 ? "   " + (restType == "On Account" ? "On Account" : restType + " " + restRef) + ":  ₹" + onAccount.ToString("N2", inr) + "\n" : "");
             var bankText = bank == null ? "" : "Transaction:  " + bank.Type + (bank.Number.Length > 0 ? " · No. " + bank.Number : "") +
                 " · " + bank.Date.ToString("dd MMM yyyy") + (bank.Bank.Length > 0 ? " · " + bank.Bank : "") + "\n";
             var msg = "Create this voucher in Tally?\n\n" +
@@ -1913,7 +1963,7 @@ namespace ChittamEnterprises
             if (MessageBox.Show(this, msg, "Post to Tally", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
             { done("Not posted."); return; }
             ThreadPool.QueueUserWorkItem(delegate {
-                string err = Tally.PostReceipt(sync.Settings.TallyUrl, company, date, party, into, amount, narration, bills, bank);
+                string err = Tally.PostReceipt(sync.Settings.TallyUrl, company, date, party, into, amount, narration, bills, bank, restType, restRef);
                 sync.Log(err == null ? "Posted to Tally: Receipt " + party + " ₹" + amount.ToString("0.##", CultureInfo.InvariantCulture) + " into " + into + " (" + company + ")" : "Posting to Tally failed: " + err);
                 if (err == null)
                 {
