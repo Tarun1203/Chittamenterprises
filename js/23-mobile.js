@@ -71,6 +71,14 @@
       });
       grid.appendChild(b);
     });
+    // Tally Match lives in the new app (same site, so it opens inside this app)
+    if(title === 'More'){
+      var tm = document.createElement('button');
+      tm.type = 'button'; tm.className = 'm-sheet-item';
+      tm.innerHTML = '<span class="ic"><img class="ic3d" src="icons3d/star.png" alt="" draggable="false"></span><span>Tally Match</span>';
+      tm.addEventListener('click', function(){ mCloseSheet(); location.href = 'next/#/tally'; });
+      grid.appendChild(tm);
+    }
     var install = document.getElementById('btnInstallApp');
     if(title === 'More' && install && install.style.display !== 'none'){
       var ib = document.createElement('button');
@@ -122,3 +130,9 @@
   mLabelTables(document);
 
   mSetCurrent(document.querySelector('.view.active') ? document.querySelector('.view.active').id.replace('view-', '') : 'dashboard');
+
+/* tiles that open a page of the new app (e.g. Tally Match) */
+document.addEventListener('click', function(e){
+  var t = e.target.closest('[data-href]');
+  if(t) location.href = t.dataset.href;
+});
