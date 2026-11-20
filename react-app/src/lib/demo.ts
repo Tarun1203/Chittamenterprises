@@ -37,6 +37,9 @@ export const demoOrders: Order[] = [
     items: [{ name: "Remote - AC", qty: 5, rate: 95, amount: 475 }, { name: "Impex - Mixer Grinder - 750 W", qty: 2, rate: 2150, amount: 4300, avail: 0 }], total: 4775, transport: "Navata Road Transport", freightTerms: "to-pay" },
   { id: "o3", orderNo: no(-3, 1), date: iso(-3), customerId: "d12", customerName: "Sri Durga Electronics - Manvi", status: "Delivered", advance: 0,
     items: [{ name: "Cable - Hdmi 3 mtrs 4k", qty: 20, rate: 180, amount: 3600 }], total: 3600 },
+  // delivered, but 2 heaters were out of stock and are still owed
+  { id: "o4", orderNo: no(-6, 1), date: iso(-6), customerId: "d9", customerName: "Kashi SLN", status: "Delivered", advance: 0,
+    items: [{ name: "Haier - ES15V - Estile", qty: 5, rate: 6100, amount: 30500, avail: 3 }, { name: "Remote - AC", qty: 10, rate: 150, amount: 1500 }], total: 32000 },
 ];
 
 export const demoServices: ServiceJob[] = [

@@ -4,6 +4,14 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.25", date: "2026-11-20", title: "Orders: open, delivered-with-pending and delivered in separate sections",
+    items: [
+      "Orders now shows open orders first.",
+      "Delivered orders that still owe items get their own section, “Delivered — items still pending”, listing only the items still to be sent.",
+      "Fully delivered and cancelled orders are hidden behind “Show delivered & cancelled”. Picking a status in the filter still shows just that status.",
+    ],
+  },
+  {
     version: "3.24", date: "2026-11-20", title: "Post to Tally: choose Chittam Enterprises or Cash",
     items: [
       "Post to Tally now lets you pick the company — Chittam Enterprises or Cash. The customer's Tally ledger, their open bills and the cash / bank ledgers all switch to that company.",
