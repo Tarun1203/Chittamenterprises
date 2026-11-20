@@ -6,6 +6,7 @@
 //   browser    → downloaded, and the WhatsApp chat opened
 import type { Receipt, Settings } from "./data";
 import { msgDate, waNumber } from "./messages";
+import { amountOf, receiptKeys, receiptTotal } from "./companies";
 import { desktopRequest, inDesktopApp } from "./desktop";
 
 // the PDF's built-in font has no ₹ sign
@@ -70,7 +71,8 @@ export const amountInWords = (n: number) => {
 
 export const receiptNo = (r: Receipt) => r.ref || "R-" + r.date.replace(/-/g, "").slice(2) + "-" + r.id.replace(/[^A-Za-z0-9]/g, "").slice(-4).toUpperCase();
 
-export async function receiptPdf(s: Settings, r: Receipt, mobile?: string, balances?: { business?: [number, number]; cash?: [number, number] }) {
+// labels: company key -> name (for companies beyond Chittam Enterprises and Cash)
+export async function receiptPdf(s: Settings, r: Receipt, mobile?: string, balances?: Record<string, [number, number] | undefined>, labels: Record<string, string> = {}) {
   const { jsPDF, autoTable } = await lib();
   const doc = new jsPDF({ unit: "mm", format: "a5" }) as Doc;
   const w = doc.internal.pageSize.getWidth();
@@ -79,14 +81,13 @@ export async function receiptPdf(s: Settings, r: Receipt, mobile?: string, balan
   doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(17); doc.text(plain(r.customerName), 14, y + 6);
   if (mobile) { doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(90); doc.text(mobile, 14, y + 11); doc.setTextColor(17); }
   y += mobile ? 16 : 12;
-  const total = (Number(r.business) || 0) + (Number(r.cash) || 0);
+  const total = receiptTotal(r);
   const biz = plain(s.businessName || "Chittam Enterprises");
   const rows: (string | { content: string; styles: Record<string, unknown> })[][] = [];
   const line = (label: string, amt: number, bal?: [number, number]) =>
     rows.push([label, rs(amt), bal ? rs(bal[0]) : "", bal ? rs(bal[1]) : ""]);
-  if (Number(r.business)) line(biz, Number(r.business), balances?.business);
-  if (Number(r.cash)) line("Cash", Number(r.cash), balances?.cash);
-  const showBal = !!(balances?.business || balances?.cash);
+  for (const k of receiptKeys(r)) line(k === "business" ? biz : k === "cash" ? "Cash" : plain(labels[k] || k), amountOf(r, k), balances?.[k]);
+  const showBal = Object.values(balances || {}).some(Boolean);
   autoTable(doc, {
     startY: y, theme: "plain", margin: { left: 14, right: 14 },
     head: [showBal ? ["Account", "Received", "Previous bal.", "Balance now"] : ["Account", "Received"]],

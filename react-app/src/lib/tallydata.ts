@@ -39,18 +39,25 @@ function useLoaded<T>(key: "stock" | "bills", coll: "tallyStock" | "tallyBills")
 export const useTallyStock = () => useLoaded<StockSet>("stock", "tallyStock");
 export const useTallyBills = () => useLoaded<BillSet>("bills", "tallyBills");
 
-// stock of one product: both companies added up (goods bought in one book are
-// often sold in the other, so either alone can be wrong or negative)
+// stock of one product: every company added up (goods bought in one book are
+// often sold in another, so one alone can be wrong or negative)
 export function stockOf(sets: Record<string, StockSet> | null, name: string) {
   if (!sets) return null;
   const k = normalizeName(name);
-  const b = sets.business?.items?.[k], c = sets.cash?.items?.[k];
-  if (!b && !c) return null;
-  return { total: Math.round(((b?.q || 0) + (c?.q || 0)) * 100) / 100, business: b?.q, cash: c?.q, unit: b?.u || c?.u || "" };
+  const per: Record<string, number> = {};
+  let unit = "", found = false;
+  for (const [co, set] of Object.entries(sets)) {
+    const it = set?.items?.[k];
+    if (!it) continue;
+    found = true; per[co] = it.q; unit = unit || it.u || "";
+  }
+  if (!found) return null;
+  const total = Math.round(Object.values(per).reduce((t, q) => t + q, 0) * 100) / 100;
+  return { total, business: per.business, cash: per.cash, per, unit };
 }
 
 // a customer's open invoices in one company, oldest first
-export function billsOf(sets: Record<string, BillSet> | null, company: "business" | "cash", customerName: string) {
+export function billsOf(sets: Record<string, BillSet> | null, company: string, customerName: string) {
   const k = normalizeName(customerName);
   return (sets?.[company]?.bills || []).filter((b) => normalizeName(b.p) === k && b.a > 0).sort((x, y) => (x.d || "").localeCompare(y.d || ""));
 }

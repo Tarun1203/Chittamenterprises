@@ -63,6 +63,11 @@ export const demoReceipts: Receipt[] = [
 export const demoBalances: Record<string, BalanceSet> = {
   business: { company: "business", label: "Chittam Enterprises - 2026", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 48250, "kashi sln": 12900, "deepak": 0 }, names: { "ab infinite": "AB Infinite", "kashi sln": "Kashi SLN", "deepak": "Deepak" } },
   cash: { company: "cash", label: "Cash", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 6400, "kashi sln": 1500 } },
+  // a third company added in the Windows app (Tally Sync → Companies)
+  co1demo: { company: "co1demo", label: "Vamana Enterprises", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "kashi sln": 7000 }, names: { "kashi sln": "Kashi SLN" } },
+  status: { checkedAt: new Date(Date.now() - 600e3).toISOString(), ok: true, accounts: [
+    { key: "business", label: "Chittam Enterprises", company: "Chittam Enterprises - 2026" }, { key: "cash", label: "Cash Bill", company: "Cash" },
+    { key: "co1demo", label: "Vamana Enterprises", company: "Vamana Enterprises - 2025" }] } as unknown as BalanceSet,
 };
 
 const ts = (minsAgo: number) => ({ toDate: () => new Date(Date.now() - minsAgo * 60000) }) as unknown as ActivityEntry["at"];
@@ -85,6 +90,8 @@ export const demoActivity: ActivityEntry[] = [
 // Tally transactions: matches demoReceipts r1 (AB Infinite advance) and r2 (Badrinath), plus
 // one Tally-only receipt, a name that differs, and a duplicate sale
 export const demoTallyVouchers: Record<string, TallyVoucherSet> = {
+  co1demo: { company: "co1demo", label: "Vamana Enterprises", tallyCompany: "Vamana Enterprises - 2025", from: iso(-90), to: iso(0), syncedAt: new Date(Date.now() - 1800e3).toISOString(), count: 1, vouchers: [
+    { d: iso(-10), t: "Sales", n: "VE/12", p: "Kashi SLN", a: 7000, dr: true, id: "vv1" }] },
   business: { company: "business", label: "Chittam Enterprises", tallyCompany: "Chittam Enterprises - 2026", from: iso(-90), to: iso(0), syncedAt: new Date(Date.now() - 1800e3).toISOString(), count: 6, vouchers: [
     { d: iso(0), t: "Receipt", n: "45", p: "AB Infinite", a: 2000, dr: false, nar: "Advance against order", via: "Axis Bank", id: "v1" },
     { d: iso(-1), t: "Receipt", n: "44", p: "Badrinath Allundi Raichur", a: 15000, dr: false, nar: "UPI", via: "Axis Bank", id: "v2" },
@@ -122,5 +129,8 @@ export const demoTallyBills = {
   ] },
   cash: { company: "cash", label: "Cash Bill", syncedAt: synced, asOn: iso(0), bills: [
     { p: "Kashi SLN", n: "C/88", d: iso(-18), due: iso(-18), a: 1500, od: 18 },
+  ] },
+  co1demo: { company: "co1demo", label: "Vamana Enterprises", syncedAt: synced, asOn: iso(0), bills: [
+    { p: "Kashi SLN", n: "VE/12", d: iso(-10), due: iso(5), a: 7000, od: 0 },
   ] },
 };

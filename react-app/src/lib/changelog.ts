@@ -4,6 +4,15 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.26", date: "2026-11-20", title: "More Tally companies, and a “sync from” date per company", windows: "3.3",
+    items: [
+      "Windows app → Tally Sync → Companies…: add more Tally companies — give each a name (how the app shows it) and pick its Tally company. Each is synced like Chittam Enterprises and Cash: balances, open bills, transactions and stock.",
+      "Every company can have its own “Sync from” date for transactions (blank = from 1 April).",
+      "The added companies appear everywhere: customer balances, Payment Updated (its own previous balance and amount received), Payments Received, Balance Confirmation, Payment Reminder, Ledger Statement and PDF, Tally Match (filter, balances, Record) and Post to Tally.",
+      "Messages read exactly as before when only Chittam Enterprises and Cash are used; an added company's lines appear only when it has a balance or amount.",
+    ],
+  },
+  {
     version: "3.25", date: "2026-11-20", title: "Orders: open, delivered-with-pending and delivered in separate sections",
     items: [
       "Orders now shows open orders first.",

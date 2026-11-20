@@ -49,44 +49,56 @@ export function freightLine(s: Settings, terms?: string, amount?: unknown) {
 }
 
 /* ---------------- Payment Updated ---------------- */
-export interface PaymentUpdatedIn { name: string; mode: string; date: string; eprev: number; eamt: number; cprev: number; camt: number; receivedBy?: string; txnRef?: string }
+// extra: companies beyond Chittam Enterprises and Cash (only those with a balance or amount are shown)
+export interface ExtraLedger { label: string; prev: number; amt: number }
+export interface PaymentUpdatedIn { name: string; mode: string; date: string; eprev: number; eamt: number; cprev: number; camt: number; receivedBy?: string; txnRef?: string; extra?: ExtraLedger[] }
 // cash: who received it; other modes: the transaction / cheque reference
 export const payRefLabel = (mode: string) => (/cheque/i.test(mode) ? "Cheque no." : /upi|gpay|phone\s*pe|paytm/i.test(mode) ? "UTR / Transaction ID" : "Transaction ID / UTR");
 export const isCashMode = (mode: string) => /cash/i.test(mode || "");
 export function paymentUpdated(s: Settings, i: PaymentUpdatedIn) {
   const name = s.businessName;
   const efinal = i.eprev - i.eamt, cfinal = i.cprev - i.camt;
+  const extra = (i.extra || []).filter((x) => x.amt > 0 || x.prev);
+  const xamt = extra.reduce((t, x) => t + x.amt, 0), xfinal = extra.reduce((t, x) => t + x.prev - x.amt, 0);
   let creditLine: string;
-  if (i.eamt > 0 && i.camt > 0) creditLine = "split between your *" + name + "* account (" + inr(i.eamt) + ") and *Cash* account (" + inr(i.camt) + ")";
+  const paid = [...(i.eamt > 0 ? [[name, i.eamt] as const] : []), ...(i.camt > 0 ? [["Cash", i.camt] as const] : []), ...extra.filter((x) => x.amt > 0).map((x) => [x.label, x.amt] as const)];
+  if (paid.length > 2 || (paid.length === 2 && xamt > 0))
+    creditLine = "split between your " + paid.map(([l, a]) => "*" + l + "* account (" + inr(a) + ")").join(", ").replace(/, ([^,]*)$/, " and $1");
+  else if (i.eamt > 0 && i.camt > 0) creditLine = "split between your *" + name + "* account (" + inr(i.eamt) + ") and *Cash* account (" + inr(i.camt) + ")";
   else if (i.camt > 0) creditLine = "credited to your *Cash* account";
+  else if (paid.length === 1 && xamt > 0) creditLine = "credited to your *" + paid[0][0] + "* account";
   else creditLine = "credited to your *" + name + "* account";
   const ledger = (label: string, prev: number, amt: number, fin: number) => amt > 0
     ? "📊 *" + label + " Ledger*\nPrevious Balance: " + inr(prev) + "\nAmount Received: " + inr(amt) + "\n*Final Balance: " + inr(fin) + "*\n\n"
     : "📊 *" + label + " Ledger*\n*Balance: " + inr(fin) + "*\n\n";
   return "✅ *Payment Received – " + name + "*\n\n" +
     "Dear " + i.name + ",\n\n" +
-    "We have received your payment of " + inr(i.eamt + i.camt) + " via " + (i.mode || "—") +
+    "We have received your payment of " + inr(i.eamt + i.camt + xamt) + " via " + (i.mode || "—") +
     (isCashMode(i.mode) ? (i.receivedBy?.trim() ? " (received by " + i.receivedBy.trim() + ")" : "") : (i.txnRef?.trim() ? " (" + (/cheque/i.test(i.mode) ? "Cheque No. " : "Ref: ") + i.txnRef.trim() + ")" : "")) +
     " on " + msgDate(i.date) + ", " + creditLine + ". Thank you.\n\n" +
     ledger(name, i.eprev, i.eamt, efinal) + ledger("Cash", i.cprev, i.camt, cfinal) +
-    "*Total Outstanding: " + inr(efinal + cfinal) + "*\n\n" +
+    extra.map((x) => ledger(x.label, x.prev, x.amt, x.prev - x.amt)).join("") +
+    "*Total Outstanding: " + inr(efinal + cfinal + xfinal) + "*\n\n" +
     "Regards,\n" + name + (s.address ? "\n" + s.address : "");
 }
 
 /* ---------------- Balance Confirmation ---------------- */
-export function balanceConfirmation(s: Settings, i: { name: string; month: string; date: string; eb: number; cb: number }) {
+export function balanceConfirmation(s: Settings, i: { name: string; month: string; date: string; eb: number; cb: number; others?: { label: string; bal: number }[] }) {
+  const others = (i.others || []).filter((o) => o.bal);
   return "📋 *Balance Confirmation – " + s.businessName + "*\n\n" +
     "Dear " + i.name + ",\n\n" +
     "As per our records, your month closing balance for *" + msgMonth(i.month) + "* (as on " + msgDate(i.date) + ") is:\n\n" +
     s.businessName + " A/C: " + inr(i.eb) + "\n" +
     "Cash A/C: " + inr(i.cb) + "\n" +
-    "*Total Outstanding: " + inr(i.eb + i.cb) + "*\n\n" +
+    others.map((o) => o.label + " A/C: " + inr(o.bal) + "\n").join("") +
+    "*Total Outstanding: " + inr(i.eb + i.cb + others.reduce((t, o) => t + o.bal, 0)) + "*\n\n" +
     "Kindly confirm if this matches your records. Please let us know of any discrepancy.\n\n" +
     "Regards,\n" + s.businessName;
 }
 
 /* ---------------- Payment Reminder ---------------- */
-export interface Invoice { no: string; billDate: string; due: string; amt: number; account: "business" | "cash" }
+// account: "business", "cash", or another company's key (label = its name)
+export interface Invoice { no: string; billDate: string; due: string; amt: number; account: string; label?: string }
 export function pendingDaysLabel(days: number) {
   days = num(days);
   let label = days + " Day" + (days === 1 ? "" : "s");
@@ -109,13 +121,16 @@ function worstOverdueDays(invoices: Invoice[]) {
 }
 const onlyDefaultOrAll = <T extends { isDefault?: boolean }>(list: T[]) => { const d = list.filter((x) => x.isDefault); return d.length ? d : list; };
 
-export function paymentReminder(s: Settings, i: { date: string; dueDate: string; eb: number; ed: number; cb: number; cd: number; invoices: Invoice[] }) {
+export function paymentReminder(s: Settings, i: { date: string; dueDate: string; eb: number; ed: number; cb: number; cd: number; invoices: Invoice[]; others?: { key: string; label: string; bal: number; days: number }[] }) {
   const invoices = i.invoices.filter((v) => v.no || v.due || v.amt || v.billDate);
+  const others = (i.others || []).filter((o) => o.bal);
   let invoiceBlock = "";
   if (invoices.length) {
+    const extraKeys = [...new Set(invoices.map((v) => v.account).filter((k) => k !== "business" && k !== "cash"))];
     const groups = [
-      { label: "🏢 *" + s.businessName + "*", items: invoices.filter((v) => v.account !== "cash") },
+      { label: "🏢 *" + s.businessName + "*", items: invoices.filter((v) => v.account === "business" || !v.account) },
       { label: "💵 *Cash*", items: invoices.filter((v) => v.account === "cash") },
+      ...extraKeys.map((k) => ({ label: "🏬 *" + (invoices.find((v) => v.account === k)?.label || others.find((o) => o.key === k)?.label || k) + "*", items: invoices.filter((v) => v.account === k) })),
     ];
     invoiceBlock = "🧾 *Invoice-wise Due Dates*\n";
     groups.forEach((g) => {
@@ -154,7 +169,8 @@ export function paymentReminder(s: Settings, i: { date: string; dueDate: string;
     "💵 *Cash*\n" +
     "💰 *Outstanding:* *" + inr(i.cb) + "*\n" +
     "📅 *Pending:* *" + pendingDaysLabel(i.cd) + "*\n\n" +
-    "🔹 *Total Outstanding:* " + inr(i.eb + i.cb) + "\n\n" +
+    others.map((o) => "🏬 *" + o.label + "*\n💰 *Outstanding:* *" + inr(o.bal) + "*\n📅 *Pending:* *" + pendingDaysLabel(o.days) + "*\n\n").join("") +
+    "🔹 *Total Outstanding:* " + inr(i.eb + i.cb + others.reduce((t, o) => t + o.bal, 0)) + "\n\n" +
     invoiceBlock + urgencyBlock +
     clearLine + (worst >= 30 ? "\n\n" : " We are currently placing orders for the upcoming season, and your timely payment will help us ensure uninterrupted supply and better service.\n\n");
   if (s.upiList?.length) {

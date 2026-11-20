@@ -2,8 +2,10 @@
 // and possible duplicate transactions on either side. Pure functions, so the
 // rules are easy to read and check.
 import { normalizeName, type Receipt, type TallyVoucher, type TallyVoucherSet } from "./data";
+import { amountOf, receiptKeys } from "./companies";
 
-export type Account = "business" | "cash";
+// a company key: "business", "cash", or one added in the Windows app
+export type Account = string;
 export const DAY_WINDOW = 3;          // a payment and its Tally entry may be a few days apart
 const SAME_AMOUNT = (a: number, b: number) => Math.abs(a - b) < 1;
 const days = (a: string, b: string) => Math.abs(Math.round((new Date(a + "T00:00:00").getTime() - new Date(b + "T00:00:00").getTime()) / 86400000));
@@ -24,15 +26,16 @@ export function appPayments(receipts: Receipt[], from: string, to: string): AppP
   const out: AppPayment[] = [];
   receipts.filter((r) => !r.cancelled && r.date >= from && r.date <= to).forEach((r) => {
     const base = { receiptId: r.id, date: r.date, name: r.customerName, mode: r.mode, source: r.source, ref: r.ref, tallyNo: r.tallyNo, tallyId: r.tallyId };
-    if (Number(r.business) > 0) out.push({ ...base, key: r.id + ":b", account: "business", amount: Number(r.business) });
-    if (Number(r.cash) > 0) out.push({ ...base, key: r.id + ":c", account: "cash", amount: Number(r.cash) });
+    for (const k of receiptKeys(r))
+      out.push({ ...base, key: r.id + ":" + (k === "business" ? "b" : k === "cash" ? "c" : k), account: k, amount: amountOf(r, k) });
   });
   return out;
 }
 
 export function tallyEntries(sets: Record<string, TallyVoucherSet>, from: string, to: string, only?: (v: TallyVoucher) => boolean): TallyEntry[] {
   const out: TallyEntry[] = [];
-  (["business", "cash"] as Account[]).forEach((acc) => {
+  // business and cash first, then any other company
+  Object.keys(sets).filter((k) => k !== "status").sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)).forEach((acc) => {
     (sets[acc]?.vouchers || []).forEach((v, i) => {
       if (v.d < from || v.d > to || (only && !only(v))) return;
       out.push({ ...v, key: acc + ":" + (v.id || i), account: acc });
@@ -40,6 +43,8 @@ export function tallyEntries(sets: Record<string, TallyVoucherSet>, from: string
   });
   return out;
 }
+
+const rank = (k: string) => (k === "business" ? 0 : k === "cash" ? 1 : 2);
 
 export interface Pair { app: AppPayment; tally: TallyEntry; dayGap: number; byVoucher: boolean; differs: string[] }
 export interface MatchResult {
@@ -147,7 +152,7 @@ export function tallyDuplicates(entries: TallyEntry[]): DupGroup<TallyEntry>[] {
 
 export function appDuplicates(receipts: Receipt[], from: string, to: string): DupGroup<Receipt>[] {
   const live = receipts.filter((r) => !r.cancelled && r.date >= from && r.date <= to);
-  return clusters(live, (r) => [r.customerId || normalizeName(r.customerName), (Number(r.business) || 0).toFixed(2), (Number(r.cash) || 0).toFixed(2)].join("|"), (r) => r.date,
+  return clusters(live, (r) => [r.customerId || normalizeName(r.customerName), ...receiptKeys(r).map((k) => k + "=" + amountOf(r, k).toFixed(2))].join("|"), (r) => r.date,
     "Same customer and amount within " + DAY_WINDOW + " days");
 }
 

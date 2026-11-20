@@ -47,7 +47,7 @@ export const voucherTitle = (v: VoucherDetail) => {
 
 let req = 0;
 // the full voucher from Tally (Windows app on the Tally PC); null elsewhere
-export async function fetchVoucher(account: "business" | "cash", id: string, date: string): Promise<VoucherDetail | null> {
+export async function fetchVoucher(account: string, id: string, date: string): Promise<VoucherDetail | null> {
   if (!inDesktopApp() || !id) return null;
   const reqId = String(++req);
   const r = await desktopRequest<{ ok: boolean; error?: string; voucher?: VoucherDetail; reqId: string }>(
@@ -276,7 +276,7 @@ const drcrAmt = (n: number) => (Math.abs(n) < 0.005 ? "Nil" : amt(n) + (n > 0 ? 
 // company follow, with their age in days. If it runs past one page, each
 // company starts on its own page.
 export async function tallyLedgerPdf(s: Settings, customer: { name: string; mobile?: string }, from: string, to: string, parts: LedgerPart[],
-  opts: { bills?: Partial<Record<"business" | "cash", PendingBill[]>> } = {}) {
+  opts: { bills?: Partial<Record<string, PendingBill[]>> } = {}) {
   const { jsPDF, autoTable } = await lib();
   const draw = (split: boolean) => {
     const doc = new jsPDF({ unit: "mm", format: "a4" }) as Doc;
@@ -359,7 +359,7 @@ export async function tallyLedgerPdf(s: Settings, customer: { name: string; mobi
     });
     if (parts.length > 1) {
       yy += 2; doc.setDrawColor(67, 56, 202); doc.setLineWidth(0.3); doc.line(L + 4, yy, R - 4, yy); yy += 5;
-      text(doc, "Grand Total (both companies)", L + 4, yy, { bold: true, size: 11 });
+      text(doc, "Grand Total (" + (parts.length > 2 ? "all" : "both") + " companies)", L + 4, yy, { bold: true, size: 11 });
       text(doc, drcrAmt(total), R - 4, yy, { bold: true, size: 12, align: "right" });
     }
     const pages = doc.getNumberOfPages();

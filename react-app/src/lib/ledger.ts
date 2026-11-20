@@ -6,7 +6,9 @@ import { normalizeName, type BalanceSet, type Settings, type TallyVoucher, type 
 import { msgDate } from "./messages";
 import { inr } from "./format";
 
-export type Account = "business" | "cash";
+import { companyIcon } from "./companies";
+
+export type Account = string;   // a company key
 export interface LedgerRow { d: string; label: string; dr: number; cr: number; bal: number; t?: string; n?: string; via?: string; nar?: string; id?: string; v?: TallyVoucher }
 export interface LedgerPart { account: Account; label: string; opening: number; rows: LedgerRow[]; closing: number; known: boolean }
 
@@ -16,8 +18,9 @@ export const drcr = (n: number) => (Math.abs(n) < 0.005 ? inr(0) : inr(Math.abs(
 
 // the dates the synced transactions cover (earliest "from" to latest "to")
 export function syncedRange(sets: Record<string, TallyVoucherSet> | null) {
-  const f = ["business", "cash"].map((a) => sets?.[a]?.from).filter(Boolean).sort() as string[];
-  const t = ["business", "cash"].map((a) => sets?.[a]?.to).filter(Boolean).sort() as string[];
+  const keys = Object.keys(sets || {}).filter((k) => k !== "status");
+  const f = keys.map((a) => sets?.[a]?.from).filter(Boolean).sort() as string[];
+  const t = keys.map((a) => sets?.[a]?.to).filter(Boolean).sort() as string[];
   return { from: f[f.length - 1] || "", to: t[t.length - 1] || "" };   // the range both companies cover
 }
 
@@ -56,7 +59,7 @@ export function ledgerMessage(s: Settings, customerName: string, from: string, t
     "Dear " + customerName + ",\n\n" +
     "Here is your account statement from *" + msgDate(from) + "* to *" + msgDate(to) + "*.\n";
   parts.forEach((p) => {
-    msg += "\n" + (p.account === "business" ? "🏢" : "💵") + " *" + p.label + "*\n" +
+    msg += "\n" + companyIcon(p.account) + " *" + p.label + "*\n" +
       "Opening Balance: " + drcr(p.opening) + "\n";
     if (!p.rows.length) msg += "No transactions in this period.\n";
     p.rows.forEach((r) => {
@@ -71,7 +74,7 @@ export function ledgerMessage(s: Settings, customerName: string, from: string, t
     }
   });
   if (parts.length > 1) msg += "\n" + parts.map((p) => p.label + ": " + drcr(p.closing)).join("\n");
-  msg += "\n🔹 *" + (parts.length > 1 ? "Grand Total (both companies)" : "Total Outstanding") + ": " + drcr(total) + "*\n\n" +
+  msg += "\n🔹 *" + (parts.length > 2 ? "Grand Total (all companies)" : parts.length > 1 ? "Grand Total (both companies)" : "Total Outstanding") + ": " + drcr(total) + "*\n\n" +
     "Kindly verify and let us know if anything differs from your records.\n\n" +
     "Regards,\n" + s.businessName + (s.address ? "\n" + s.address : "");
   return msg;

@@ -16,6 +16,7 @@ import {
 import { inr, todayISO } from "@/lib/format";
 import { billsOf, syncedWhen, useTallyBills } from "@/lib/tallydata";
 import { TallyFreshness } from "@/components/TallyFreshness";
+import { useCompanies } from "@/lib/companies";
 
 
 const NEED_CUSTOMER = "!Please select a customer first.";
@@ -51,29 +52,37 @@ export function PaymentReminder() {
   const { settings } = useStore();
   const tally = useTallyFill();
   const tallyBills = useTallyBills();
+  const companies = useCompanies();
+  const extraCos = companies.filter((c) => c.key !== "business" && c.key !== "cash");
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [note, setNote] = useState("");
   const [billNote, setBillNote] = useState("");
   const [f, set, setF] = useForm({ date: todayISO(), dueDate: "", eb: "", ed: "", cb: "", cd: "" });
+  // companies added in the Windows app: outstanding and pending days for each
+  const [xo, setXo] = useState<Record<string, { bal: string; days: string }>>({});
+  const xget = (k: string) => xo[k] || { bal: "", days: "" };
+  const xset = (k: string, field: "bal" | "days") => (v: string) => setXo((x) => ({ ...x, [k]: { ...xget(k), [field]: v } }));
   const inv = useRows<Invoice>([]);
   function pick(c: Customer | null) {
     setCustomer(c);
     const t = tally(c);
     setNote(t.note);
     if (t.business !== null || t.cash !== null) setF((x) => ({ ...x, eb: t.business === null ? "" : String(t.business), cb: t.cash === null ? "" : String(t.cash) }));
-    // open invoices from Tally: invoice-wise due dates, and days pending since the oldest
+    const nextXo: Record<string, { bal: string; days: string }> = Object.fromEntries(Object.entries(t.others).map(([k, v]) => [k, { bal: v === null ? "" : String(v), days: "" }]));
+    setXo(nextXo);
+    // open invoices from Tally (every company): invoice-wise due dates, and days pending since the oldest
     setBillNote("");
     if (!c || !tallyBills) return;
-    const biz = billsOf(tallyBills, "business", c.name), cash = billsOf(tallyBills, "cash", c.name);
-    if (!biz.length && !cash.length) return;
     const age = (iso?: string) => (iso ? Math.max(0, Math.round((new Date(todayISO() + "T00:00:00").getTime() - new Date(iso + "T00:00:00").getTime()) / 86400000)) : 0);
-    inv.setRows([
-      ...biz.map((b) => ({ no: b.n, billDate: b.d, due: b.due || b.d, amt: b.a, account: "business" as const })),
-      ...cash.map((b) => ({ no: b.n, billDate: b.d, due: b.due || b.d, amt: b.a, account: "cash" as const })),
-    ]);
-    setF((x) => ({ ...x, ...(biz.length ? { ed: String(age(biz[0].d)) } : {}), ...(cash.length ? { cd: String(age(cash[0].d)) } : {}) }));
-    const when = syncedWhen(tallyBills.business?.syncedAt || tallyBills.cash?.syncedAt);
-    setBillNote("🧾 " + (biz.length + cash.length) + " open invoice" + (biz.length + cash.length === 1 ? "" : "s") + " and pending days filled in from Tally (synced " + when + "). Check before sending.");
+    const per = companies.map((co) => ({ co, bills: billsOf(tallyBills, co.key, c.name) }));
+    const count = per.reduce((t, x) => t + x.bills.length, 0);
+    if (!count) return;
+    inv.setRows(per.flatMap(({ co, bills }) => bills.map((b) => ({ no: b.n, billDate: b.d, due: b.due || b.d, amt: b.a, account: co.key, label: co.label }))));
+    const oldest = (k: string) => per.find((x) => x.co.key === k)?.bills[0]?.d;
+    setF((x) => ({ ...x, ...(oldest("business") ? { ed: String(age(oldest("business"))) } : {}), ...(oldest("cash") ? { cd: String(age(oldest("cash"))) } : {}) }));
+    setXo(Object.fromEntries(Object.entries(nextXo).map(([k, v]) => [k, { ...v, days: oldest(k) ? String(age(oldest(k))) : v.days }])));
+    const when = syncedWhen(companies.map((co) => tallyBills[co.key]?.syncedAt).find(Boolean));
+    setBillNote("🧾 " + count + " open invoice" + (count === 1 ? "" : "s") + " and pending days filled in from Tally (synced " + when + "). Check before sending.");
   }
   return (
     <div>
@@ -81,7 +90,7 @@ export function PaymentReminder() {
       <TwoColumn
         form={<>
           <Card className="space-y-4">
-            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} />{customer && <TallyFreshness className="mt-2" customer={customer.name} />}{billNote && <BalanceNote note={"📒" + billNote.slice(2)} />}{customer && <a href={"#/ledger?c=" + customer.id} className="mt-2 inline-block text-xs font-semibold text-brand-600 hover:underline">Share the full ledger (both companies) →</a>}</Field>
+            <Field label="Customer"><CustomerPicker value={customer} onPick={pick} /><BalanceNote note={note} />{customer && <TallyFreshness className="mt-2" customer={customer.name} />}{billNote && <BalanceNote note={"📒" + billNote.slice(2)} />}{customer && <a href={"#/ledger?c=" + customer.id} className="mt-2 inline-block text-xs font-semibold text-brand-600 hover:underline">Share the full ledger (all companies) →</a>}</Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="As on"><Text type="date" value={f.date} onChange={(e) => set("date")(e.target.value)} /></Field>
               <Field label="Pay by (optional)"><Text type="date" value={f.dueDate} onChange={(e) => set("dueDate")(e.target.value)} /></Field>
@@ -91,8 +100,12 @@ export function PaymentReminder() {
               <Field label="Pending days"><Money value={f.ed} onChange={set("ed")} /></Field>
               <Field label="Cash outstanding"><Money value={f.cb} onChange={set("cb")} /></Field>
               <Field label="Pending days"><Money value={f.cd} onChange={set("cd")} /></Field>
+              {extraCos.map((co) => [
+                <Field key={co.key + "b"} label={co.label + " outstanding"}><Money value={xget(co.key).bal} onChange={xset(co.key, "bal")} /></Field>,
+                <Field key={co.key + "d"} label="Pending days"><Money value={xget(co.key).days} onChange={xset(co.key, "days")} /></Field>,
+              ])}
             </div>
-            <TotalLine strong label="Total outstanding" value={inr(n(f.eb) + n(f.cb))} />
+            <TotalLine strong label="Total outstanding" value={inr(n(f.eb) + n(f.cb) + extraCos.reduce((t, co) => t + n(xget(co.key).bal), 0))} />
           </Card>
           <Section title="Invoices (optional)" action={<Button size="sm" variant="secondary" onClick={() => inv.add({ no: "", billDate: "", due: "", amt: 0, account: "business" })}><IconPlus size={15} /> Invoice</Button>}>
             {inv.rows.length === 0 && <p className="text-sm text-neutral-400">Add invoices to list each one with its due date. 30+ days overdue makes the message urgent.</p>}
@@ -101,7 +114,7 @@ export function PaymentReminder() {
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
                   <Text placeholder="Invoice No." value={r.no} onChange={(e) => inv.update(i, { no: e.target.value })} />
                   <Money placeholder="Amount (₹)" value={r.amt ? String(r.amt) : ""} onChange={(v) => inv.update(i, { amt: n(v) })} />
-                  <Select value={r.account} onChange={(v) => inv.update(i, { account: v as Invoice["account"] })} options={[{ value: "business", label: settings.businessName }, { value: "cash", label: "Cash" }]} className="col-span-2 sm:col-span-1" />
+                  <Select value={r.account} onChange={(v) => inv.update(i, { account: v, label: companies.find((co) => co.key === v)?.label })} options={companies.map((co) => ({ value: co.key, label: co.label }))} className="col-span-2 sm:col-span-1" />
                   <div className="hidden sm:block"><RowRemove onClick={() => inv.remove(i)} /></div>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2">
@@ -117,8 +130,9 @@ export function PaymentReminder() {
           </Section>
         </>}
         message={
-          <MessagePanel type="payment-reminder" customer={customer} inputs={{ customer: customer?.name || "", ...f, invoices: inv.rows }}
-            build={() => customer ? paymentReminder(settings, { date: f.date, dueDate: f.dueDate, eb: n(f.eb), ed: n(f.ed), cb: n(f.cb), cd: n(f.cd), invoices: inv.rows }) : NEED_CUSTOMER} />
+          <MessagePanel type="payment-reminder" customer={customer} inputs={{ customer: customer?.name || "", ...f, invoices: inv.rows, ...(extraCos.length ? { extra: xo } : {}) }}
+            build={() => customer ? paymentReminder(settings, { date: f.date, dueDate: f.dueDate, eb: n(f.eb), ed: n(f.ed), cb: n(f.cb), cd: n(f.cd), invoices: inv.rows,
+              others: extraCos.map((co) => ({ key: co.key, label: co.label, bal: n(xget(co.key).bal), days: n(xget(co.key).days) })) }) : NEED_CUSTOMER} />
         }
       />
     </div>
@@ -129,14 +143,17 @@ export function PaymentReminder() {
 export function BalanceConfirmation() {
   const { settings } = useStore();
   const tally = useTallyFill();
+  const extraCos = useCompanies().filter((c) => c.key !== "business" && c.key !== "cash");
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [note, setNote] = useState("");
   const [f, set, setF] = useForm({ month: todayISO().slice(0, 7), date: todayISO(), eb: "", cb: "" });
+  const [xb, setXb] = useState<Record<string, string>>({});
   function pick(c: Customer | null) {
     setCustomer(c);
     const t = tally(c);
     setNote(t.note);
     if (t.business !== null || t.cash !== null) setF((x) => ({ ...x, eb: t.business === null ? "" : String(t.business), cb: t.cash === null ? "" : String(t.cash) }));
+    setXb(Object.fromEntries(Object.entries(t.others).map(([k, v]) => [k, v === null ? "" : String(v)])));
   }
   return (
     <div>
@@ -150,13 +167,15 @@ export function BalanceConfirmation() {
               <Field label="As on"><Text type="date" value={f.date} onChange={(e) => set("date")(e.target.value)} /></Field>
               <Field label={settings.businessName + " A/C"}><Money value={f.eb} onChange={set("eb")} /></Field>
               <Field label="Cash A/C"><Money value={f.cb} onChange={set("cb")} /></Field>
+              {extraCos.map((co) => <Field key={co.key} label={co.label + " A/C"}><Money value={xb[co.key] || ""} onChange={(v) => setXb((x) => ({ ...x, [co.key]: v }))} /></Field>)}
             </div>
-            <TotalLine strong label="Total outstanding" value={inr(n(f.eb) + n(f.cb))} />
+            <TotalLine strong label="Total outstanding" value={inr(n(f.eb) + n(f.cb) + extraCos.reduce((t, co) => t + n(xb[co.key]), 0))} />
           </Card>
         }
         message={
-          <MessagePanel type="balance-confirmation" customer={customer} inputs={{ customer: customer?.name || "", ...f }}
-            build={() => customer ? balanceConfirmation(settings, { name: customer.name, month: f.month, date: f.date, eb: n(f.eb), cb: n(f.cb) }) : NEED_CUSTOMER} />
+          <MessagePanel type="balance-confirmation" customer={customer} inputs={{ customer: customer?.name || "", ...f, ...(extraCos.length ? { extra: xb } : {}) }}
+            build={() => customer ? balanceConfirmation(settings, { name: customer.name, month: f.month, date: f.date, eb: n(f.eb), cb: n(f.cb),
+              others: extraCos.map((co) => ({ label: co.label, bal: n(xb[co.key]) })) }) : NEED_CUSTOMER} />
         }
       />
     </div>

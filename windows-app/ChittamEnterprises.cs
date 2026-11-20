@@ -70,8 +70,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyProduct("Chittam Enterprises")]
 [assembly: System.Reflection.AssemblyCompany("Chittam Enterprises")]
 // keep in step with Program.DesktopVersion (build.ps1 checks)
-[assembly: System.Reflection.AssemblyVersion("3.2.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("3.2")]
+[assembly: System.Reflection.AssemblyVersion("3.3.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.3")]
 
 namespace ChittamEnterprises
 {
@@ -81,7 +81,7 @@ namespace ChittamEnterprises
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
         // where new versions of this program are published (desktop/ folder of the site)
         public const string UpdateUrl = "https://tarun1203.github.io/Chittamenterprises/desktop/version.json";
-        public const string DesktopVersion = "3.2";
+        public const string DesktopVersion = "3.3";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -235,6 +235,8 @@ namespace ChittamEnterprises
     }
 
     // ------------------------------------------------------------------ settings
+    class ExtraCompany { public string Key = ""; public string Label = ""; public string Company = ""; public string SyncFrom = ""; }
+
     class Settings
     {
         public string Email = "";
@@ -243,6 +245,36 @@ namespace ChittamEnterprises
         public string BusinessLabel = "Chittam Enterprises";
         public string CashCompany = "Cash";
         public string CashLabel = "Cash Bill";
+        // more Tally companies, handled like the two above: Key is permanent (payments refer to it),
+        // Label is the name the app shows, Company is the company's name in Tally
+        public List<ExtraCompany> ExtraCompanies = new List<ExtraCompany>();
+        // transactions are sent from this date (yyyy-MM-dd); blank = from 1 April, or the last N days
+        public string BusinessSyncFrom = "";
+        public string CashSyncFrom = "";
+        public string SyncFromFor(string key)
+        {
+            if (key == "business") return BusinessSyncFrom ?? "";
+            if (key == "cash") return CashSyncFrom ?? "";
+            var x = (ExtraCompanies ?? new List<ExtraCompany>()).FirstOrDefault(e => e.Key == key);
+            return x == null ? "" : x.SyncFrom ?? "";
+        }
+
+        // every company the app knows: [key, Tally company, name shown in the app]
+        public List<string[]> AllCompanies()
+        {
+            var list = new List<string[]> { new[] { "business", BusinessCompany, BusinessLabel }, new[] { "cash", CashCompany, CashLabel } };
+            foreach (var x in ExtraCompanies ?? new List<ExtraCompany>())
+                if (!string.IsNullOrEmpty(x.Key) && !string.IsNullOrEmpty(x.Company)) list.Add(new[] { x.Key, x.Company, string.IsNullOrEmpty(x.Label) ? x.Company : x.Label });
+            return list;
+        }
+        public string CompanyFor(string key) { var c = AllCompanies().FirstOrDefault(x => x[0] == key); return c == null ? "" : c[1]; }
+        public string LabelFor(string key) { var c = AllCompanies().FirstOrDefault(x => x[0] == key); return c == null ? key : c[2]; }
+        public void SetCompany(string key, string company)
+        {
+            if (key == "business") BusinessCompany = company;
+            else if (key == "cash") CashCompany = company;
+            else { var x = (ExtraCompanies ?? new List<ExtraCompany>()).FirstOrDefault(e => e.Key == key); if (x != null) x.Company = company; }
+        }
         public int IntervalMinutes = 30;
         public bool SyncVouchers = true;
         public int VoucherDays = 90;
@@ -1038,10 +1070,12 @@ namespace ChittamEnterprises
             Log(s, token, "tally-company-switched", label, new Dictionary<string, object> { { "name", Str(label) }, { "from", Str(from) }, { "to", Str(to) } });
         }
 
-        public static void SaveStatus(Settings s, string token, bool ok, string error, List<string> companies)
+        public static void SaveStatus(Settings s, string token, bool ok, string error, List<string> companies, List<string[]> accounts)
         {
             string now = Now();
+            var acc = (accounts ?? new List<string[]>()).Select(a => (object)Map(new Dictionary<string, object> { { "key", Str(a[0]) }, { "company", Str(a[1]) }, { "label", Str(a[2]) } })).ToArray();
             var fields = new Dictionary<string, object> {
+                { "accounts", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", acc } } } } },
                 { "checkedAt", Str(now) }, { "ok", Bool(ok) }, { "error", Str(error ?? "") }, { "pcVersion", Str(Program.DesktopVersion) },
                 { "companies", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", companies.Select(c => (object)Str(c)).ToArray() } } } } },
                 { "at", Ts(now) }, { "by", Str(s.Email) }
@@ -1192,12 +1226,13 @@ namespace ChittamEnterprises
         {
             List<string> open;
             try { open = Tally.Companies(Settings.TallyUrl); } catch { return; }
-            foreach (var key in new[] { "business", "cash" })
+            foreach (var co in Settings.AllCompanies())
             {
-                var current = key == "business" ? Settings.BusinessCompany : Settings.CashCompany;
+                var key = co[0];
+                var current = co[1];
                 var newer = NewerYearCompany(current, open);
                 if (newer == null) continue;
-                if (key == "business") Settings.BusinessCompany = newer; else Settings.CashCompany = newer;
+                Settings.SetCompany(key, newer);
                 foreach (var k in Settings.LastHash.Keys.Where(k => k == key || k.EndsWith("-" + key)).ToList()) Settings.LastHash.Remove(k);
                 Settings.Save();
                 var msg = "New financial year: syncing " + newer + " instead of " + current + ".";
@@ -1205,7 +1240,7 @@ namespace ChittamEnterprises
                 try
                 {
                     if (token == null) token = Firebase.SignIn(Settings);
-                    Firebase.LogCompanySwitch(Settings, token, key == "business" ? Settings.BusinessLabel : Settings.CashLabel, current, newer);
+                    Firebase.LogCompanySwitch(Settings, token, Settings.LabelFor(key), current, newer);
                 }
                 catch { }
                 var h = CompanySwitched; if (h != null) h(msg);
@@ -1220,10 +1255,7 @@ namespace ChittamEnterprises
             var failed = new List<string>();
             var allStock = new List<StockLine>();
             HashSet<string> appCustomers = null;   // the app's customer names, to pick them out of Sundry Creditors
-            var jobs = new[] {
-                new[] { "business", Settings.BusinessCompany, Settings.BusinessLabel },
-                new[] { "cash", Settings.CashCompany, Settings.CashLabel }
-            };
+            var jobs = Settings.AllCompanies();
             foreach (var j in jobs)
             {
                 string key = j[0], company = j[1], label = j[2];
@@ -1334,6 +1366,9 @@ namespace ChittamEnterprises
                 var fyStart = new DateTime(to.Month >= 4 ? to.Year : to.Year - 1, 4, 1);
                 var from = to.AddDays(-Math.Max(7, Math.Min(366, Settings.VoucherDays)));
                 if (fyStart < from) from = fyStart;
+                // this company's own "sync from" date, when one is set
+                DateTime own;
+                if (DateTime.TryParseExact(Settings.SyncFromFor(key), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out own) && own <= to) from = own;
                 List<Voucher> vouchers;
                 try { vouchers = Tally.Vouchers(Settings.TallyUrl, company, from, to, new HashSet<string>(bal.Keys)); }
                 catch (Exception ex) { Log("[" + company + "] transactions skipped: " + ex.Message); continue; }
@@ -1357,7 +1392,7 @@ namespace ChittamEnterprises
                 if (token == null) token = Firebase.SignIn(Settings);
                 var reached = new List<string>();
                 foreach (var j in jobs) if (!string.IsNullOrEmpty(j[1]) && !failed.Contains(j[1])) reached.Add(j[1]);
-                Firebase.SaveStatus(Settings, token, failed.Count == 0, failed.Count == 0 ? "" : "Tally not reached for: " + string.Join(", ", failed), reached);
+                Firebase.SaveStatus(Settings, token, failed.Count == 0, failed.Count == 0 ? "" : "Tally not reached for: " + string.Join(", ", failed), reached, Settings.AllCompanies());
             }
             catch (Exception ex) { Log("Status note not saved: " + ex.Message); }
 
@@ -1507,10 +1542,8 @@ namespace ChittamEnterprises
                 { "configured", s.Configured }, { "busy", Busy }, { "error", LastError },
                 { "nextSync", NextSync.ToString("h:mm tt") }, { "intervalMinutes", s.IntervalMinutes },
                 { "syncVouchers", s.SyncVouchers }, { "voucherDays", s.VoucherDays }, { "syncStock", s.SyncStock }, { "syncBills", s.SyncBills }, { "syncMasters", s.SyncMasters }, { "masters", LastText("masters") },
-                { "companies", new object[] {
-                    new Dictionary<string, object> { { "key", "business" }, { "company", s.BusinessCompany }, { "label", s.BusinessLabel }, { "balances", LastText("business") }, { "vouchers", LastText("v-business") }, { "stock", LastText("s-business") }, { "bills", LastText("b-business") } },
-                    new Dictionary<string, object> { { "key", "cash" }, { "company", s.CashCompany }, { "label", s.CashLabel }, { "balances", LastText("cash") }, { "vouchers", LastText("v-cash") }, { "stock", LastText("s-cash") }, { "bills", LastText("b-cash") } }
-                } },
+                { "companies", s.AllCompanies().Select(c => (object)new Dictionary<string, object> {
+                    { "key", c[0] }, { "company", c[1] }, { "label", c[2] }, { "balances", LastText(c[0]) }, { "vouchers", LastText("v-" + c[0]) }, { "stock", LastText("s-" + c[0]) }, { "bills", LastText("b-" + c[0]) } }).ToArray() },
                 { "update", Updater.Status },
                 { "log", RecentLog().Skip(Math.Max(0, RecentLog().Count - 30)).ToArray() }
             };
@@ -1590,11 +1623,113 @@ namespace ChittamEnterprises
     }
 
     // ------------------------------------------------------------------ Tally Sync window
+    // more Tally companies: a name the app shows (its identity) and which Tally company it is
+    class ExtraCompaniesForm : Form
+    {
+        readonly Settings settings;
+        readonly DataGridView grid;
+
+        public ExtraCompaniesForm(Settings s, List<string> tallyNames)
+        {
+            settings = s;
+            Text = "Companies — Chittam Enterprises";
+            Font = Look.UI(9.5f);
+            BackColor = Color.White;
+            StartPosition = FormStartPosition.CenterParent;
+            FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false;
+            AutoScaleMode = AutoScaleMode.Dpi;
+            ClientSize = new Size(720, 440);
+            Controls.Add(new Label { Text = "Companies", Left = 20, Top = 16, AutoSize = true, Font = Look.UI(14f, FontStyle.Bold) });
+            Controls.Add(new Label { Text = "Add more Tally companies: each is synced like Chittam Enterprises and Cash (balances, bills, transactions, stock)\r\nand gets its own amount in payments. “Name” is how the app shows it. “Sync from” (dd-mm-yyyy): send transactions from that\r\ndate — blank means from 1 April. Earlier dates take Tally longer.",
+                Left = 20, Top = 50, Width = 680, Height = 54, ForeColor = Look.Soft });
+            grid = new DataGridView {
+                Left = 20, Top = 110, Width = 680, Height = 250, AllowUserToAddRows = true, AllowUserToDeleteRows = true, RowHeadersVisible = false,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, BackgroundColor = Color.White, BorderStyle = BorderStyle.FixedSingle,
+                SelectionMode = DataGridViewSelectionMode.CellSelect, EditMode = DataGridViewEditMode.EditOnEnter
+            };
+            grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Key", Visible = false });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Label", HeaderText = "Name (shown in the app)", FillWeight = 38 });
+            var co = new DataGridViewComboBoxColumn { Name = "Company", HeaderText = "Tally company", FillWeight = 42, FlatStyle = FlatStyle.Flat };
+            var options = new List<string>(tallyNames.Where(n => n != s.BusinessCompany && n != s.CashCompany));
+            foreach (var x in s.ExtraCompanies ?? new List<ExtraCompany>()) if (!options.Contains(x.Company)) options.Add(x.Company);
+            co.Items.AddRange(options.Cast<object>().ToArray());
+            if (!options.Contains(s.BusinessCompany)) options.Insert(0, s.BusinessCompany);
+            if (!options.Contains(s.CashCompany)) options.Insert(1, s.CashCompany);
+            co.Items.Clear();
+            co.Items.AddRange(options.Cast<object>().ToArray());
+            grid.Columns.Add(co);
+            grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "From", HeaderText = "Sync from", FillWeight = 20 });
+            Func<string, string> show = v => { DateTime d; return DateTime.TryParseExact(v ?? "", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out d) ? d.ToString("dd-MM-yyyy") : ""; };
+            // Chittam Enterprises and Cash first: their name and Tally company are set in the main window
+            foreach (var fixedRow in new[] { new[] { "business", s.BusinessLabel, s.BusinessCompany, s.BusinessSyncFrom }, new[] { "cash", s.CashLabel, s.CashCompany, s.CashSyncFrom } })
+            {
+                int i = grid.Rows.Add(fixedRow[0], fixedRow[1], fixedRow[2], show(fixedRow[3]));
+                grid.Rows[i].Cells["Label"].ReadOnly = true; grid.Rows[i].Cells["Company"].ReadOnly = true;
+                grid.Rows[i].Cells["Label"].Style.ForeColor = Color.Gray; grid.Rows[i].Cells["Company"].Style.ForeColor = Color.Gray;
+            }
+            foreach (var x in s.ExtraCompanies ?? new List<ExtraCompany>()) grid.Rows.Add(x.Key, x.Label, x.Company, show(x.SyncFrom));
+            // the two main companies can't be removed here
+            grid.UserDeletingRow += delegate (object o, DataGridViewRowCancelEventArgs e) { var k = Convert.ToString(e.Row.Cells["Key"].Value ?? ""); if (k == "business" || k == "cash") e.Cancel = true; };
+            grid.DataError += delegate (object o, DataGridViewDataErrorEventArgs e) { e.ThrowException = false; };
+            Controls.Add(grid);
+            Controls.Add(new Label { Text = "Not in the list? Open it in Tally and press “Load names from Tally” first. To remove an added company, select its row and press Delete (its figures and payments are kept).",
+                Left = 20, Top = 364, Width = 680, Height = 34, ForeColor = Look.Soft });
+            var ok = new Button { Text = "Save", Left = 500, Top = 400, Width = 96, Height = 32, DialogResult = DialogResult.None };
+            var cancel = new Button { Text = "Cancel", Left = 604, Top = 400, Width = 96, Height = 32, DialogResult = DialogResult.Cancel };
+            ok.Click += delegate { if (SaveRows()) { DialogResult = DialogResult.OK; Close(); } };
+            Controls.Add(ok); Controls.Add(cancel);
+            AcceptButton = ok; CancelButton = cancel;
+        }
+
+        bool SaveRows()
+        {
+            grid.EndEdit();
+            var list = new List<ExtraCompany>();
+            string bizFrom = "", cashFrom = "";
+            foreach (DataGridViewRow r in grid.Rows)
+            {
+                if (r.IsNewRow) continue;
+                string key = Convert.ToString(r.Cells["Key"].Value ?? ""), label = Convert.ToString(r.Cells["Label"].Value ?? "").Trim(), company = Convert.ToString(r.Cells["Company"].Value ?? "").Trim();
+                // "sync from": dd-mm-yyyy (or blank)
+                string fromText = Convert.ToString(r.Cells["From"].Value ?? "").Trim(), from = "";
+                if (fromText.Length > 0)
+                {
+                    DateTime d;
+                    if (!DateTime.TryParseExact(fromText, new[] { "dd-MM-yyyy", "d-M-yyyy", "dd/MM/yyyy", "d/M/yyyy", "dd.MM.yyyy", "yyyy-MM-dd" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out d) || d > DateTime.Today)
+                    { MessageBox.Show(this, "“" + fromText + "” isn't a date. Use dd-mm-yyyy, e.g. 01-04-2026.", "Companies"); return false; }
+                    from = d.ToString("yyyy-MM-dd");
+                }
+                if (key == "business") { bizFrom = from; continue; }
+                if (key == "cash") { cashFrom = from; continue; }
+                if (label.Length == 0 && company.Length == 0) continue;
+                if (label.Length == 0 || company.Length == 0) { MessageBox.Show(this, "Give every company both a name and its Tally company.", "More companies"); return false; }
+                if (company == settings.BusinessCompany || company == settings.CashCompany || list.Any(x => x.Company == company)) { MessageBox.Show(this, company + " is already in the list.", "More companies"); return false; }
+                if (label.Equals(settings.BusinessLabel, StringComparison.OrdinalIgnoreCase) || label.Equals("Cash", StringComparison.OrdinalIgnoreCase) || list.Any(x => x.Label.Equals(label, StringComparison.OrdinalIgnoreCase)))
+                { MessageBox.Show(this, "The name “" + label + "” is already used. Pick another.", "More companies"); return false; }
+                // a permanent key: payments and synced figures refer to it, so renaming never breaks them
+                if (key.Length == 0) key = "co" + Guid.NewGuid().ToString("N").Substring(0, 6);
+                list.Add(new ExtraCompany { Key = key, Label = label, Company = company, SyncFrom = from });
+            }
+            // a changed start date: send that company's transactions again
+            Action<string, string, string> changed = (k, before, after) => { if ((before ?? "") != after) settings.LastHash.Remove("v-" + k); };
+            changed("business", settings.BusinessSyncFrom, bizFrom);
+            changed("cash", settings.CashSyncFrom, cashFrom);
+            foreach (var x in list) changed(x.Key, settings.SyncFromFor(x.Key), x.SyncFrom);
+            settings.BusinessSyncFrom = bizFrom;
+            settings.CashSyncFrom = cashFrom;
+            settings.ExtraCompanies = list;
+            settings.Save();
+            return true;
+        }
+    }
+
     class SyncSettingsForm : Form
     {
         readonly SyncEngine sync;
         TextBox txtEmail, txtPassword, txtLog;
         ComboBox cboBusiness, cboCash;
+        LinkLabel lnkExtra;
+        static string ExtraText(Settings s) { int n = (s.ExtraCompanies ?? new List<ExtraCompany>()).Count; return n == 0 ? "Companies…" : "Companies (" + (n + 2) + ")…"; }
         NumericUpDown numInterval, numDays;
         CheckBox chkStartup, chkVouchers, chkStock, chkBills, chkMasters;
         Label lblBusiness, lblCash, lblNext, lblDot;
@@ -1642,9 +1777,21 @@ namespace ChittamEnterprises
             cCo.Controls.Add(Look.FieldLabel("Cash", 16, 84));
             cboCash = new ComboBox { Left = 110, Top = 80, Width = 290, DropDownStyle = ComboBoxStyle.DropDown, Text = s.CashCompany };
             cCo.Controls.Add(cboCash);
-            var lnkLoad = new LinkLabel { Text = "Load company names from Tally", Left = 110, Top = 116, AutoSize = true, LinkColor = Look.Brand, BackColor = Color.White };
+            var lnkLoad = new LinkLabel { Text = "Load names from Tally", Left = 110, Top = 116, AutoSize = true, LinkColor = Look.Brand, BackColor = Color.White };
             lnkLoad.LinkClicked += delegate { LoadCompanies(true); };
             cCo.Controls.Add(lnkLoad);
+            lnkExtra = new LinkLabel { Text = ExtraText(s), Left = 262, Top = 116, AutoSize = true, LinkColor = Look.Brand, BackColor = Color.White };
+            lnkExtra.LinkClicked += delegate {
+                var names = cboBusiness.Items.Cast<object>().Select(o => o.ToString()).ToList();
+                using (var f = new ExtraCompaniesForm(sync.Settings, names))
+                    if (f.ShowDialog(this) == DialogResult.OK)
+                    {
+                        lnkExtra.Text = ExtraText(sync.Settings);
+                        sync.Log("Companies: " + string.Join(", ", sync.Settings.AllCompanies().Select(c => c[2] + " = " + c[1])));
+                        sync.Start(true);
+                    }
+            };
+            cCo.Controls.Add(lnkExtra);
             Controls.Add(cCo);
 
             var cSch = Look.Card(L, 416, W, 222, "Schedule and what to send");
@@ -2076,7 +2223,7 @@ namespace ChittamEnterprises
         }
 
         static string Str(Dictionary<string, object> o, string k) { object v; return o.TryGetValue(k, out v) && v != null ? Convert.ToString(v, CultureInfo.InvariantCulture) : ""; }
-        string CompanyFor(string key) { return key == "cash" ? sync.Settings.CashCompany : sync.Settings.BusinessCompany; }
+        string CompanyFor(string key) { return sync.Settings.CompanyFor(key); }
         void Reply(Dictionary<string, object> o) { try { if (web.CoreWebView2 != null) web.CoreWebView2.PostWebMessageAsJson(new JavaScriptSerializer().Serialize(o)); } catch { } }
 
         void SendCashBank(string key)

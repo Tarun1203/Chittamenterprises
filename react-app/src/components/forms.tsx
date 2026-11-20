@@ -239,14 +239,17 @@ function balanceOf(set: BalanceSet | undefined, c: Customer) {
 export function useTallyFill() {
   const { balances } = useStore();
   return (c: Customer | null) => {
-    if (!c) return { business: null, cash: null, note: "" };
+    const others: Record<string, number | null> = {};
+    if (!c) return { business: null, cash: null, others, note: "" };
     const business = balanceOf(balances.business, c), cash = balanceOf(balances.cash, c);
-    if (business === null && cash === null) {
-      return { business, cash, note: Object.keys(balances).length ? "No Tally balance on file for this customer — enter it manually." : "" };
+    // companies added in the Windows app (every balances document except business, cash and the status note)
+    for (const k of Object.keys(balances)) if (k !== "business" && k !== "cash" && k !== "status") others[k] = balanceOf(balances[k], c);
+    if (business === null && cash === null && Object.values(others).every((v) => v === null)) {
+      return { business, cash, others, note: Object.keys(balances).length ? "No Tally balance on file for this customer — enter it manually." : "" };
     }
-    const times = ["business", "cash"].map((k) => balances[k]?.importedAt).filter(Boolean).sort() as string[];
+    const times = Object.keys(balances).filter((k) => k !== "status").map((k) => balances[k]?.importedAt).filter(Boolean).sort() as string[];
     const age = times.length ? new Date(times[0]).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
-    return { business, cash, note: "📒 Balances filled in from Tally (imported " + age + "). Check before sending." };
+    return { business, cash, others, note: "📒 Balances filled in from Tally (imported " + age + "). Check before sending." };
   };
 }
 export function BalanceNote({ note }: { note: string }) {

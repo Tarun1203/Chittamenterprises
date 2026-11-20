@@ -185,7 +185,7 @@ function StockLine({ row, onChange, stock }: { row: Row; onChange: (avail: strin
         : <button type="button" onClick={() => onChange("")} className="rounded-lg px-2 py-1 font-semibold text-brand-600 hover:bg-brand-50">All available</button>}
       {stock && (
         <span className={cn("ml-auto rounded-full px-2 py-0.5 font-semibold", stock.total <= 0 ? "bg-rose-50 text-rose-700" : stock.total < qty ? "bg-amber-50 text-amber-700" : "bg-neutral-100 text-neutral-600")}
-          title={"Chittam: " + (stock.business ?? "—") + " · Cash: " + (stock.cash ?? "—")}>
+          title={Object.entries(stock.per || {}).map(([k, q]) => (k === "business" ? "Chittam" : k === "cash" ? "Cash" : k) + ": " + q).join(" · ")}>
           Tally stock {stock.total} {stock.unit}
         </span>
       )}

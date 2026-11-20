@@ -10,6 +10,7 @@ import { customersFromLedgerExport } from "@/lib/tally";
 import { decodeFileText } from "@/lib/format";
 import { findDuplicates, pairKey, type DupGroup } from "@/lib/dupes";
 import { cn } from "@/lib/utils";
+import { companyList } from "@/lib/companies";
 
 const COLORS = ["from-brand-500 to-indigo-500", "from-emerald-500 to-teal-500", "from-amber-500 to-orange-500", "from-pink-500 to-rose-500", "from-violet-500 to-purple-500", "from-sky-500 to-cyan-500"];
 function initials(name: string) {
@@ -43,7 +44,10 @@ export function Customers() {
     return m;
   }, [orders, services, receipts]);
   const usageOf = (id: string) => usage.get(id) || { orders: 0, services: 0, receipts: 0 };
-  const inTally = (c: Customer) => ["business", "cash"].filter((co) => balances[co]?.names?.[normalizeName(c.name)] !== undefined || balances[co]?.balances?.[normalizeName(c.name)] !== undefined);
+  const coList = companyList(balances, settings);
+  // the companies (short names) whose Tally has this customer
+  const inTally = (c: Customer) => coList.filter((co) => balances[co.key]?.names?.[normalizeName(c.name)] !== undefined || balances[co.key]?.balances?.[normalizeName(c.name)] !== undefined)
+    .map((co) => (co.key === "business" ? "Chittam Ent." : co.label));
 
   const list = useMemo(() => {
     const f = q.trim().toLowerCase();
@@ -273,7 +277,7 @@ function DuplicatesDialog({ open, onClose, groups, byId, usageOf, inTally }: {
                           <input type="radio" className="size-4 accent-brand-600" checked={k === id} onChange={() => setKeep((x) => ({ ...x, [gid(g)]: id }))} />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-semibold">{c.name}{k === id && <span className="ml-2 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-700">KEEP</span>}</span>
-                            <span className="text-xs text-neutral-500">{c.mobile || "no mobile"} · {u.orders} orders · {u.services} service · {u.receipts} payments{t.length ? " · in Tally (" + t.map((x) => x === "business" ? "Chittam Ent." : "Cash").join(", ") + ")" : ""}</span>
+                            <span className="text-xs text-neutral-500">{c.mobile || "no mobile"} · {u.orders} orders · {u.services} service · {u.receipts} payments{t.length ? " · in Tally (" + t.join(", ") + ")" : ""}</span>
                           </span>
                         </label>
                       );

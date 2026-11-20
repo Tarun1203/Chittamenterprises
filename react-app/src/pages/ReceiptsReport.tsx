@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { IconCopy, IconDownload, IconFileTypePdf, IconPencil, IconPlus } from "@tabler/icons-react";
 import { receiptPdf, receiptNo, safeFileName, sharePdf } from "@/lib/pdf";
+import { amountOf, receiptTotal, useCompanies } from "@/lib/companies";
 import { Button, Card, Dialog, Field, useToast } from "@/components/kit";
 import { CustomerPicker, Money, Select, Text, copyText, n } from "@/components/forms";
 import { useStore } from "@/lib/store";
@@ -11,17 +12,21 @@ import { isCashMode, msgDate, payRefLabel } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const total = (r: Receipt) => n(r.business) + n(r.cash);
+const total = (r: Receipt) => receiptTotal(r);
 
 export function ReceiptsReport() {
   const { receipts, customers, settings } = useStore();
   const toast = useToast();
+  // companies added in the Windows app get their own amount in each payment
+  const extraCos = useCompanies().filter((c) => c.key !== "business" && c.key !== "cash");
+  const labels = Object.fromEntries(extraCos.map((c) => [c.key, c.label]));
+  const [xform, setXform] = useState<Record<string, string>>({});
   // the payment receipt as a PDF, to WhatsApp
   async function sendReceipt(r: Receipt) {
     const c = customers.find((x) => x.id === r.customerId);
     try {
       toast("Making the receipt PDF…");
-      const blob = await receiptPdf(settings, r, c?.mobile);
+      const blob = await receiptPdf(settings, r, c?.mobile, undefined, labels);
       const res = await sharePdf(blob, safeFileName("Receipt " + receiptNo(r) + " " + r.customerName) + ".pdf", { mobile: c?.mobile, kind: "Receipts", text: "Payment receipt – " + settings.businessName });
       if (res.message) toast(res.message);
       logEvent("receipt-pdf-shared", { customerName: r.customerName, mobile: c?.mobile || "", receiptId: r.id, savedTo: res.path || "" }).catch(() => {});
@@ -49,9 +54,14 @@ export function ReceiptsReport() {
   const live = list.filter((r) => !r.cancelled);
   const sums = useMemo(() => {
     const byMode: Record<string, number> = {};
-    let business = 0, cash = 0;
-    live.forEach((r) => { business += n(r.business); cash += n(r.cash); byMode[r.mode || "—"] = (byMode[r.mode || "—"] || 0) + total(r); });
-    return { business, cash, all: business + cash, byMode };
+    let business = 0, cash = 0, all = 0;
+    const extra: Record<string, number> = {};
+    live.forEach((r) => {
+      business += n(r.business); cash += n(r.cash); all += total(r);
+      for (const [k, v] of Object.entries(r.extra || {})) extra[k] = (extra[k] || 0) + n(v);
+      byMode[r.mode || "—"] = (byMode[r.mode || "—"] || 0) + total(r);
+    });
+    return { business, cash, extra, all, byMode };
   }, [live]);
   const days = useMemo(() => {
     const out: { date: string; rows: Receipt[] }[] = [];
@@ -78,8 +88,8 @@ export function ReceiptsReport() {
   }
 
   function downloadCsv() {
-    const rows: (string | number)[][] = [["Date", "Customer", "Mode", biz + " (Rs)", "Cash (Rs)", "Total (Rs)", "From", "Ref", "Note", "Cancelled"]];
-    [...list].reverse().forEach((r) => rows.push([r.date, r.customerName, r.mode, r.business || 0, r.cash || 0, total(r), r.source, r.ref || "", r.note || "", r.cancelled ? "Yes" : ""]));
+    const rows: (string | number)[][] = [["Date", "Customer", "Mode", biz + " (Rs)", "Cash (Rs)", ...extraCos.map((c) => c.label + " (Rs)"), "Total (Rs)", "From", "Ref", "Note", "Cancelled"]];
+    [...list].reverse().forEach((r) => rows.push([r.date, r.customerName, r.mode, r.business || 0, r.cash || 0, ...extraCos.map((c) => amountOf(r, c.key)), total(r), r.source, r.ref || "", r.note || "", r.cancelled ? "Yes" : ""]));
     const csv = rows.map((row) => row.map((v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(",")).join("\r\n");
     const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
@@ -94,17 +104,22 @@ export function ReceiptsReport() {
     setIsNew(!r);
     setEditing(r || { id: "rc_" + uid().slice(2), date: todayISO(), customerId: "", customerName: "", mode: m, business: 0, cash: 0, source: "Manual" });
     const c = r ? customers.find((x) => x.id === r.customerId) || { id: r.customerId, name: r.customerName } : null;
+    setXform(Object.fromEntries(Object.entries(r?.extra || {}).map(([k, v]) => [k, v ? String(v) : ""])));
     setForm({ customer: c, date: r?.date || todayISO(), mode: r?.mode || m, business: r?.business ? String(r.business) : "", cash: r?.cash ? String(r.cash) : "", note: r?.note || "", tallyNo: r?.tallyNo || "", receivedBy: r?.receivedBy || "", txnRef: r?.txnRef || "", cancelled: !!r?.cancelled });
   }
   async function save() {
     if (!editing) return;
     if (!form.customer) { toast("Please select a customer first."); return; }
-    if (!n(form.business) && !n(form.cash)) { toast("Enter the amount received."); return; }
+    const extra = Object.fromEntries(extraCos.filter((c) => n(xform[c.key])).map((c) => [c.key, n(xform[c.key])]));
+    // amounts of companies no longer set up are kept as they were
+    for (const [k, v] of Object.entries(editing.extra || {})) if (!extraCos.some((c) => c.key === k) && v) extra[k] = v;
+    if (!n(form.business) && !n(form.cash) && !Object.keys(extra).length) { toast("Enter the amount received."); return; }
     const rec: Receipt = {
       ...editing, date: form.date || todayISO(), customerId: form.customer.id, customerName: form.customer.name,
       mode: form.mode, business: n(form.business), cash: n(form.cash), note: form.note.trim(), cancelled: form.cancelled, ref: editing.ref || "",
       receivedBy: isCashMode(form.mode) ? form.receivedBy.trim() : "", txnRef: isCashMode(form.mode) ? "" : form.txnRef.trim(),
       tallyNo: form.tallyNo.trim(), tallyId: form.tallyNo.trim() === (editing.tallyNo || "") ? editing.tallyId || "" : "",
+      extra,
     };
     try { await saveRecord("receipts", rec, isNew ? null : editing); toast("Payment saved."); setEditing(null); }
     catch (e) { toast("Could not save: " + (e as Error).message); }
@@ -135,6 +150,7 @@ export function ReceiptsReport() {
           <Chip label="Total received" value={inr(sums.all)} strong />
           <Chip label={biz + " a/c"} value={inr(sums.business)} />
           <Chip label="Cash a/c" value={inr(sums.cash)} />
+          {extraCos.filter((c) => sums.extra[c.key]).map((c) => <Chip key={c.key} label={c.label + " a/c"} value={inr(sums.extra[c.key])} />)}
           <Chip label="Payments" value={String(live.length)} />
           {Object.keys(sums.byMode).sort().map((m) => <Chip key={m} label={m} value={inr(sums.byMode[m])} />)}
         </div>
@@ -156,7 +172,7 @@ export function ReceiptsReport() {
                       <div className={cn("truncate font-semibold", r.cancelled && "line-through")}>{r.customerName || "—"}</div>
                       <div className="text-xs text-neutral-500">
                         {r.mode || "—"}{r.txnRef ? " " + r.txnRef : ""}{r.receivedBy ? " (by " + r.receivedBy + ")" : ""} · {r.source}{r.ref ? " " + r.ref : ""}
-                        {r.business ? " · " + biz + " " + inr(r.business) : ""}{r.cash ? " · Cash " + inr(r.cash) : ""}
+                        {r.business ? " · " + biz + " " + inr(r.business) : ""}{r.cash ? " · Cash " + inr(r.cash) : ""}{Object.entries(r.extra || {}).filter(([, v]) => v).map(([k, v]) => " · " + (labels[k] || k) + " " + inr(v)).join("")}
                         {r.note ? " · " + r.note : ""}
                       </div>
                     </div>
@@ -182,6 +198,7 @@ export function ReceiptsReport() {
           <Field label="Mode"><Select value={form.mode} onChange={(v) => setForm((x) => ({ ...x, mode: v }))} options={modeOptions} /></Field>
           <Field label={biz + " (₹)"}><Money value={form.business} onChange={(v) => setForm((x) => ({ ...x, business: v }))} /></Field>
           <Field label="Cash (₹)"><Money value={form.cash} onChange={(v) => setForm((x) => ({ ...x, cash: v }))} /></Field>
+          {extraCos.map((c) => <Field key={c.key} label={c.label + " (₹)"}><Money value={xform[c.key] || ""} onChange={(v) => setXform((x) => ({ ...x, [c.key]: v }))} /></Field>)}
         </div>
         {isCashMode(form.mode)
           ? <Field label="Received by"><Text value={form.receivedBy} onChange={(e) => setForm((x) => ({ ...x, receivedBy: e.target.value }))} placeholder="Who collected the cash" /></Field>

@@ -20,11 +20,13 @@ import { billsOf, useTallyBills } from "@/lib/tallydata";
 import { billAge } from "@/lib/ledger";
 import { fetchVoucher, summaryVoucher, tallyLedgerPdf, voucherPdf, voucherTitle } from "@/lib/tallypdf";
 import type { LedgerRow as Row } from "@/lib/ledger";
+import { companyIcon, useCompanies } from "@/lib/companies";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 export function Ledger() {
   const { customers, balances, settings } = useStore();
+  const companies = useCompanies();
   const toast = useToast();
   const [params] = useSearchParams();
   const [sets, setSets] = useState<Record<string, TallyVoucherSet> | null>(null);
@@ -54,9 +56,9 @@ export function Ledger() {
   }, [params, customers, customer]);
 
   const parts: LedgerPart[] = useMemo(() => !customer || !sets || !from ? [] : [
-    buildLedger(sets, balances, "business", customer.name, biz, from, to),
-    buildLedger(sets, balances, "cash", customer.name, "Cash", from, to),
-  ].filter((p) => p.known || p.rows.length), [customer, sets, balances, from, to, biz]);
+    // one section per company (Chittam Enterprises, Cash, and any added in the Windows app)
+    ...companies.map((c) => buildLedger(sets, balances, c.key, customer.name, c.key === "business" ? biz : c.label, from, to)),
+  ].filter((p) => p.known || p.rows.length), [customer, sets, balances, from, to, biz, companies]);
   const total = parts.reduce((t, p) => t + p.closing, 0);
   const tooEarly = range.from && from < range.from;
 
@@ -76,7 +78,7 @@ export function Ledger() {
 
   // any voucher in the ledger, printed like Tally, to WhatsApp
   const [vbusy, setVbusy] = useState("");
-  async function sendVoucher(account: "business" | "cash", r: Row) {
+  async function sendVoucher(account: string, r: Row) {
     if (!customer || !r.v) return;
     const k = account + (r.id || r.n || "") + r.d;
     setVbusy(k);
@@ -96,7 +98,7 @@ export function Ledger() {
 
   function billsFor() {
     if (!withBills || !customer) return undefined;
-    const out: Partial<Record<"business" | "cash", { n: string; d: string; due?: string; a: number; od?: number }[]>> = {};
+    const out: Partial<Record<string, { n: string; d: string; due?: string; a: number; od?: number }[]>> = {};
     for (const p of parts) out[p.account] = billsOf(tallyBills, p.account, customer.name);
     return out;
   }
@@ -126,7 +128,7 @@ export function Ledger() {
 
   return (
     <div>
-      <PageHeader icon="notebook" eyebrow="Messages" title="Ledger Statement" subtitle="A customer's account in both companies, in Tally's layout — send it as a PDF on WhatsApp. Tap the PDF icon on any transaction to send that voucher (invoice, receipt, credit note…)."
+      <PageHeader icon="notebook" eyebrow="Messages" title="Ledger Statement" subtitle="A customer's account in every company, in Tally's layout — send it as a PDF on WhatsApp. Tap the PDF icon on any transaction to send that voucher (invoice, receipt, credit note…)."
         actions={<><Button variant="whatsapp" size="sm" onClick={sendPdf} disabled={making}><IconBrandWhatsapp size={16} /> {making ? "Making PDF…" : "PDF to WhatsApp"}</Button>
           <Button variant="secondary" size="sm" onClick={print}><IconPrinter size={16} /> Print</Button></>} />
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
@@ -152,7 +154,7 @@ export function Ledger() {
           {parts.map((p) => (
             <Card key={p.account} className="p-0">
               <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
-                <span className="font-extrabold">{p.account === "business" ? "🏢 " : "💵 "}{p.label}</span>
+                <span className="font-extrabold">{companyIcon(p.account) + " "}{p.label}</span>
                 {!p.known && <span className="text-xs font-semibold text-amber-700">no Tally balance — opening taken as 0</span>}
               </div>
               <div className="divide-y divide-neutral-100 text-sm">
@@ -195,7 +197,7 @@ export function Ledger() {
                 </div>
               ))}
               <div className={cn("flex items-center justify-between", parts.length > 1 && "border-t border-brand-200 pt-3")}>
-                <span className="font-extrabold">{parts.length > 1 ? "Grand total (both companies)" : "Total outstanding"}</span>
+                <span className="font-extrabold">{parts.length > 2 ? "Grand total (all companies)" : parts.length > 1 ? "Grand total (both companies)" : "Total outstanding"}</span>
                 <span className="text-xl font-extrabold text-brand-700 tabular-nums">{drcr(total)}</span>
               </div>
               <Button variant="whatsapp" className="w-full" onClick={sendPdf} disabled={making}><IconBrandWhatsapp size={18} /> {making ? "Making PDF…" : "Send ledger PDF on WhatsApp"}</Button>

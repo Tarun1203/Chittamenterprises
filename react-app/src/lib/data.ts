@@ -44,6 +44,7 @@ export interface Receipt {
   tallyNo?: string; tallyId?: string;   // the Tally voucher this payment is linked to
   receivedBy?: string;   // cash: who collected it
   txnRef?: string;       // other modes: transaction ID / UTR / cheque no.
+  extra?: Record<string, number>;   // amounts for companies beyond Chittam Enterprises and Cash (by company key)
 }
 export interface BalanceSet {
   company: string; label?: string; file?: string; importedAt?: string; importedBy?: string;
@@ -210,7 +211,7 @@ export async function loadLatest<T>(coll: "activity" | "messages", count = 300) 
 
 /* ---------------- Tally balances ---------------- */
 // replaces one company's balances (same document the Windows app's sync writes)
-export async function saveBalances(company: "business" | "cash", entry: BalanceSet & { matched: number; unmatched: string[] }) {
+export async function saveBalances(company: string, entry: BalanceSet & { matched: number; unmatched: string[] }) {
   const user = auth.currentUser;
   if (!user) return;
   await setDoc(doc(db, "balances", company), { ...(stable(entry) as object), at: serverTimestamp(), by: user.email || "" });
