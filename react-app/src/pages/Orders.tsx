@@ -372,8 +372,8 @@ function OrderEditor({ order, onClose }: { order: Order | null; onClose: () => v
             ))}
             <TotalLine strong label="Order total" value={inr(total)} />
             <TallyFreshness what="Tally stock figures" />
-            {tallyStock && (tallyStock.business || tallyStock.cash) && (
-              <p className="text-xs text-neutral-400">Tally stock (Chittam + Cash) as of {syncedWhen(tallyStock.business?.syncedAt || tallyStock.cash?.syncedAt)} — “Available now” fills in from it; change it if needed.</p>
+            {tallyStock && Object.keys(tallyStock).length > 0 && (
+              <p className="text-xs text-neutral-400">Tally stock (all companies added up) as of {syncedWhen(Object.values(tallyStock).map((x) => x?.syncedAt).find(Boolean))} — “Available now” fills in from it; change it if needed.</p>
             )}
             {pendingLines.length > 0 && <>
               <TotalLine label="To pack now" value={inr(packValue)} />

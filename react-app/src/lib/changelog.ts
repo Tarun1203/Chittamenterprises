@@ -4,6 +4,13 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.28", date: "2026-11-20", title: "Added Tally companies show in Settings",
+    items: [
+      "Settings → Tally balances now lists every company synced from Tally (for example Vamana Enterprises), with when it was synced and how many customers it has — not just Chittam Enterprises and Cash.",
+      "The Tally stock note on Orders now says it adds up all companies.",
+    ],
+  },
+  {
     version: "3.27", date: "2026-11-20", title: "Encryption: the data in Firebase scrambled with your own passphrase", windows: "3.4",
     items: [
       "Settings → Encryption → Turn on encryption…: choose a passphrase for the team. Every record (customers, products, orders, payments, Tally balances and transactions, settings) is then stored scrambled, so not even Google can read it.",

@@ -12,6 +12,7 @@ import { msgDate } from "@/lib/messages";
 import { APP_UPDATED, APP_VERSION } from "@/version";
 import { cn } from "@/lib/utils";
 import { firebaseProjectId } from "@/lib/firebase";
+import { useCompanies } from "@/lib/companies";
 
 type Upi = S["upiList"][number];
 type Bank = S["bankList"][number];
@@ -121,7 +122,9 @@ export function Settings() {
   const [mode, setMode] = useState("");
   const restoreRef = useRef<HTMLInputElement>(null);
   const balRef = useRef<HTMLInputElement>(null);
-  const [balCompany, setBalCompany] = useState<"business" | "cash">("business");
+  const [balCompany, setBalCompany] = useState("business");
+  // every Tally company: Chittam Enterprises, Cash and any added in the Windows app
+  const companies = useCompanies();
   // reload the form when the saved settings arrive / change on another device
   useEffect(() => { setF(settings); }, [settings]);
 
@@ -157,7 +160,7 @@ export function Settings() {
         map[k] = r.amount; names[k] = r.name;
         if (customerKeys.has(k)) matched++; else unmatched.push(r.name);
       });
-      const label = balCompany === "business" ? settings.businessName || "Chittam Enterprises" : "Cash Bill";
+      const label = companies.find((c) => c.key === balCompany)?.label || (balCompany === "business" ? settings.businessName || "Chittam Enterprises" : "Cash Bill");
       await saveBalances(balCompany, {
         company: balCompany, label, file: file.name, importedAt: new Date().toISOString(), importedBy: user?.email || "",
         matched, unmatched: unmatched.slice(0, 300), balances: map, names,
@@ -270,16 +273,16 @@ export function Settings() {
 
         <div className="space-y-5">
           <Section title="Tally balances" subtitle="Fill in balances on Payment Updated, Payment Reminder and Balance Confirmation. The Windows app updates these by itself; you can also import a file.">
-            {(["business", "cash"] as const).map((co) => {
+            {companies.map(({ key: co, label: coLabel, icon }) => {
               const e = balances[co];
               const keys = Object.keys(e?.balances || {});
               const matched = keys.filter((k) => customerKeys.has(k)).length;
               const unmatched = keys.filter((k) => !customerKeys.has(k)).map((k) => e?.names?.[k] || k).sort();
-              const label = co === "business" ? settings.businessName || "Chittam Enterprises" : "Cash Bill";
+              const label = co === "cash" ? "Cash Bill" : coLabel;
               return (
                 <div key={co} className="rounded-xl border border-neutral-100 bg-neutral-50/60 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-bold">{co === "business" ? "🏢 " : "💵 "}{label}</span>
+                    <span className="font-bold">{icon} {label}</span>
                     <Button size="sm" variant="secondary" onClick={() => { setBalCompany(co); balRef.current?.click(); }}><IconUpload size={15} /> Import file</Button>
                   </div>
                   <p className="mt-1.5 text-sm text-neutral-600">
