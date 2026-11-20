@@ -51,6 +51,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -70,8 +71,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyProduct("Chittam Enterprises")]
 [assembly: System.Reflection.AssemblyCompany("Chittam Enterprises")]
 // keep in step with Program.DesktopVersion (build.ps1 checks)
-[assembly: System.Reflection.AssemblyVersion("3.3.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("3.3")]
+[assembly: System.Reflection.AssemblyVersion("3.4.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.4")]
 
 namespace ChittamEnterprises
 {
@@ -81,7 +82,7 @@ namespace ChittamEnterprises
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
         // where new versions of this program are published (desktop/ folder of the site)
         public const string UpdateUrl = "https://tarun1203.github.io/Chittamenterprises/desktop/version.json";
-        public const string DesktopVersion = "3.3";
+        public const string DesktopVersion = "3.4";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -241,6 +242,20 @@ namespace ChittamEnterprises
     {
         public string Email = "";
         public string PasswordProtected = "";      // DPAPI, base64
+        // encryption key (from the company passphrase), DPAPI-protected, and the salt it belongs to
+        public string EncKeyProtected = "";
+        public string EncSalt = "";
+        [ScriptIgnore]
+        public byte[] EncKey
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(EncKeyProtected)) return null;
+                try { return ProtectedData.Unprotect(Convert.FromBase64String(EncKeyProtected), null, DataProtectionScope.CurrentUser); }
+                catch { return null; }
+            }
+            set { EncKeyProtected = value == null ? "" : Convert.ToBase64String(ProtectedData.Protect(value, null, DataProtectionScope.CurrentUser)); }
+        }
         public string BusinessCompany = "Chittam Enterprises - 2026";
         public string BusinessLabel = "Chittam Enterprises";
         public string CashCompany = "Cash";
@@ -867,6 +882,81 @@ namespace ChittamEnterprises
         }
     }
 
+    // ------------------------------------------------------------------ encryption
+    // Same format as the web app (react-app/src/lib/crypto.ts) and the old app (js/00-crypto.js):
+    //   key = PBKDF2-SHA256(passphrase, salt, iter) -> 64 bytes: AES key | HMAC key
+    //   enc = base64( iv(16) | AES-256-CBC(deflate(JSON)) | HMAC-SHA256(iv|ct) )
+    // When settings/crypto is on, every record this app writes keeps only the
+    // bookkeeping fields readable; the rest is in "enc".
+    static class Crypto
+    {
+        public static string Salt = "";      // "" = encryption off
+        public static int Iter = 310000;
+        public static string Check = "";
+        public static string SetBy = "";
+        public static bool On { get { return Salt.Length > 0; } }
+        public static bool Locked(Settings s) { return On && (s.EncKey == null || s.EncSalt != Salt); }
+
+        public static byte[] Derive(string pass, string salt, int iter)
+        {
+            using (var kdf = new Rfc2898DeriveBytes(Encoding.UTF8.GetBytes(pass), Convert.FromBase64String(salt), iter, HashAlgorithmName.SHA256))
+                return kdf.GetBytes(64);
+        }
+
+        public static string Seal(byte[] key, string json)
+        {
+            byte[] z;
+            using (var ms = new MemoryStream())
+            {
+                using (var d = new DeflateStream(ms, CompressionMode.Compress, true)) { var b = Encoding.UTF8.GetBytes(json); d.Write(b, 0, b.Length); }
+                z = ms.ToArray();
+            }
+            var iv = new byte[16];
+            using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(iv);
+            byte[] ct;
+            using (var aes = new AesCryptoServiceProvider { Mode = CipherMode.CBC, Padding = PaddingMode.PKCS7, Key = key.Take(32).ToArray(), IV = iv })
+            using (var enc = aes.CreateEncryptor()) ct = enc.TransformFinalBlock(z, 0, z.Length);
+            var body = iv.Concat(ct).ToArray();
+            byte[] mac;
+            using (var h = new HMACSHA256(key.Skip(32).Take(32).ToArray())) mac = h.ComputeHash(body);
+            return Convert.ToBase64String(body.Concat(mac).ToArray());
+        }
+
+        public static string Open(byte[] key, string sealedText)
+        {
+            var all = Convert.FromBase64String(sealedText);
+            if (all.Length < 64) throw new Exception("Damaged encrypted record.");
+            var body = all.Take(all.Length - 32).ToArray();
+            var mac = all.Skip(all.Length - 32).ToArray();
+            byte[] want;
+            using (var h = new HMACSHA256(key.Skip(32).Take(32).ToArray())) want = h.ComputeHash(body);
+            int diff = 0;
+            for (int i = 0; i < 32; i++) diff |= want[i] ^ mac[i];
+            if (diff != 0) throw new Exception("Encrypted with a different passphrase, or changed.");
+            byte[] z;
+            using (var aes = new AesCryptoServiceProvider { Mode = CipherMode.CBC, Padding = PaddingMode.PKCS7, Key = key.Take(32).ToArray(), IV = body.Take(16).ToArray() })
+            using (var dec = aes.CreateDecryptor()) z = dec.TransformFinalBlock(body, 16, body.Length - 16);
+            using (var ms = new MemoryStream(z))
+            using (var d = new DeflateStream(ms, CompressionMode.Decompress))
+            using (var r = new StreamReader(d, Encoding.UTF8)) return r.ReadToEnd();
+        }
+
+        // the passphrase is right when it opens the check value
+        public static bool Unlock(Settings s, string pass)
+        {
+            if (!On) return false;
+            var key = Derive(pass, Salt, Iter);
+            try
+            {
+                var v = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(Open(key, Check));
+                if (v == null || !v.ContainsKey("ok") || Convert.ToString(v["ok"]) != "chittam") return false;
+            }
+            catch { return false; }
+            s.EncKey = key; s.EncSalt = Salt; s.Save();
+            return true;
+        }
+    }
+
     // ------------------------------------------------------------------ Firebase
     static class Firebase
     {
@@ -922,6 +1012,105 @@ namespace ChittamEnterprises
             return new Dictionary<string, object> { { "mapValue", new Dictionary<string, object> { { "fields", fields } } } };
         }
         static string BaseUrl(Settings s) { return "https://firestore.googleapis.com/v1/projects/" + s.ProjectId + "/databases/(default)/documents/"; }
+
+        // a Firestore REST value -> plain value (string, number, bool, map, list)
+        static object Plain(object typed)
+        {
+            var v = typed as Dictionary<string, object>;
+            if (v == null) return null;
+            object x;
+            if (v.TryGetValue("stringValue", out x)) return x;
+            if (v.TryGetValue("doubleValue", out x)) return Convert.ToDouble(x, CultureInfo.InvariantCulture);
+            if (v.TryGetValue("integerValue", out x)) return Convert.ToInt64(x, CultureInfo.InvariantCulture);
+            if (v.TryGetValue("booleanValue", out x)) return x;
+            if (v.TryGetValue("timestampValue", out x)) return x;
+            if (v.TryGetValue("mapValue", out x))
+            {
+                var o = new Dictionary<string, object>();
+                object f;
+                if (((Dictionary<string, object>)x).TryGetValue("fields", out f) && f != null)
+                    foreach (var kv in (Dictionary<string, object>)f) o[kv.Key] = Plain(kv.Value);
+                return o;
+            }
+            if (v.TryGetValue("arrayValue", out x))
+            {
+                object vals;
+                if (((Dictionary<string, object>)x).TryGetValue("values", out vals) && vals != null)
+                    return ((System.Collections.IEnumerable)vals).Cast<object>().Select(Plain).ToArray();
+                return new object[0];
+            }
+            return null;
+        }
+
+        static readonly string[] Meta = { "createdAt", "createdBy", "updatedAt", "updatedBy", "at", "by" };
+        static string[] PlainFields(string coll)
+        {
+            if (coll == "activity") return Meta.Concat(new[] { "collection", "docId", "action", "source" }).ToArray();
+            if (coll == "messages") return Meta.Concat(new[] { "type" }).ToArray();
+            return Meta;
+        }
+
+        // the fields of a record ready to send: when encryption is on, all but the readable ones go into "enc"
+        static Dictionary<string, object> Seal(Settings s, string coll, Dictionary<string, object> fields)
+        {
+            if (!Crypto.On) return fields;
+            if (Crypto.Locked(s)) throw new Exception("The data is encrypted: enter the passphrase in Tally Sync first.");
+            var keep = PlainFields(coll);
+            var outF = new Dictionary<string, object>();
+            var secret = new Dictionary<string, object>();
+            foreach (var kv in fields)
+            {
+                if (keep.Contains(kv.Key)) outF[kv.Key] = kv.Value;
+                else secret[kv.Key] = Plain(kv.Value);
+            }
+            outF["enc"] = Str(Crypto.Seal(s.EncKey, Json.Serialize(secret)));
+            outF["encV"] = Int(1);
+            return outF;
+        }
+
+        // reads settings/crypto: is the data encrypted, and the check for the passphrase
+        public static void RefreshCrypto(Settings s, string token)
+        {
+            var d = GetDoc(s, token, "settings/crypto");
+            if (d == null || !(d.ContainsKey("on") && d["on"] is bool && (bool)d["on"])) { Crypto.Salt = ""; return; }
+            Crypto.Salt = Convert.ToString(d.ContainsKey("salt") ? d["salt"] : "");
+            Crypto.Iter = d.ContainsKey("iter") ? Convert.ToInt32(d["iter"]) : 310000;
+            Crypto.Check = Convert.ToString(d.ContainsKey("check") ? d["check"] : "");
+            Crypto.SetBy = Convert.ToString(d.ContainsKey("setBy") ? d["setBy"] : "");
+        }
+
+        // one document as plain values (opened if encrypted); null when it doesn't exist
+        public static Dictionary<string, object> GetDoc(Settings s, string token, string path)
+        {
+            var req = (HttpWebRequest)WebRequest.Create(BaseUrl(s) + path);
+            req.Headers["Authorization"] = "Bearer " + token;
+            string body;
+            try { using (var res = (HttpWebResponse)req.GetResponse()) using (var r = new StreamReader(res.GetResponseStream(), Encoding.UTF8)) body = r.ReadToEnd(); }
+            catch (WebException ex)
+            {
+                var res = ex.Response as HttpWebResponse;
+                if (res != null && res.StatusCode == HttpStatusCode.NotFound) return null;
+                throw new Exception("Could not read " + path + ": " + ex.Message);
+            }
+            var obj = Json.Deserialize<Dictionary<string, object>>(body);
+            var row = new Dictionary<string, object>();
+            object fv;
+            if (obj != null && obj.TryGetValue("fields", out fv) && fv != null)
+                foreach (var kv in (Dictionary<string, object>)fv) row[kv.Key] = Plain(kv.Value);
+            return OpenRow(s, row);
+        }
+
+        // a record read from the database, with its encrypted part opened
+        static Dictionary<string, object> OpenRow(Settings s, Dictionary<string, object> row)
+        {
+            object enc;
+            if (!row.TryGetValue("enc", out enc) || !(enc is string)) return row;
+            if (Crypto.Locked(s)) throw new Exception("The data is encrypted: enter the passphrase in Tally Sync first.");
+            var secret = Json.Deserialize<Dictionary<string, object>>(Crypto.Open(s.EncKey, (string)enc));
+            row.Remove("enc"); row.Remove("encV");
+            foreach (var kv in secret) row[kv.Key] = kv.Value;
+            return row;
+        }
         static string Now() { return DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"); }
 
         static void Log(Settings s, string token, string action, string label, Dictionary<string, object> details)
@@ -930,7 +1119,7 @@ namespace ChittamEnterprises
                 { "collection", Str("app") }, { "action", Str(action) }, { "name", Str(label) },
                 { "details", Map(details) }, { "at", Ts(Now()) }, { "by", Str(s.Email) }
             };
-            Send("POST", BaseUrl(s) + "activity", token, new Dictionary<string, object> { { "fields", log } });
+            Send("POST", BaseUrl(s) + "activity", token, new Dictionary<string, object> { { "fields", Seal(s, "activity", log) } });
         }
 
         public static void SaveBalances(Settings s, string token, string key, string label, string company,
@@ -948,7 +1137,7 @@ namespace ChittamEnterprises
                 { "unmatched", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", new object[0] } } } } },
                 { "balances", Map(bal) }, { "names", Map(nm) }, { "at", Ts(now) }, { "by", Str(s.Email) }
             };
-            Send("PATCH", BaseUrl(s) + "balances/" + key, token, new Dictionary<string, object> { { "fields", fields } });
+            Send("PATCH", BaseUrl(s) + "balances/" + key, token, new Dictionary<string, object> { { "fields", Seal(s, "balances", fields) } });
             Log(s, token, "balances-synced", label, new Dictionary<string, object> { { "name", Str(label) }, { "company", Str(company) }, { "names", Int(balances.Count) } });
         }
 
@@ -959,7 +1148,7 @@ namespace ChittamEnterprises
             string pageToken = "";
             do
             {
-                var url = BaseUrl(s) + coll + "?pageSize=1000" + string.Concat(fields.Select(f => "&mask.fieldPaths=" + f)) +
+                var url = BaseUrl(s) + coll + "?pageSize=1000" + string.Concat(fields.Concat(new[] { "enc" }).Select(f => "&mask.fieldPaths=" + f)) +
                     (pageToken.Length > 0 ? "&pageToken=" + Uri.EscapeDataString(pageToken) : "");
                 var req = (HttpWebRequest)WebRequest.Create(url);
                 req.Headers["Authorization"] = "Bearer " + token;
@@ -984,7 +1173,7 @@ namespace ChittamEnterprises
                                 else if (v.TryGetValue("doubleValue", out x)) row[kv.Key] = Convert.ToDouble(x, CultureInfo.InvariantCulture);
                                 else if (v.TryGetValue("integerValue", out x)) row[kv.Key] = Convert.ToDouble(x, CultureInfo.InvariantCulture);
                             }
-                        all.Add(row);
+                        all.Add(OpenRow(s, row));
                     }
                 object nt;
                 pageToken = obj != null && obj.TryGetValue("nextPageToken", out nt) ? (string)nt : "";
@@ -1025,6 +1214,7 @@ namespace ChittamEnterprises
         // stamps) plus one activity entry each, so History shows every change
         public static void SaveRecords(Settings s, string token, string coll, List<Tuple<string, Dictionary<string, object>, Dictionary<string, object>>> recs)
         {
+            if (Crypto.On) { SaveRecordsSealed(s, token, coll, recs); return; }
             string root = "projects/" + s.ProjectId + "/databases/(default)/documents/";
             for (int i = 0; i < recs.Count; i += 150)
             {
@@ -1046,6 +1236,48 @@ namespace ChittamEnterprises
                         { "collection", Str(coll) }, { "docId", Str(id) }, { "action", Str(before == null ? "create" : "update") }, { "name", Str(label) },
                         { "before", before == null ? (object)new Dictionary<string, object> { { "nullValue", null } } : Map(Fields(before)) },
                         { "after", Map(Fields(full)) }, { "at", Ts(now) }, { "by", Str(s.Email) }, { "source", Str("Tally sync") }
+                    } } } } });
+                }
+                Send("POST", BaseUrl(s).TrimEnd('/') + ":commit", token, new Dictionary<string, object> { { "writes", writes } });
+            }
+        }
+
+        // encryption on: each change is applied to the whole current record, which is
+        // sent encrypted (created stamps kept); History gets the whole before / after
+        static void SaveRecordsSealed(Settings s, string token, string coll, List<Tuple<string, Dictionary<string, object>, Dictionary<string, object>>> recs)
+        {
+            if (Crypto.Locked(s)) throw new Exception("The data is encrypted: enter the passphrase in Tally Sync first.");
+            string root = "projects/" + s.ProjectId + "/databases/(default)/documents/";
+            for (int i = 0; i < recs.Count; i += 150)
+            {
+                string now = Now();
+                var writes = new List<object>();
+                foreach (var r in recs.Skip(i).Take(150))
+                {
+                    string id = r.Item1; var after = r.Item2;
+                    Dictionary<string, object> before = null;
+                    if (r.Item3 != null)
+                    {
+                        before = GetDoc(s, token, coll + "/" + id) ?? new Dictionary<string, object>(r.Item3);
+                        foreach (var m in Meta) before.Remove(m);
+                    }
+                    var full = new Dictionary<string, object>(before ?? new Dictionary<string, object>());
+                    foreach (var kv in after) full[kv.Key] = kv.Value;
+                    var fields = new Dictionary<string, object> {
+                        { "enc", Str(Crypto.Seal(s.EncKey, Json.Serialize(full))) }, { "encV", Int(1) },
+                        { "updatedAt", Ts(now) }, { "updatedBy", Str(s.Email) }
+                    };
+                    var w = new Dictionary<string, object> { { "update", new Dictionary<string, object> { { "name", root + coll + "/" + id }, { "fields", fields } } } };
+                    if (before == null) { fields["createdAt"] = Ts(now); fields["createdBy"] = Str(s.Email); }
+                    else w["updateMask"] = new Dictionary<string, object> { { "fieldPaths", fields.Keys.ToArray() } };
+                    writes.Add(w);
+                    var secret = new Dictionary<string, object> {
+                        { "name", Convert.ToString(full.ContainsKey("name") ? full["name"] : "") }, { "before", before }, { "after", full }
+                    };
+                    writes.Add(new Dictionary<string, object> { { "update", new Dictionary<string, object> { { "name", root + "activity/" + RandomId(20) }, { "fields", new Dictionary<string, object> {
+                        { "collection", Str(coll) }, { "docId", Str(id) }, { "action", Str(before == null ? "create" : "update") },
+                        { "enc", Str(Crypto.Seal(s.EncKey, Json.Serialize(secret))) }, { "encV", Int(1) },
+                        { "at", Ts(now) }, { "by", Str(s.Email) }, { "source", Str("Tally sync") }
                     } } } } });
                 }
                 Send("POST", BaseUrl(s).TrimEnd('/') + ":commit", token, new Dictionary<string, object> { { "writes", writes } });
@@ -1080,7 +1312,7 @@ namespace ChittamEnterprises
                 { "companies", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", companies.Select(c => (object)Str(c)).ToArray() } } } } },
                 { "at", Ts(now) }, { "by", Str(s.Email) }
             };
-            Send("PATCH", BaseUrl(s) + "balances/status", token, new Dictionary<string, object> { { "fields", fields } });
+            Send("PATCH", BaseUrl(s) + "balances/status", token, new Dictionary<string, object> { { "fields", Seal(s, "balances", fields) } });
         }
 
         public static void SaveStock(Settings s, string token, string key, string label, string company, List<StockLine> items)
@@ -1093,7 +1325,7 @@ namespace ChittamEnterprises
                 { "company", Str(key) }, { "label", Str(label) }, { "tallyCompany", Str(company) }, { "syncedAt", Str(now) },
                 { "count", Int(items.Count) }, { "items", Map(map) }, { "at", Ts(now) }, { "by", Str(s.Email) }
             };
-            Send("PATCH", BaseUrl(s) + "tallyStock/" + key, token, new Dictionary<string, object> { { "fields", fields } });
+            Send("PATCH", BaseUrl(s) + "tallyStock/" + key, token, new Dictionary<string, object> { { "fields", Seal(s, "tallyStock", fields) } });
             Log(s, token, "tally-stock-synced", label, new Dictionary<string, object> { { "name", Str(label) }, { "company", Str(company) }, { "count", Int(items.Count) } });
         }
 
@@ -1109,7 +1341,7 @@ namespace ChittamEnterprises
                 { "bills", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", values } } } } },
                 { "at", Ts(now) }, { "by", Str(s.Email) }
             };
-            Send("PATCH", BaseUrl(s) + "tallyBills/" + key, token, new Dictionary<string, object> { { "fields", fields } });
+            Send("PATCH", BaseUrl(s) + "tallyBills/" + key, token, new Dictionary<string, object> { { "fields", Seal(s, "tallyBills", fields) } });
             Log(s, token, "tally-bills-synced", label, new Dictionary<string, object> { { "name", Str(label) }, { "company", Str(company) }, { "count", Int(bills.Count) } });
         }
 
@@ -1127,7 +1359,7 @@ namespace ChittamEnterprises
                 { "vouchers", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", values } } } } },
                 { "at", Ts(now) }, { "by", Str(s.Email) }
             };
-            Send("PATCH", BaseUrl(s) + "tallyVouchers/" + key, token, new Dictionary<string, object> { { "fields", fields } });
+            Send("PATCH", BaseUrl(s) + "tallyVouchers/" + key, token, new Dictionary<string, object> { { "fields", Seal(s, "tallyVouchers", fields) } });
             Log(s, token, "tally-vouchers-synced", label, new Dictionary<string, object> {
                 { "name", Str(label) }, { "company", Str(company) }, { "count", Int(vouchers.Count) },
                 { "from", Str(from.ToString("yyyy-MM-dd")) }, { "to", Str(to.ToString("yyyy-MM-dd")) } });
@@ -1249,7 +1481,14 @@ namespace ChittamEnterprises
 
         void Run(bool force)
         {
-            string token = null;
+            string token = Firebase.SignIn(Settings);
+            Firebase.RefreshCrypto(Settings, token);
+            if (Crypto.Locked(Settings))
+            {
+                LastError = "The data is encrypted: enter the passphrase (Tally Sync → Passphrase…).";
+                Log("Not synced: " + LastError);
+                return;
+            }
             SwitchYearIfNeeded(ref token);
             var allDebtors = new List<Debtor>();
             var failed = new List<string>();
@@ -1737,6 +1976,48 @@ namespace ChittamEnterprises
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         const string RunName = "ChittamEnterprises";
 
+        // the company passphrase (when the data is encrypted from the app's Settings)
+        public static void AskPassphrase(IWin32Window owner, SyncEngine sync)
+        {
+            var s = sync.Settings;
+            try { Firebase.RefreshCrypto(s, Firebase.SignIn(s)); }
+            catch (Exception ex) { MessageBox.Show(owner, "Could not check: " + ex.Message, "Passphrase", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            if (!Crypto.On)
+            {
+                MessageBox.Show(owner, "Encryption is off. It is turned on from the app: Settings → Encryption.", "Passphrase", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            using (var f = new Form { Text = "Passphrase", FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false,
+                StartPosition = FormStartPosition.CenterParent, AutoScaleDimensions = new SizeF(96F, 96F), AutoScaleMode = AutoScaleMode.Dpi,
+                ClientSize = new Size(440, 190), BackColor = Color.White, Font = Look.UI(9.75f) })
+            {
+                f.Controls.Add(new Label { Text = Crypto.Locked(s)
+                    ? "The app's data is encrypted. Enter the company passphrase" + (Crypto.SetBy.Length > 0 ? " (set by " + Crypto.SetBy + ")" : "") + " so Tally sync can read and write it."
+                    : "This PC already has the passphrase. Enter it again only if it was changed.",
+                    Left = 18, Top = 16, Width = 404, Height = 56 });
+                var txt = new TextBox { Left = 18, Top = 80, Width = 404, UseSystemPasswordChar = true };
+                f.Controls.Add(txt);
+                var err = new Label { Left = 18, Top = 110, Width = 404, Height = 22, ForeColor = Color.Firebrick };
+                f.Controls.Add(err);
+                var ok = new Button { Text = "Unlock", Left = 246, Top = 142, Width = 84, Height = 32 };
+                var cancel = new Button { Text = "Cancel", Left = 338, Top = 142, Width = 84, Height = 32, DialogResult = DialogResult.Cancel };
+                ok.Click += delegate {
+                    f.Cursor = Cursors.WaitCursor;
+                    bool good = Crypto.Unlock(s, txt.Text);
+                    f.Cursor = Cursors.Default;
+                    if (good) { f.DialogResult = DialogResult.OK; f.Close(); }
+                    else err.Text = "That is not the passphrase.";
+                };
+                f.Controls.Add(ok); f.Controls.Add(cancel);
+                f.AcceptButton = ok; f.CancelButton = cancel;
+                if (f.ShowDialog(owner) == DialogResult.OK)
+                {
+                    sync.Log("Passphrase entered: encrypted data can be read and written.");
+                    sync.Start(true);
+                }
+            }
+        }
+
         public SyncSettingsForm(SyncEngine sync, Icon icon)
         {
             this.sync = sync;
@@ -1768,6 +2049,9 @@ namespace ChittamEnterprises
             txtPassword = new TextBox { Left = 110, Top = 80, Width = 290, UseSystemPasswordChar = true, Text = s.Password };
             cLogin.Controls.Add(txtPassword);
             cLogin.Controls.Add(new Label { Text = "Stored encrypted for your Windows account.", Left = 110, Top = 112, AutoSize = true, ForeColor = Look.Soft, Font = Look.UI(8.5f), BackColor = Color.White });
+            var lnkPass = new LinkLabel { Text = "Passphrase…", Left = 16, Top = 112, AutoSize = true, LinkColor = Look.Brand, BackColor = Color.White, Font = Look.UI(8.5f) };
+            lnkPass.LinkClicked += delegate { AskPassphrase(this, sync); };
+            cLogin.Controls.Add(lnkPass);
             Controls.Add(cLogin);
 
             var cCo = Look.Card(L, 254, W, 150, "Tally companies");

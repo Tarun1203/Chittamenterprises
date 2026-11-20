@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "./firebase";
 import { normalizeName } from "./data";
+import { openDoc } from "./crypto";
 
 export interface StockItem { n: string; q: number; u?: string }
 export interface StockSet { company: string; label?: string; tallyCompany?: string; syncedAt?: string; items: Record<string, StockItem> }
@@ -22,7 +23,7 @@ async function load<T>(coll: "tallyStock" | "tallyBills"): Promise<Record<string
   }
   const snap = await getDocs(collection(db, coll));
   const out: Record<string, T> = {};
-  snap.docs.forEach((d) => { out[d.id] = d.data() as T; });
+  for (const d of snap.docs) out[d.id] = await openDoc<T>(d.data(), coll + "/" + d.id);
   return out;
 }
 

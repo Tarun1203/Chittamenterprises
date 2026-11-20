@@ -37,6 +37,16 @@
   }
   function dbSame(a, b){ return JSON.stringify(dbStable(dbStrip(a))) === JSON.stringify(dbStable(dbStrip(b))); }
   function dbNow(){ return firebase.firestore.FieldValue.serverTimestamp(); }
+  // encryption (js/00-crypto.js): records are sealed before saving and opened after reading
+  var CC = window.ChittamCrypto;
+  function dbSeal(coll, data){ return CC.sealDoc(coll, data); }
+  // every record of a live update, opened; an older, slower update never replaces a newer one
+  function dbOpenSnap(snap, seqBox){
+    var mine = ++seqBox.n;
+    return Promise.all(snap.docs.map(function(d){
+      return CC.openDoc(d.data()).then(function(x){ return Object.assign({id: d.id}, dbStrip(x)); });
+    })).then(function(list){ if(mine !== seqBox.n) throw 'stale'; return list; });
+  }
 
   /* ---------------- writes ---------------- */
 
@@ -45,20 +55,21 @@
     if(!dbReady() || writes.length === 0) return Promise.resolve();
     var chunks = [];
     for(var i = 0; i < writes.length; i += 200) chunks.push(writes.slice(i, i + 200));
-    return Promise.all(chunks.map(function(chunk){
+    return Promise.all(chunks.map(async function(chunk){
       var batch = db.batch();
-      chunk.forEach(function(w){
+      for(var j = 0; j < chunk.length; j++){
+        var w = chunk[j];
         var data = dbStable(w.data);
         var doc = Object.assign({}, data, {updatedAt: dbNow(), updatedBy: dbUser.email});
         if(w.action === 'create'){ doc.createdAt = dbNow(); doc.createdBy = dbUser.email; }
-        batch.set(db.collection(w.coll).doc(w.id), doc, {merge: w.coll !== 'settings'});
-        batch.set(db.collection('activity').doc(), {
+        batch.set(db.collection(w.coll).doc(w.id), await dbSeal(w.coll, doc), {merge: w.coll !== 'settings'});
+        batch.set(db.collection('activity').doc(), await dbSeal('activity', {
           collection: w.coll, docId: w.id, action: w.action,
           name: data.name || data.businessName || (w.coll === 'receipts' ? (data.customerName || '') + ' ' + inr((Number(data.business) || 0) + (Number(data.cash) || 0)) : '') || ((data.orderNo || data.jobNo) ? (data.orderNo || data.jobNo) + (data.customerName ? ' — ' + data.customerName : '') : ''),
           before: w.before ? dbStable(w.before) : null, after: data,
           at: dbNow(), by: dbUser.email
-        });
-      });
+        }));
+      }
       return batch.commit();
     })).catch(function(err){
       showToast('Could not save to the database: ' + err.message);
@@ -92,19 +103,22 @@
     dbLastMessage[type] = text;
     var batch = db.batch();
     var msgRef = db.collection('messages').doc();
+    var pending = [];
     var who = {
       customerId: customer ? customer.id : '',
       customerName: customer ? customer.name : '',
       mobile: customer ? (customer.mobile || '') : ''
     };
     // inputs = every field filled in on the form, so the entry itself is kept, not just the text
-    batch.set(msgRef, Object.assign({type: type, text: text, inputs: dbStable(inputs || {}), at: dbNow(), by: dbUser.email}, who));
+    pending.push(dbSeal('messages', Object.assign({type: type, text: text, inputs: dbStable(inputs || {}), at: dbNow(), by: dbUser.email}, who))
+      .then(function(d){ batch.set(msgRef, d); }));
     // also in the activity log, so it shows everything in one place
-    batch.set(db.collection('activity').doc(), {
+    pending.push(dbSeal('activity', {
       collection: 'app', action: 'message-generated', name: who.customerName,
       details: Object.assign({type: type, messageId: msgRef.id}, who), at: dbNow(), by: dbUser.email
-    });
-    batch.commit().catch(function(err){ showToast('Message not saved to history: ' + err.message); });
+    }).then(function(d){ batch.set(db.collection('activity').doc(), d); }));
+    Promise.all(pending).then(function(){ return batch.commit(); })
+      .catch(function(err){ showToast('Message not saved to history: ' + err.message); });
   }
 
   // one entry in the activity log for anything the user does that isn't a
@@ -116,11 +130,12 @@
       if(dbEnabled()) dbPendingEvents.push([action, details, new Date().toISOString()]); // e.g. before sign-in finishes
       return;
     }
-    db.collection('activity').add({
+    dbSeal('activity', {
       collection: 'app', action: action,
       name: details.name || details.customerName || '',
       details: details, at: dbNow(), by: dbUser.email
-    }).catch(function(err){ showToast('Not saved to the log: ' + err.message); });
+    }).then(function(d){ return db.collection('activity').add(d); })
+      .catch(function(err){ showToast('Not saved to the log: ' + err.message); });
   }
   function dbFlushEvents(){
     var q = dbPendingEvents; dbPendingEvents = [];
@@ -167,47 +182,59 @@
 
   function dbListen(){
     dbUnsubs.forEach(function(u){ u(); });
+    function live(coll, opts, done){
+      var seq = {n: 0};
+      var handler = function(snap){
+        dbOpenSnap(snap, seq).then(function(list){ done(list, snap); }).catch(function(err){ if(err !== 'stale') dbReadError(err); });
+      };
+      return opts ? db.collection(coll).onSnapshot(opts, handler, dbReadError) : db.collection(coll).onSnapshot(handler, dbReadError);
+    }
+    var settingsSeq = 0;
     dbUnsubs = [
-      db.collection('customers').onSnapshot({includeMetadataChanges: true}, function(snap){
-        localStorage.setItem(LS_CUST, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
+      live('customers', {includeMetadataChanges: true}, function(list, snap){
+        localStorage.setItem(LS_CUST, JSON.stringify(list));
         dbRefreshUi('customers');
         dbStatusOnline(snap.metadata.fromCache);
-      }, dbReadError),
-      db.collection('products').onSnapshot(function(snap){
-        localStorage.setItem(LS_PRODUCTS, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
+      }),
+      live('products', null, function(list){
+        localStorage.setItem(LS_PRODUCTS, JSON.stringify(list));
         dbRefreshUi('products');
-      }, dbReadError),
-      db.collection('balances').onSnapshot(function(snap){
+      }),
+      live('balances', null, function(list){
         var all = {};
-        snap.docs.forEach(function(d){ all[d.id] = dbStrip(d.data()); delete all[d.id].at; delete all[d.id].by; });
+        list.forEach(function(d){ var id = d.id; all[id] = Object.assign({}, d); delete all[id].id; delete all[id].at; delete all[id].by; });
         localStorage.setItem('cem_balances', JSON.stringify(all));
         if(typeof renderBalanceStatus === 'function') renderBalanceStatus();
-      }, dbReadError),
-      db.collection('receipts').onSnapshot(function(snap){
-        localStorage.setItem(LS_RECEIPTS, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
+      }),
+      live('receipts', null, function(list){
+        localStorage.setItem(LS_RECEIPTS, JSON.stringify(list));
         dbRefreshUi('receipts');
-      }, dbReadError),
-      db.collection('transports').onSnapshot(function(snap){
-        localStorage.setItem(LS_TRANSPORTS, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
+      }),
+      live('transports', null, function(list){
+        localStorage.setItem(LS_TRANSPORTS, JSON.stringify(list));
         dbRefreshUi('transports');
-      }, dbReadError),
-      db.collection('services').onSnapshot(function(snap){
-        localStorage.setItem(LS_SERVICES, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
+      }),
+      live('services', null, function(list){
+        localStorage.setItem(LS_SERVICES, JSON.stringify(list));
         dbRefreshUi('services');
-      }, dbReadError),
-      db.collection('orders').onSnapshot(function(snap){
-        localStorage.setItem(LS_ORDERS, JSON.stringify(snap.docs.map(function(d){ return Object.assign({id: d.id}, dbStrip(d.data())); })));
+      }),
+      live('orders', null, function(list){
+        localStorage.setItem(LS_ORDERS, JSON.stringify(list));
         dbRefreshUi('orders');
-      }, dbReadError),
+      }),
       db.collection('settings').doc('main').onSnapshot(function(doc){
         if(!doc.exists) return;
-        localStorage.setItem(LS_SETTINGS, JSON.stringify(dbStrip(doc.data())));
-        dbRefreshUi('settings');
+        var mine = ++settingsSeq;
+        CC.openDoc(doc.data()).then(function(x){
+          if(mine !== settingsSeq) return;
+          localStorage.setItem(LS_SETTINGS, JSON.stringify(dbStrip(x)));
+          dbRefreshUi('settings');
+        }).catch(dbReadError);
       }, dbReadError)
     ];
   }
   function dbReadError(err){
-    dbSetStatus('⚠ Database error: ' + escapeHtml(err.message));
+    dbSetStatus('⚠ Database error: ' + escapeHtml(err.message || String(err)));
   }
 
   // First sign-in on a device: upload what this device already has that the
@@ -221,6 +248,12 @@
       db.collection('transports').get(),
       db.collection('settings').doc('main').get()
     ]).then(function(res){
+      // opened first, so names can be compared when the data is encrypted
+      return Promise.all(res.slice(0, 3).map(function(snap){
+        return Promise.all(snap.docs.map(function(d){ return CC.openDoc(d.data()).then(function(x){ return {id: d.id, data: function(){ return x; }}; }); }))
+          .then(function(docs){ return {docs: docs}; });
+      })).then(function(opened){ return opened.concat([res[3]]); });
+    }).then(function(res){
       var writes = [];
       var settingsDoc = res.pop();
       [['customers', res[0], getCustomers()], ['products', res[1], getProducts()], ['transports', res[2], getTransports()]].forEach(function(t){
@@ -269,19 +302,59 @@
       if(!user){
         dbUnsubs.forEach(function(u){ u(); });
         dbUnsubs = [];
+        if(dbCryptoUnsub){ dbCryptoUnsub(); dbCryptoUnsub = null; }
+        dbStarted = false;
+        dbShowUnlock(false);
         dbSetStatus('Not signed in.');
         dbShowAuth(true);
         return;
       }
       dbShowAuth(false);
-      if(dbSigningIn){ dbSigningIn = false; dbLogEvent('sign-in', {name: user.email}); }
-      dbFlushEvents();
-      dbMergeLocal(false)
-        .then(function(n){ if(n) showToast('Uploaded ' + n + ' record' + (n === 1 ? '' : 's') + ' from this device to the database.'); })
-        .catch(function(err){ showToast('Could not merge this device\'s data: ' + err.message); })
-        .then(dbListen);
+      // whether the data is encrypted is read first; while this device doesn't have
+      // the passphrase, nothing is read or saved
+      if(dbCryptoUnsub) dbCryptoUnsub();
+      dbCryptoUnsub = db.collection('settings').doc('crypto').onSnapshot(function(doc){
+        CC.setConfig(doc.exists ? doc.data() : null).then(dbCryptoCheck);
+      }, dbReadError);
     });
   }
+  var dbStarted = false, dbCryptoUnsub = null;
+  function dbCryptoCheck(){
+    if(!dbUser) return;
+    if(CC.isLocked()){ dbShowUnlock(true); return; }
+    dbShowUnlock(false);
+    if(dbStarted) return;
+    dbStarted = true;
+    if(dbSigningIn){ dbSigningIn = false; dbLogEvent('sign-in', {name: dbUser.email}); }
+    dbFlushEvents();
+    dbMergeLocal(false)
+      .then(function(n){ if(n) showToast('Uploaded ' + n + ' record' + (n === 1 ? '' : 's') + ' from this device to the database.'); })
+      .catch(function(err){ showToast('Could not merge this device\'s data: ' + err.message); })
+      .then(dbListen);
+  }
+
+  /* ---------------- the passphrase (when the data is encrypted) ---------------- */
+  function dbShowUnlock(show){
+    var el = document.getElementById('unlockOverlay');
+    if(!el) return;
+    el.classList.toggle('show', show);
+    if(show){
+      dbSetStatus('🔐 Data is encrypted — enter the passphrase.');
+      setTimeout(function(){ document.getElementById('unlock-pass').focus(); }, 50);
+    }
+  }
+  document.getElementById('unlock-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    var errEl = document.getElementById('unlock-error');
+    errEl.textContent = 'Checking…';
+    CC.unlock(document.getElementById('unlock-pass').value).then(function(ok){
+      if(!ok){ errEl.textContent = 'That is not the passphrase.' + (CC.setBy() ? ' Ask ' + CC.setBy() + '.' : ''); return; }
+      errEl.textContent = '';
+      document.getElementById('unlock-pass').value = '';
+      dbCryptoCheck();
+      dbLogEvent('encryption-unlocked', {name: dbUser ? dbUser.email : ''});
+    }).catch(function(err){ errEl.textContent = err.message; });
+  });
 
   var dbSigningIn = false;
   document.getElementById('auth-form').addEventListener('submit', function(e){
@@ -301,7 +374,8 @@
       e.preventDefault();
       if(!dbReady()){ firebase.auth().signOut(); return; }
       // write the sign-out entry first — once signed out the rules refuse writes
-      db.collection('activity').add({collection: 'app', action: 'sign-out', name: dbUser.email, details: {}, at: dbNow(), by: dbUser.email})
+      (CC.isLocked() ? Promise.reject() : dbSeal('activity', {collection: 'app', action: 'sign-out', name: dbUser.email, details: {}, at: dbNow(), by: dbUser.email}))
+        .then(function(d){ return db.collection('activity').add(d); })
         .catch(function(){})
         .then(function(){ firebase.auth().signOut(); });
     }

@@ -8,6 +8,9 @@ rules_version = '2';
 //   balances, transactions, stock and open invoices, and settings can be added and edited, never deleted.
 // - Message history and the change log can only be added to — never edited
 //   or deleted — and each entry must carry the signed-in user's email.
+// - Encryption (turned on from the app's Settings): once settings/crypto is on,
+//   every write must be encrypted (carry a new "enc"), and the passphrase's
+//   salt can never be swapped for another.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
@@ -16,62 +19,89 @@ service cloud.firestore {
     function stampedBySelf() {
       return request.resource.data.by == request.auth.token.email;
     }
+    function encOn() {
+      return exists(/databases/$(database)/documents/settings/crypto) &&
+        get(/databases/$(database)/documents/settings/crypto).data.on == true;
+    }
+    // a new encrypted value, not a readable write next to an old one
+    function sealed() {
+      return !encOn() || ('enc' in request.resource.data &&
+        (resource == null || !('enc' in resource.data) || request.resource.data.enc != resource.data.enc));
+    }
 
     match /customers/{id} {
-      allow read, create, update: if signedIn();
+      allow read: if signedIn();
+      allow create, update: if signedIn() && sealed();
       allow delete: if false;
     }
     match /products/{id} {
-      allow read, create, update: if signedIn();
+      allow read: if signedIn();
+      allow create, update: if signedIn() && sealed();
       allow delete: if false;
     }
     match /balances/{id} {
-      allow read, create, update: if signedIn();
+      allow read: if signedIn();
+      allow create, update: if signedIn() && sealed();
       allow delete: if false;
     }
     // Tally transactions sent by the Windows app (for Tally Match)
     match /tallyVouchers/{id} {
-      allow read, create, update: if signedIn();
+      allow read: if signedIn();
+      allow create, update: if signedIn() && sealed();
       allow delete: if false;
     }
     // Tally stock quantities and open invoices sent by the Windows app
     match /tallyStock/{id} {
-      allow read, create, update: if signedIn();
+      allow read: if signedIn();
+      allow create, update: if signedIn() && sealed();
       allow delete: if false;
     }
     match /tallyBills/{id} {
-      allow read, create, update: if signedIn();
+      allow read: if signedIn();
+      allow create, update: if signedIn() && sealed();
       allow delete: if false;
     }
     match /receipts/{id} {
-      allow read, create, update: if signedIn();
+      allow read: if signedIn();
+      allow create, update: if signedIn() && sealed();
       allow delete: if false;
     }
     match /transports/{id} {
-      allow read, create, update: if signedIn();
+      allow read: if signedIn();
+      allow create, update: if signedIn() && sealed();
       allow delete: if false;
     }
     match /services/{id} {
-      allow read, create, update: if signedIn();
+      allow read: if signedIn();
+      allow create, update: if signedIn() && sealed();
       allow delete: if false;
     }
     match /orders/{id} {
-      allow read, create, update: if signedIn();
+      allow read: if signedIn();
+      allow create, update: if signedIn() && sealed();
       allow delete: if false;
     }
     match /settings/{id} {
-      allow read, create, update: if signedIn();
+      allow read: if signedIn();
+      allow create, update: if signedIn() && id != 'crypto' && sealed();
+      allow delete: if false;
+    }
+    // whether the data is encrypted, and the check for the passphrase (never encrypted)
+    match /settings/crypto {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.on == true;
+      allow update: if signedIn() && request.resource.data.salt == resource.data.salt;
       allow delete: if false;
     }
 
     match /messages/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && stampedBySelf();
+      allow create: if signedIn() && stampedBySelf() && sealed();
       allow update, delete: if false;
     }
     match /activity/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && stampedBySelf();
+      allow create: if signedIn() && stampedBySelf() && sealed();
       allow update, delete: if false;
     }
   }

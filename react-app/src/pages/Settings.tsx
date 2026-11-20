@@ -2,10 +2,10 @@
 // balances (import + status), backup download / restore, and app details.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IconDeviceFloppy, IconDownload, IconPlus, IconStar, IconStarFilled, IconUpload, IconX } from "@tabler/icons-react";
-import { Button, Card, Field, PageHeader, useToast } from "@/components/kit";
+import { Button, Card, Dialog, Field, PageHeader, useToast } from "@/components/kit";
 import { RowRemove, Text } from "@/components/forms";
 import { useStore } from "@/lib/store";
-import { logEvent, normalizeName, saveBalances, saveRecords, saveSettings, type Settings as S } from "@/lib/data";
+import { logEvent, normalizeName, saveBalances, saveRecords, saveSettings, turnOnEncryption, type Settings as S } from "@/lib/data";
 import { parseTallyBalances } from "@/lib/tally";
 import { decodeFileText, todayISO } from "@/lib/format";
 import { msgDate } from "@/lib/messages";
@@ -30,6 +30,82 @@ function Section({ title, subtitle, children, action }: { title: string; subtitl
     </Card>
   );
 }
+// Encryption: once on, every record in the database is scrambled with the company
+// passphrase; each device asks for it once. It can't be turned off or changed here.
+const WINDOWS_MIN = "3.4";
+const verAtLeast = (v: string, min: string) => {
+  const a = v.split(".").map(Number), b = min.split(".").map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+  return true;
+};
+function EncryptionSection() {
+  const { crypto, balances } = useStore();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [p1, setP1] = useState("");
+  const [p2, setP2] = useState("");
+  const [sure, setSure] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const pc = String((balances.status as unknown as { pcVersion?: string } | undefined)?.pcVersion || "");
+  const pcOld = !!pc && !verAtLeast(pc, WINDOWS_MIN);
+  const problem = p1.length < 10 ? "At least 10 characters." : p1 !== p2 ? "The two don't match." : !sure ? "Tick the box to confirm." : "";
+  async function go() {
+    if (problem) { setError(problem); return; }
+    setError("");
+    setBusy("Turning on…");
+    try {
+      const n = await turnOnEncryption(p1, (d, t) => setBusy("Encrypting records… " + d + " / " + t));
+      toast("Encryption is on — " + n + " records encrypted.");
+      setOpen(false); setP1(""); setP2(""); setSure(false);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
+  return (
+    <Section title="Encryption" subtitle="Scrambles every record in the database with a passphrase only your team knows, so not even Google can read it.">
+      {crypto ? (
+        <p className="text-sm text-neutral-700">
+          🔐 <b>On</b> since {crypto.setAt ? new Date(crypto.setAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
+          {crypto.setBy ? " · by " + crypto.setBy : ""}. Each phone, browser and the Windows app asks for the passphrase once.
+          History entries from before it was turned on stay as they were.
+        </p>
+      ) : (
+        <>
+          <p className="text-sm text-neutral-600">🔓 Off. Data is protected by sign-in and Google's own encryption only.</p>
+          <Button variant="secondary" onClick={() => setOpen(true)}>Turn on encryption…</Button>
+        </>
+      )}
+      <Dialog open={open} onClose={() => { if (!busy) setOpen(false); }} title="Turn on encryption"
+        footer={<>
+          <Button variant="secondary" disabled={!!busy} onClick={() => setOpen(false)}>Cancel</Button>
+          <Button disabled={!!busy || pcOld} onClick={go}>{busy || "Encrypt all data"}</Button>
+        </>}>
+        <p className="text-sm text-neutral-600">
+          Choose a passphrase for the whole team. Every device will ask for it once (the old app, the new app, the Windows app).
+        </p>
+        <p className="rounded-xl bg-rose-50 p-3 text-sm font-medium text-rose-700">
+          ⚠ If the passphrase is forgotten on every device, the data <b>cannot be recovered</b> by anyone. Write it down and keep it safe. It can't be changed later from the app.
+        </p>
+        {pcOld && <p className="rounded-xl bg-amber-50 p-3 text-sm font-medium text-amber-800">The Windows app on the Tally PC is version {pc}. Update it to {WINDOWS_MIN} or later first (tray icon → Check for updates), so Tally sync keeps working.</p>}
+        <Field label="Passphrase" hint="At least 10 characters; a few words are easiest to remember">
+          <input className="field-input" type="password" autoComplete="new-password" value={p1} onChange={(e) => setP1(e.target.value)} />
+        </Field>
+        <Field label="Type it again">
+          <input className="field-input" type="password" autoComplete="new-password" value={p2} onChange={(e) => setP2(e.target.value)} />
+        </Field>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-1" checked={sure} onChange={(e) => setSure(e.target.checked)} />
+          I have written the passphrase down. I understand the data can't be recovered without it.
+        </label>
+        {error && <p className="text-sm font-medium text-red-600">{error}</p>}
+      </Dialog>
+    </Section>
+  );
+}
+
 function DefaultToggle({ on, onClick }: { on?: boolean; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} className={cn("inline-flex h-11 shrink-0 items-center gap-1 rounded-xl border px-3 text-xs font-bold", on ? "border-amber-300 bg-amber-50 text-amber-700" : "border-neutral-200 text-neutral-500 hover:bg-neutral-50")}>
@@ -221,6 +297,8 @@ export function Settings() {
             })}
             <input ref={balRef} type="file" accept=".json,.xml,application/json,text/xml" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) importBalances(file); e.target.value = ""; }} />
           </Section>
+
+          <EncryptionSection />
 
           <Section title="Backup" subtitle="Everything is already in the database. A backup file is an extra copy you keep yourself.">
             <div className="flex flex-wrap gap-2">

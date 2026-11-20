@@ -26,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/app.css?v=20261119b">
+<link rel="stylesheet" href="css/app.css?v=20261120a">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#2463EB">
 <meta name="mobile-web-app-capable" content="yes">
@@ -805,6 +805,17 @@
   </form>
 </div>
 
+<!-- Passphrase (when the data is encrypted) -->
+<div class="modal-overlay auth-overlay" id="unlockOverlay">
+  <form class="modal" id="unlock-form">
+    <h3>🔐 Data is encrypted</h3>
+    <p style="font-size:13.5px; color:var(--ink-soft); margin-top:-10px;">Enter the company passphrase once on this device.</p>
+    <div class="field"><label>Passphrase</label><input type="password" id="unlock-pass" autocomplete="off" required></div>
+    <p class="auth-error" id="unlock-error"></p>
+    <div class="btnrow"><button class="btn" type="submit">Unlock</button> <a href="#" class="btn ghost" data-db-signout>Sign out</a></div>
+  </form>
+</div>
+
 <!-- Pick list -->
 <div class="modal-overlay" id="pickModalOverlay">
   <div class="modal pick-modal">
@@ -889,32 +900,33 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="js/firebase-config.js?v=20261119b"></script>
-<script src="js/01-core.js?v=20261119b"></script>
-<script src="js/01b-database.js?v=20261119b"></script>
-<script src="js/02-nav.js?v=20261119b"></script>
-<script src="js/03-registry.js?v=20261119b"></script>
-<script src="js/04-customers.js?v=20261119b"></script>
-<script src="js/05-products.js?v=20261119b"></script>
-<script src="js/06-duplicates.js?v=20261119b"></script>
-<script src="js/07-settings.js?v=20261119b"></script>
-<script src="js/08-payment-updated.js?v=20261119b"></script>
-<script src="js/09-balance-confirmation.js?v=20261119b"></script>
-<script src="js/10-payment-reminder.js?v=20261119b"></script>
-<script src="js/11-dispatch-confirmation.js?v=20261119b"></script>
-<script src="js/12-stock-update.js?v=20261119b"></script>
-<script src="js/13-init.js?v=20261119b"></script>
-<script src="js/14-service-material.js?v=20261119b"></script>
-<script src="js/16-stock-return.js?v=20261119b"></script>
-<script src="js/18-history.js?v=20261119b"></script>
-<script src="js/19-orders.js?v=20261119b"></script>
-<script src="js/20-service-jobs.js?v=20261119b"></script>
-<script src="js/21-transports.js?v=20261119b"></script>
-<script src="js/22-app-install.js?v=20261119b"></script>
-<script src="js/24-receipts.js?v=20261119b"></script>
-<script src="js/25-picklist.js?v=20261119b"></script>
-<script src="js/26-tally-balances.js?v=20261119b"></script>
-<script src="js/23-mobile.js?v=20261119b"></script>
-<script src="js/27-look.js?v=20261119b"></script>
+<script src="js/firebase-config.js?v=20261120a"></script>
+<script src="js/00-crypto.js?v=20261120a"></script>
+<script src="js/01-core.js?v=20261120a"></script>
+<script src="js/01b-database.js?v=20261120a"></script>
+<script src="js/02-nav.js?v=20261120a"></script>
+<script src="js/03-registry.js?v=20261120a"></script>
+<script src="js/04-customers.js?v=20261120a"></script>
+<script src="js/05-products.js?v=20261120a"></script>
+<script src="js/06-duplicates.js?v=20261120a"></script>
+<script src="js/07-settings.js?v=20261120a"></script>
+<script src="js/08-payment-updated.js?v=20261120a"></script>
+<script src="js/09-balance-confirmation.js?v=20261120a"></script>
+<script src="js/10-payment-reminder.js?v=20261120a"></script>
+<script src="js/11-dispatch-confirmation.js?v=20261120a"></script>
+<script src="js/12-stock-update.js?v=20261120a"></script>
+<script src="js/13-init.js?v=20261120a"></script>
+<script src="js/14-service-material.js?v=20261120a"></script>
+<script src="js/16-stock-return.js?v=20261120a"></script>
+<script src="js/18-history.js?v=20261120a"></script>
+<script src="js/19-orders.js?v=20261120a"></script>
+<script src="js/20-service-jobs.js?v=20261120a"></script>
+<script src="js/21-transports.js?v=20261120a"></script>
+<script src="js/22-app-install.js?v=20261120a"></script>
+<script src="js/24-receipts.js?v=20261120a"></script>
+<script src="js/25-picklist.js?v=20261120a"></script>
+<script src="js/26-tally-balances.js?v=20261120a"></script>
+<script src="js/23-mobile.js?v=20261120a"></script>
+<script src="js/27-look.js?v=20261120a"></script>
 </body>
 </html>

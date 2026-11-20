@@ -4,6 +4,16 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.27", date: "2026-11-20", title: "Encryption: the data in Firebase scrambled with your own passphrase", windows: "3.4",
+    items: [
+      "Settings → Encryption → Turn on encryption…: choose a passphrase for the team. Every record (customers, products, orders, payments, Tally balances and transactions, settings) is then stored scrambled, so not even Google can read it.",
+      "Each phone, browser and the Windows app asks for the passphrase once. The old app works with it too.",
+      "If the passphrase is forgotten on every device, the data can't be recovered — write it down.",
+      "Windows app 3.4: Tally Sync → Passphrase… to enter it on the Tally PC. Until then the sync waits.",
+      "History and saved messages from before encryption stay as they were; new ones are encrypted.",
+    ],
+  },
+  {
     version: "3.26", date: "2026-11-20", title: "More Tally companies, and a “sync from” date per company", windows: "3.3",
     items: [
       "Windows app → Tally Sync → Companies…: add more Tally companies — give each a name (how the app shows it) and pick its Tally company. Each is synced like Chittam Enterprises and Cash: balances, open bills, transactions and stock.",

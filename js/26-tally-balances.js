@@ -112,7 +112,8 @@
     all[company] = entry;
     setBalancesLocal(all);
     if(typeof dbReady === 'function' && dbReady()){
-      db.collection('balances').doc(company).set(Object.assign({}, entry, {at: firebase.firestore.FieldValue.serverTimestamp(), by: dbUser.email}))
+      window.ChittamCrypto.sealDoc('balances', Object.assign({}, entry, {at: firebase.firestore.FieldValue.serverTimestamp(), by: dbUser.email}))
+        .then(function(d){ return db.collection('balances').doc(company).set(d); })
         .catch(function(err){ showToast('Balances not saved to the database: ' + err.message); });
     }
     if(typeof dbLogEvent === 'function') dbLogEvent('balances-imported', {name: entry.label, file: fileName, matched: matched, unmatched: unmatched.length});
