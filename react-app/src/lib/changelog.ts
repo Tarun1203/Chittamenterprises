@@ -4,6 +4,14 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.21", date: "2026-11-20", title: "App receipts stand out in Tally's Day Book", windows: "3.2",
+    items: [
+      "Post to Tally now creates the voucher as type “App Receipt” (under Receipt), so receipts entered from the app show in their own Vch Type column in Tally's Day Book and can be filtered.",
+      "The first post in each company creates the “App Receipt” voucher type once (numbered like your Receipt type); the confirmation says so.",
+      "The narration also starts with “[Chittam App]”.",
+    ],
+  },
+  {
     version: "3.20", date: "2026-11-20", title: "Ledger: pending bills with days, highlighted totals; buy-and-sell parties", windows: "3.1",
     items: [
       "Ledger Statement: “Include pending bills” adds each company's open bills — bill no., date, due date, number of days and days overdue — on screen, in the PDF and in the WhatsApp message.",

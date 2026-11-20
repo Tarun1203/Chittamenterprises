@@ -70,8 +70,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyProduct("Chittam Enterprises")]
 [assembly: System.Reflection.AssemblyCompany("Chittam Enterprises")]
 // keep in step with Program.DesktopVersion (build.ps1 checks)
-[assembly: System.Reflection.AssemblyVersion("3.1.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("3.1")]
+[assembly: System.Reflection.AssemblyVersion("3.2.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.2")]
 
 namespace ChittamEnterprises
 {
@@ -81,7 +81,7 @@ namespace ChittamEnterprises
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
         // where new versions of this program are published (desktop/ folder of the site)
         public const string UpdateUrl = "https://tarun1203.github.io/Chittamenterprises/desktop/version.json";
-        public const string DesktopVersion = "3.1";
+        public const string DesktopVersion = "3.2";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -500,9 +500,51 @@ namespace ChittamEnterprises
 
         // bills: amounts against the customer's invoices (Agst Ref); the rest goes On Account.
         // bank: instrument details for a bank ledger (Tally's bank allocation)
+        // receipts posted from the app use this voucher type (under Receipt), so they stand out in the Day Book
+        public const string AppReceiptType = "App Receipt";
+
+        // numbering method of a voucher type, or null if the company doesn't have it
+        public static string VoucherTypeNumbering(string url, string company, string name)
+        {
+            Func<string, string> x = t0 => System.Security.SecurityElement.Escape(t0 ?? "");
+            var xml = Post(url, "<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>ChittamVchTypes</ID></HEADER>" +
+                "<BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT><SVCURRENTCOMPANY>" + x(company) + "</SVCURRENTCOMPANY></STATICVARIABLES>" +
+                "<TDL><TDLMESSAGE><COLLECTION NAME=\"ChittamVchTypes\" ISMODIFY=\"No\"><TYPE>VoucherType</TYPE><FETCH>Name, NumberingMethod</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
+            var doc = new XmlDocument();
+            doc.LoadXml(xml);
+            foreach (XmlElement e in doc.SelectNodes("//VOUCHERTYPE"))
+                if (string.Equals(e.GetAttribute("NAME").Trim(), name, StringComparison.OrdinalIgnoreCase)) return Text(e, "NUMBERINGMETHOD");
+            return null;
+        }
+
+        // create the "App Receipt" voucher type once, numbered like the company's own Receipt type
+        public static string CreateAppReceiptType(string url, string company)
+        {
+            Func<string, string> x = t0 => System.Security.SecurityElement.Escape(t0 ?? "");
+            string numbering = VoucherTypeNumbering(url, company, "Receipt");
+            if (string.IsNullOrEmpty(numbering)) numbering = "Automatic";
+            var xml = "<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>All Masters</REPORTNAME>" +
+                "<STATICVARIABLES><SVCURRENTCOMPANY>" + x(company) + "</SVCURRENTCOMPANY></STATICVARIABLES></REQUESTDESC><REQUESTDATA>" +
+                "<TALLYMESSAGE xmlns:UDF=\"TallyUDF\"><VOUCHERTYPE NAME=\"" + AppReceiptType + "\" ACTION=\"Create\">" +
+                "<NAME.LIST><NAME>" + AppReceiptType + "</NAME></NAME.LIST><PARENT>Receipt</PARENT>" +
+                "<NUMBERINGMETHOD>" + x(numbering) + "</NUMBERINGMETHOD><ISACTIVE>Yes</ISACTIVE>" +
+                "</VOUCHERTYPE></TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>";
+            string res;
+            try { res = Post(url, xml); } catch (Exception ex) { return ex.Message; }
+            var created = Regex.Match(res, "<CREATED>\\s*(\\d+)\\s*</CREATED>");
+            if (created.Success && created.Groups[1].Value != "0") return null;
+            var err = Regex.Match(res, "<LINEERROR>(.*?)</LINEERROR>");
+            return err.Success ? WebUtility.HtmlDecode(err.Groups[1].Value) : "Tally did not create the voucher type.";
+        }
+
         public static string PostReceipt(string url, string company, DateTime date, string party, string intoLedger, double amount, string narration,
             List<BillPart> bills, BankDetails bank, string restType, string restRef)
+        { return PostReceipt(url, company, date, party, intoLedger, amount, narration, bills, bank, restType, restRef, "Receipt"); }
+
+        public static string PostReceipt(string url, string company, DateTime date, string party, string intoLedger, double amount, string narration,
+            List<BillPart> bills, BankDetails bank, string restType, string restRef, string vchType)
         {
+            if (string.IsNullOrEmpty(vchType)) vchType = "Receipt";
             // the amount beyond the bills: On Account, or a New Ref / Advance under its own reference
             if (restType != "New Ref" && restType != "Advance") restType = "On Account";
             if (restType != "On Account" && string.IsNullOrEmpty(restRef)) restType = "On Account";
@@ -525,9 +567,9 @@ namespace ChittamEnterprises
                 "<AMOUNT>-" + amt + "</AMOUNT></BANKALLOCATIONS.LIST>";
             var xml = "<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME>" +
                 "<STATICVARIABLES><SVCURRENTCOMPANY>" + x(company) + "</SVCURRENTCOMPANY></STATICVARIABLES></REQUESTDESC><REQUESTDATA>" +
-                "<TALLYMESSAGE xmlns:UDF=\"TallyUDF\"><VOUCHER VCHTYPE=\"Receipt\" ACTION=\"Create\">" +
+                "<TALLYMESSAGE xmlns:UDF=\"TallyUDF\"><VOUCHER VCHTYPE=\"" + x(vchType) + "\" ACTION=\"Create\">" +
                 "<DATE>" + date.ToString("yyyyMMdd") + "</DATE><EFFECTIVEDATE>" + date.ToString("yyyyMMdd") + "</EFFECTIVEDATE>" +
-                "<VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME><PARTYLEDGERNAME>" + x(party) + "</PARTYLEDGERNAME>" +
+                "<VOUCHERTYPENAME>" + x(vchType) + "</VOUCHERTYPENAME><PARTYLEDGERNAME>" + x(party) + "</PARTYLEDGERNAME>" +
                 "<NARRATION>" + x(narration) + "</NARRATION>" +
                 "<ALLLEDGERENTRIES.LIST><LEDGERNAME>" + x(party) + "</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><ISPARTYLEDGER>Yes</ISPARTYLEDGER><AMOUNT>" + amt + "</AMOUNT>" +
                 allocs + "</ALLLEDGERENTRIES.LIST>" +
@@ -2096,22 +2138,35 @@ namespace ChittamEnterprises
                 (onAccount > 0.004 ? "   " + (restType == "On Account" ? "On Account" : restType + " " + restRef) + ":  ₹" + onAccount.ToString("N2", inr) + "\n" : "");
             var bankText = bank == null ? "" : "Transaction:  " + bank.Type + (bank.Number.Length > 0 ? " · No. " + bank.Number : "") +
                 " · " + bank.Date.ToString("dd MMM yyyy") + (bank.Bank.Length > 0 ? " · " + bank.Bank : "") + "\n";
+            // app entries go under "App Receipt" so they show in the Day Book; the narration is marked too
+            if (!narration.StartsWith("[Chittam App]")) narration = ("[Chittam App] " + narration).Trim();
+            bool typeExists;
+            try { typeExists = Tally.VoucherTypeNumbering(sync.Settings.TallyUrl, company, Tally.AppReceiptType) != null; }
+            catch (Exception ex) { done("Couldn't read Tally's voucher types: " + ex.Message); return; }
             var msg = "Create this voucher in Tally?\n\n" +
                 "Company:  " + company + "\n" +
-                "Voucher:  Receipt\n" +
+                "Voucher:  " + Tally.AppReceiptType + " (under Receipt)\n" +
                 "Date:  " + date.ToString("dd MMM yyyy") + "\n" +
                 "Received from:  " + party + "\n" +
                 "Received into:  " + into + "\n" +
                 "Amount:  ₹" + amount.ToString("N2", CultureInfo.GetCultureInfo("en-IN")) + "\n" +
                 bankText +
                 (narration.Length > 0 ? "Narration:  " + narration + "\n" : "") +
-                "\nAdjusted against:\n" + billText;
+                "\nAdjusted against:\n" + billText +
+                (typeExists ? "" : "\nFirst time in this company: the voucher type \"" + Tally.AppReceiptType + "\" (under Receipt) will be created, so receipts from the app show separately in the Day Book.\n");
             ShowWindow();
             if (MessageBox.Show(this, msg, "Post to Tally", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
             { done("Not posted."); return; }
             ThreadPool.QueueUserWorkItem(delegate {
-                string err = Tally.PostReceipt(sync.Settings.TallyUrl, company, date, party, into, amount, narration, bills, bank, restType, restRef);
-                sync.Log(err == null ? "Posted to Tally: Receipt " + party + " ₹" + amount.ToString("0.##", CultureInfo.InvariantCulture) + " into " + into + " (" + company + ")" : "Posting to Tally failed: " + err);
+                string err = null;
+                if (!typeExists)
+                {
+                    var terr = Tally.CreateAppReceiptType(sync.Settings.TallyUrl, company);
+                    if (terr != null) err = "Couldn't create the voucher type \"" + Tally.AppReceiptType + "\" in Tally: " + terr + ". Nothing was posted.";
+                    else sync.Log("Created voucher type \"" + Tally.AppReceiptType + "\" in " + company);
+                }
+                if (err == null) err = Tally.PostReceipt(sync.Settings.TallyUrl, company, date, party, into, amount, narration, bills, bank, restType, restRef, Tally.AppReceiptType);
+                sync.Log(err == null ? "Posted to Tally: " + Tally.AppReceiptType + " " + party + " ₹" + amount.ToString("0.##", CultureInfo.InvariantCulture) + " into " + into + " (" + company + ")" : "Posting to Tally failed: " + err);
                 if (err == null)
                 {
                     try { var token = Firebase.SignIn(sync.Settings); Firebase.LogVoucherPosted(sync.Settings, token, company, party, amount, into, dateIso, receiptId); } catch { }

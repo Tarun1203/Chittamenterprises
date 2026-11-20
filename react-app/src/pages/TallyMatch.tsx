@@ -402,7 +402,7 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
         </div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
           <dt className="text-neutral-500">Company</dt><dd className="font-semibold">{accLabel(payment.account)}</dd>
-          <dt className="text-neutral-500">Voucher</dt><dd className="font-semibold">Receipt · {msgDate(payment.date)}</dd>
+          <dt className="text-neutral-500">Voucher</dt><dd className="font-semibold">App Receipt · {msgDate(payment.date)}</dd>
           <dt className="text-neutral-500">Received from</dt>
           <dd className="font-semibold">{tallyName || <span className="text-rose-600">No ledger named “{payment.name}” in Tally — create it in Tally (or fix the spelling) first.</span>}</dd>
           <dt className="text-neutral-500">Amount</dt><dd className="font-semibold">{inr(payment.amount)}</dd>
@@ -457,7 +457,7 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
         </div>
         <Field label="Narration"><Text value={narration} onChange={(e) => setNarration(e.target.value)} /></Field>
         {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{err}</p>}
-        <p className="text-xs text-neutral-500">The Windows app shows the whole voucher — bills and transaction details — and asks you to confirm before it's created.</p>
+        <p className="text-xs text-neutral-500">Posted as voucher type <b>App Receipt</b> (under Receipt) with “[Chittam App]” in the narration, so it stands out in Tally's Day Book. The Windows app shows the whole voucher — bills and transaction details — and asks you to confirm before it's created.</p>
       </>}
     </Dialog>
   );
