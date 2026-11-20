@@ -79,7 +79,7 @@ export function TallyMatch() {
       <SyncInfo sets={sets} accLabel={accLabel} balancesAt={[balances.business?.importedAt, balances.cash?.importedAt]} />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="no-scrollbar flex max-w-full gap-1 overflow-x-auto rounded-xl bg-neutral-200/60 p-1">
+        <div className="flex max-w-full flex-wrap gap-1 rounded-xl bg-neutral-200/60 p-1">
           {([["payments", "Payments"], ["duplicates", "Duplicates" + (dupCount ? " (" + dupCount + ")" : "")], ["sales", "Sales & returns"], ["balances", "Balances"]] as const).map(([v, l]) => (
             <button key={v} onClick={() => setTab(v)} className={cn("rounded-lg px-3.5 py-1.5 text-sm font-semibold whitespace-nowrap", tab === v ? "bg-white shadow-sm" : "text-neutral-500")}>{l}</button>
           ))}

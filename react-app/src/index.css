@@ -49,3 +49,16 @@ button:focus-visible, a:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Phones: a grid with no column setup of its own gets one column that shrinks
+   to the screen, so a long customer or product name can't push cards (and the
+   whole page) past the screen edge. Any grid-cols-* class still overrides it. */
+@layer base {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Narrow phones: two date boxes side by side cut the date off, so a row that
+   holds a date box stacks into one column below 380px. */
+@media (max-width: 379px) {
+  .grid.grid-cols-2:has(input[type="date"]) { grid-template-columns: minmax(0, 1fr); }
+}

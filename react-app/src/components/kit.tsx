@@ -133,7 +133,8 @@ export function Dialog({ open, onClose, title, children, footer }: { open: boole
           <h2 className="mb-5 pr-8 text-xl font-extrabold tracking-tight">{title}</h2>
           <div className="space-y-4">{children}</div>
         </ModalContent>
-        {footer && <div className="flex justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-6 py-4">{footer}</div>}
+        {/* buttons keep their size and wrap onto a second line on narrow phones */}
+        {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-4 py-4 sm:px-6 [&>*]:shrink-0 [&>*]:whitespace-nowrap">{footer}</div>}
       </ModalBody>
     </ModalProvider>,
     document.body,

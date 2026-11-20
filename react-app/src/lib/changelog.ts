@@ -4,6 +4,16 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.23", date: "2026-11-20", title: "Phone layout fixes",
+    items: [
+      "Lists of cards (customers, orders, service jobs, Tally Match…) no longer run past the phone's edge when a name is long — long names end with “…” instead.",
+      "Pop-up windows: the buttons at the bottom (Remove, Ledger statement, Cancel, Save…) no longer squash or get cut off — they move to a second line on small phones.",
+      "Date boxes side by side (From / To, mode / date) stack one under the other on narrow phones, so the whole date shows.",
+      "Orders and Service Jobs: the search box gets the full width on phones, with the status filter below it.",
+      "Tally Match: all four tabs (Payments, Duplicates, Sales & returns, Balances) are visible on phones instead of hiding off to the right.",
+    ],
+  },
+  {
     version: "3.22", date: "2026-11-20", title: "Find and merge duplicate customers; remove customers",
     items: [
       "Customers → Possible duplicates: finds customers saved twice — the same name written differently, a small spelling slip, or the same mobile number — and shows each one's orders, service jobs, payments and whether it's in Tally.",

@@ -89,7 +89,7 @@ export function Orders() {
         </div>
       )}
       <div className="mb-5 flex flex-wrap gap-3">
-        <Text className="max-w-md flex-1" value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Search order no., customer or product…" />
+        <Text className="max-w-md min-w-[15rem] flex-1" value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Search order no., customer or product…" />
         <Select className="w-auto" value={status} onChange={setStatus} options={[{ value: "", label: "All statuses" }, ...ORDER_STATUSES.map((s) => ({ value: s, label: s }))]} />
       </div>
       {list.length === 0 ? (

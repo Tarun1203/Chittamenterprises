@@ -75,7 +75,7 @@ export function ServiceJobs() {
         </div>
       )}
       <div className="mb-5 flex flex-wrap gap-3">
-        <Text className="max-w-md flex-1" value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Search job no., dealer, product or serial no.…" />
+        <Text className="max-w-md min-w-[15rem] flex-1" value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Search job no., dealer, product or serial no.…" />
         <Select className="w-auto" value={status} onChange={setStatus} options={[{ value: "", label: "All statuses" }, ...JOB_STATUSES.map((s) => ({ value: s, label: s }))]} />
       </div>
       {list.length === 0 ? (
