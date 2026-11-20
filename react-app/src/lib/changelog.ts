@@ -4,6 +4,13 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.24", date: "2026-11-20", title: "Post to Tally: choose Chittam Enterprises or Cash",
+    items: [
+      "Post to Tally now lets you pick the company — Chittam Enterprises or Cash. The customer's Tally ledger, their open bills and the cash / bank ledgers all switch to that company.",
+      "Posting into the other company than the one the payment was entered under? A tick box (on by default) also moves the payment to that company in the app — only after Tally confirms the voucher — so Tally Match agrees. The move is noted on the payment and kept in History.",
+    ],
+  },
+  {
     version: "3.23", date: "2026-11-20", title: "Phone layout fixes",
     items: [
       "Lists of cards (customers, orders, service jobs, Tally Match…) no longer run past the phone's edge when a name is long — long names end with “…” instead.",

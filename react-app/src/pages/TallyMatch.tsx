@@ -338,10 +338,16 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
   const [narration, setNarration] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // which Tally company to post into: where the payment was entered, or the other one
+  const [co, setCo] = useState<Account>("business");
+  // when posting into the other company, also move the payment there in the app (so Tally Match agrees)
+  const [moveInApp, setMoveInApp] = useState(true);
   const receipt = payment ? receipts.find((x) => x.id === payment.receiptId) : undefined;
-  // the customer's ledger as spelled in Tally (from the balance sync)
-  const tallyName = payment ? balances[payment.account]?.names?.[normalizeName(payment.name)] || "" : "";
-  const openBills = useMemo(() => (payment ? billsOf(tallyBills, payment.account, tallyName || payment.name) : []), [payment, tallyBills, tallyName]);
+  // the customer's ledger as spelled in Tally (from the balance sync), in the chosen company
+  const tallyName = !payment ? "" : balances[co]?.names?.[normalizeName(payment.name)]
+    || (balances[co]?.balances?.[normalizeName(payment.name)] !== undefined ? payment.name : "");
+  const openBills = useMemo(() => (payment ? billsOf(tallyBills, co, tallyName || payment.name) : []), [payment, co, tallyBills, tallyName]);
+  const otherCo = !!payment && co !== payment.account;
   const num = (v: string) => Math.max(0, Number(v) || 0);
   const against = Math.round(openBills.reduce((t, b) => t + num(adj[b.n] || ""), 0) * 100) / 100;
   const onAccount = payment ? Math.round((payment.amount - against) * 100) / 100 : 0;
@@ -363,11 +369,18 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
     setTxn({ type: /cheque|dd|draft/i.test(m) ? "Cheque" : /upi|neft|rtgs|imps|transfer|gpay|phone\s*pe|paytm|online/i.test(m) ? "e-Fund Transfer" : "Others",
       number: receipt?.txnRef || "", date: payment.date, bank: "" });
     setRest({ type: "On Account", ref: "" });
-    desktopPost({ type: "tally-cashbank", key: payment.account });
+    setCo(payment.account);
+    setMoveInApp(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payment]);
+  // the chosen company's cash / bank ledgers
+  useEffect(() => {
+    if (!payment) return;
+    setLedgers(null); setBanks([]); setInto("");   // the bills refill themselves (oldest first) when the company changes
+    desktopPost({ type: "tally-cashbank", key: co });
+  }, [payment, co]);
   useDesktopReply<{ key: string; ledgers: string[]; banks?: string[]; error?: string }>("tally-cashbank", (d) => {
-    if (!payment || d.key !== payment.account) return;
+    if (!payment || d.key !== co) return;
     setLedgers(d.ledgers || []);
     setBanks(d.banks || []);
     if (d.error) setErr("Couldn't read Tally's cash / bank ledgers: " + d.error);
@@ -379,8 +392,17 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
   useDesktopReply<{ receiptId: string; ok: boolean; error: string }>("tally-post-result", (d) => {
     if (!payment || d.receiptId !== payment.receiptId) return;
     setBusy(false);
-    if (d.ok) { toast("Posted to Tally. It shows as matched after the sync finishes (a few seconds)."); onClose(); }
-    else if (d.error !== "Not posted.") setErr(d.error);
+    if (!d.ok) { if (d.error !== "Not posted.") setErr(d.error); return; }
+    // posted into the other company: move the amount there in the app too, only now that Tally has it
+    if (otherCo && moveInApp && receipt) {
+      const from = payment.account, amt = payment.amount;
+      const next = { ...receipt, [from]: Math.max(0, Math.round(((Number(receipt[from]) || 0) - amt) * 100) / 100), [co]: Math.round(((Number(receipt[co]) || 0) + amt) * 100) / 100,
+        note: ((receipt.note ? receipt.note + " · " : "") + "moved to " + accLabel(co) + " when posted to Tally").slice(0, 200) };
+      saveRecord("receipts", next, receipt)
+        .then(() => toast("Posted to " + accLabel(co) + " in Tally, and moved there in the app."))
+        .catch((e) => toast("Posted to Tally, but the app's payment couldn't be moved: " + (e as Error).message));
+    } else toast("Posted to Tally. It shows as matched after the sync finishes (a few seconds).");
+    onClose();
   });
   const tooMuch = onAccount < -0.004;
   const needsRef = onAccount > 0.004 && rest.type !== "On Account";
@@ -389,7 +411,7 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
     if (!payment || !tallyName || !into || tooMuch) return;
     setBusy(true); setErr("");
     const bills = openBills.filter((b) => num(adj[b.n] || "") > 0).map((b) => ({ ref: b.n, amount: num(adj[b.n] || "") }));
-    desktopPost({ type: "tally-post-receipt", key: payment.account, date: payment.date, party: tallyName, into, amount: payment.amount, narration, receiptId: payment.receiptId,
+    desktopPost({ type: "tally-post-receipt", key: co, date: payment.date, party: tallyName, into, amount: payment.amount, narration, receiptId: payment.receiptId,
       bills, rest: onAccount > 0.004 ? { type: rest.type, ref: rest.type === "On Account" ? "" : restRef } : undefined, bank: isBank ? { type: txn.type, number: txn.number.trim(), date: txn.date || payment.date, bank: txn.bank.trim() } : undefined });
   }
   return (
@@ -401,12 +423,26 @@ function PostDialog({ payment, onClose, accLabel }: { payment: AppPayment | null
           <div className="text-xs text-neutral-500">{appSub(payment, accLabel)}</div>
         </div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-          <dt className="text-neutral-500">Company</dt><dd className="font-semibold">{accLabel(payment.account)}</dd>
+          <dt className="self-center text-neutral-500">Company</dt>
+          <dd>
+            <div className="inline-flex flex-wrap gap-1 rounded-xl bg-neutral-200/60 p-1">
+              {(["business", "cash"] as Account[]).map((a) => (
+                <button key={a} type="button" onClick={() => setCo(a)} disabled={busy}
+                  className={cn("rounded-lg px-3 py-1.5 text-sm font-semibold whitespace-nowrap", co === a ? "bg-white shadow-sm" : "text-neutral-500")}>{accLabel(a)}</button>
+              ))}
+            </div>
+          </dd>
           <dt className="text-neutral-500">Voucher</dt><dd className="font-semibold">App Receipt · {msgDate(payment.date)}</dd>
           <dt className="text-neutral-500">Received from</dt>
           <dd className="font-semibold">{tallyName || <span className="text-rose-600">No ledger named “{payment.name}” in Tally — create it in Tally (or fix the spelling) first.</span>}</dd>
           <dt className="text-neutral-500">Amount</dt><dd className="font-semibold">{inr(payment.amount)}</dd>
         </dl>
+        {otherCo && (
+          <label className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+            <input type="checkbox" className="mt-0.5 size-4 accent-brand-600" checked={moveInApp} onChange={(e) => setMoveInApp(e.target.checked)} />
+            <span>This payment is entered under <b>{accLabel(payment.account)}</b> in the app. After Tally confirms, also move its {inr(payment.amount)} to <b>{accLabel(co)}</b> in the app, so Tally Match agrees.</span>
+          </label>
+        )}
         <Field label="Received into (Tally ledger)">
           {ledgers === null ? <p className="text-sm text-neutral-500">Reading Tally's cash and bank ledgers…</p>
             : <Select value={into} onChange={setInto} options={ledgers.length ? ledgers : [{ value: "", label: "No cash / bank ledgers found" }]} />}
