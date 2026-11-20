@@ -16,6 +16,8 @@ import { inr, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { printHtml } from "./PickList";
 import { safeFileName, sharePdf } from "@/lib/pdf";
+import { billsOf, useTallyBills } from "@/lib/tallydata";
+import { billAge } from "@/lib/ledger";
 import { fetchVoucher, summaryVoucher, tallyLedgerPdf, voucherPdf, voucherTitle } from "@/lib/tallypdf";
 import type { LedgerRow as Row } from "@/lib/ledger";
 
@@ -29,6 +31,9 @@ export function Ledger() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState(todayISO());
+  // bill-wise pending payments (from Tally's open bills), with their age in days
+  const [withBills, setWithBills] = useState(true);
+  const tallyBills = useTallyBills();
   const biz = settings.businessName || "Chittam Enterprises";
 
   useEffect(() => {
@@ -60,7 +65,7 @@ export function Ledger() {
     if (!customer || !parts.length) { toast("Pick a customer with Tally entries first."); return; }
     setMaking(true);
     try {
-      const blob = await tallyLedgerPdf(settings, customer, from, to, parts);
+      const blob = await tallyLedgerPdf(settings, customer, from, to, parts, { bills: billsFor() });
       const r = await sharePdf(blob, safeFileName("Ledger " + customer.name + " " + from + " to " + to) + ".pdf",
         { mobile: customer.mobile, kind: "Ledgers", text: "Ledger statement – " + biz });
       if (r.message) toast(r.message);
@@ -87,6 +92,13 @@ export function Ledger() {
       logEvent("voucher-pdf-shared", { customerName: customer.name, mobile: customer.mobile || "", company: account, voucherType: detail.type, voucherNo: detail.number || "", date: r.d, full: !!v, savedTo: res.path || "" }).catch(() => {});
     } catch (e) { toast("Could not make the PDF: " + (e as Error).message); }
     finally { setVbusy(""); }
+  }
+
+  function billsFor() {
+    if (!withBills || !customer) return undefined;
+    const out: Partial<Record<"business" | "cash", { n: string; d: string; due?: string; a: number; od?: number }[]>> = {};
+    for (const p of parts) out[p.account] = billsOf(tallyBills, p.account, customer.name);
+    return out;
   }
 
   function print() {
@@ -128,6 +140,10 @@ export function Ledger() {
             <p className="text-xs text-neutral-500">
               Tally transactions are synced {range.from ? "from " + msgDate(range.from) + " to " + msgDate(range.to) : "— not yet"}. The Windows app (2.9 and later) syncs from 1 April, the start of the financial year.
             </p>
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" className="size-4 accent-brand-600" checked={withBills} onChange={(e) => setWithBills(e.target.checked)} />
+              Include pending bills (bill-wise, with number of days)
+            </label>
             {tooEarly && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">Transactions before {msgDate(range.from)} aren't synced, so the opening balance on {msgDate(from)} would be wrong. Start on or after {msgDate(range.from)}.</p>}
             {customer && <TallyFreshness customer={customer.name} />}
           </Card>
@@ -148,18 +164,46 @@ export function Ledger() {
               </div>
             </Card>
           ))}
+          {withBills && customer && parts.map((p) => {
+            const bills = billsOf(tallyBills, p.account, customer.name);
+            return (
+              <Card key={"b" + p.account} className="p-0">
+                <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
+                  <span className="font-extrabold">Pending bills · {p.label}</span>
+                  <span className="text-sm font-bold tabular-nums">{inr(bills.reduce((t, b) => t + b.a, 0))}</span>
+                </div>
+                {tallyBills === null ? <p className="px-4 py-3 text-sm text-neutral-500">Loading…</p>
+                  : !bills.length ? <p className="px-4 py-3 text-sm text-neutral-500">No pending bills.</p>
+                  : <div className="divide-y divide-neutral-100 text-sm">
+                      {bills.map((b) => (
+                        <div key={b.n} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2">
+                          <span className="min-w-0"><span className="block truncate font-semibold">{b.n}</span><span className="text-xs text-neutral-500">{msgDate(b.d)}{b.due ? " · due " + msgDate(b.due) : ""}</span></span>
+                          <span className={cn("rounded-full px-2 py-0.5 text-xs font-bold", b.od ? "bg-rose-50 text-rose-700" : "bg-neutral-100 text-neutral-600")}>{billAge(b.d)} days{b.od ? " · " + b.od + " overdue" : ""}</span>
+                          <span className="text-right font-semibold tabular-nums">{inr(b.a)}</span>
+                        </div>
+                      ))}
+                    </div>}
+              </Card>
+            );
+          })}
           {parts.length > 0 && (
-            <Card className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold">Total outstanding (both companies)</span>
-                <span className="text-lg font-extrabold tabular-nums">{drcr(total)}</span>
+            <Card className="space-y-3 border-2 border-brand-200 bg-brand-50/40">
+              {parts.length > 1 && parts.map((p) => (
+                <div key={"t" + p.account} className="flex items-center justify-between text-sm">
+                  <span className="font-semibold">{p.label} · closing balance</span>
+                  <span className="font-bold tabular-nums">{drcr(p.closing)}</span>
+                </div>
+              ))}
+              <div className={cn("flex items-center justify-between", parts.length > 1 && "border-t border-brand-200 pt-3")}>
+                <span className="font-extrabold">{parts.length > 1 ? "Grand total (both companies)" : "Total outstanding"}</span>
+                <span className="text-xl font-extrabold text-brand-700 tabular-nums">{drcr(total)}</span>
               </div>
               <Button variant="whatsapp" className="w-full" onClick={sendPdf} disabled={making}><IconBrandWhatsapp size={18} /> {making ? "Making PDF…" : "Send ledger PDF on WhatsApp"}</Button>
             </Card>
           )}
         </div>
         <MessagePanel title="Ledger message" type="ledger-statement" customer={customer} inputs={{ customer: customer?.name || "", from, to }}
-          build={() => !customer ? "!Please select a customer first." : !parts.length ? "!No Tally entries for this customer." : ledgerMessage(settings, customer.name, from, to, parts)} />
+          build={() => !customer ? "!Please select a customer first." : !parts.length ? "!No Tally entries for this customer." : ledgerMessage(settings, customer.name, from, to, parts, billsFor())} />
       </div>
     </div>
   );

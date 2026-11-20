@@ -47,7 +47,10 @@ export function buildLedger(sets: Record<string, TallyVoucherSet> | null, balanc
 }
 
 // the WhatsApp text
-export function ledgerMessage(s: Settings, customerName: string, from: string, to: string, parts: LedgerPart[]) {
+export interface LedgerBill { n: string; d: string; due?: string; a: number; od?: number }
+export const billAge = (iso: string) => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso + "T00:00:00").getTime()) / 86400e3)) : 0);
+
+export function ledgerMessage(s: Settings, customerName: string, from: string, to: string, parts: LedgerPart[], bills?: Partial<Record<Account, LedgerBill[]>>) {
   const total = parts.reduce((t, p) => t + p.closing, 0);
   let msg = "📒 *Ledger Statement – " + s.businessName + "*\n\n" +
     "Dear " + customerName + ",\n\n" +
@@ -60,8 +63,15 @@ export function ledgerMessage(s: Settings, customerName: string, from: string, t
       msg += "• " + msgDate(r.d) + " · " + r.label.replace(/ — .*$/, "") + " · " + (r.dr ? inr(r.dr) + " Dr" : inr(r.cr) + " Cr") + "\n";
     });
     msg += "*Closing Balance: " + drcr(p.closing) + "*\n";
+    const pb = bills?.[p.account];
+    if (pb) {
+      msg += "_Pending bills:_\n";
+      if (!pb.length) msg += "None\n";
+      pb.forEach((b) => { msg += "▫️ " + b.n + " · " + msgDate(b.d) + " · " + inr(b.a) + " · " + billAge(b.d) + " days" + (b.od ? " (" + b.od + " overdue)" : "") + "\n"; });
+    }
   });
-  msg += "\n🔹 *Total Outstanding: " + drcr(total) + "*\n\n" +
+  if (parts.length > 1) msg += "\n" + parts.map((p) => p.label + ": " + drcr(p.closing)).join("\n");
+  msg += "\n🔹 *" + (parts.length > 1 ? "Grand Total (both companies)" : "Total Outstanding") + ": " + drcr(total) + "*\n\n" +
     "Kindly verify and let us know if anything differs from your records.\n\n" +
     "Regards,\n" + s.businessName + (s.address ? "\n" + s.address : "");
   return msg;

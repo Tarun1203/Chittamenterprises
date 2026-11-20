@@ -266,51 +266,106 @@ export const voucherPdf = (s: Settings, v: VoucherDetail) => (isInvoice(v) ? inv
 
 // ------------------------------------------------------------------ ledger account
 
-export async function tallyLedgerPdf(s: Settings, customer: { name: string; mobile?: string }, from: string, to: string, parts: LedgerPart[]) {
+export interface PendingBill { n: string; d: string; due?: string; a: number; od?: number }
+const daysSince = (iso: string) => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso + "T00:00:00").getTime()) / 86400e3)) : 0);
+const drcrAmt = (n: number) => (Math.abs(n) < 0.005 ? "Nil" : amt(n) + (n > 0 ? " Dr" : " Cr"));
+
+// Tally's Ledger Account, one section per company. Particulars show the voucher
+// type; each section ends with its closing balance, then a highlighted summary
+// of both companies and the grand total. With bills, the pending bills of each
+// company follow, with their age in days. If it runs past one page, each
+// company starts on its own page.
+export async function tallyLedgerPdf(s: Settings, customer: { name: string; mobile?: string }, from: string, to: string, parts: LedgerPart[],
+  opts: { bills?: Partial<Record<"business" | "cash", PendingBill[]>> } = {}) {
   const { jsPDF, autoTable } = await lib();
-  const doc = new jsPDF({ unit: "mm", format: "a4" }) as Doc;
-  const W = doc.internal.pageSize.getWidth(), L = 12, R = W - 12;
-  let y = 13;
-  text(doc, companyName(s), W / 2, y, { bold: true, size: 12, align: "center" }); y += 4.5;
-  for (const l of companyLines(s).slice(0, 3)) { text(doc, l, W / 2, y, { size: 8, align: "center" }); y += 3.6; }
-  y += 3;
-  text(doc, plain(customer.name), W / 2, y, { bold: true, size: 11, align: "center" }); y += 4.5;
-  text(doc, "Ledger Account", W / 2, y, { size: 8.5, align: "center" }); y += 4;
-  if (customer.mobile) { text(doc, "Mobile: " + customer.mobile, W / 2, y, { size: 8, align: "center" }); y += 4; }
-  text(doc, tdate(from) + " to " + tdate(to), W / 2, y, { size: 8.5, bold: true, align: "center" }); y += 3;
-  const total = parts.reduce((t, p) => t + p.closing, 0);
-  for (const p of parts) {
-    if (parts.length > 1) { y += 4; text(doc, p.label, L, y, { bold: true, size: 9.5 }); }
-    const bold = (x: string) => ({ content: x, styles: { fontStyle: "bold" } });
-    const dr = p.rows.reduce((t, r) => t + r.dr, 0) + (p.opening > 0 ? p.opening : 0);
-    const cr = p.rows.reduce((t, r) => t + r.cr, 0) + (p.opening < 0 ? -p.opening : 0);
-    const body: unknown[][] = [
-      [tdate(from), bold((p.opening >= 0 ? "To " : "By ") + "Opening Balance"), "", "", p.opening > 0.004 ? bold(amt(p.opening)) : "", p.opening < -0.004 ? bold(amt(p.opening)) : ""],
-      ...p.rows.map((r) => [tdate(r.d), { content: (r.dr ? "To " : "By ") + plain(r.via || r.t || "") + (r.nar ? "\n" + plain(r.nar) : ""), styles: {} }, plain(r.t || ""), plain(r.n || ""), r.dr ? amt(r.dr) : "", r.cr ? amt(r.cr) : ""]),
-    ];
-    const foot = [
-      ["", "", "", "Current Total :", amt(dr), amt(cr)],
-      ["", "", "", "Closing Balance :", p.closing > 0.004 ? amt(p.closing) + " Dr" : "", p.closing < -0.004 ? amt(p.closing) + " Cr" : (Math.abs(p.closing) <= 0.004 ? "Nil" : "")],
-    ];
-    autoTable(doc, {
-      startY: y + 2, theme: "plain", margin: { left: L, right: 12 }, showFoot: "lastPage",
-      head: [["Date", "Particulars", "Vch Type", "Vch No.", "Debit", "Credit"]], body, foot,
-      styles: { fontSize: 8, cellPadding: 1.3, textColor: [0, 0, 0], valign: "top" },
-      headStyles: { fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3 }, lineColor: [0, 0, 0] },
-      footStyles: { fontStyle: "bold", halign: "right", lineWidth: { top: 0.2 }, lineColor: [0, 0, 0] },
-      columnStyles: { 0: { cellWidth: 18 }, 2: { cellWidth: 24 }, 3: { cellWidth: 30 }, 4: { cellWidth: 24, halign: "right" }, 5: { cellWidth: 24, halign: "right" } },
-      didParseCell: (d: { section: string; column: { index: number }; cell: { styles: { halign: string } } }) => { if (d.section === "head" && d.column.index >= 4) d.cell.styles.halign = "right"; },
+  const draw = (split: boolean) => {
+    const doc = new jsPDF({ unit: "mm", format: "a4" }) as Doc;
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), L = 12, R = W - 12;
+    const head = (sub?: string) => {
+      let y = 13;
+      text(doc, companyName(s), W / 2, y, { bold: true, size: 12, align: "center" }); y += 4.5;
+      for (const l of companyLines(s).slice(0, 3)) { text(doc, l, W / 2, y, { size: 8, align: "center" }); y += 3.6; }
+      y += 3;
+      text(doc, plain(customer.name), W / 2, y, { bold: true, size: 11, align: "center" }); y += 4.5;
+      text(doc, "Ledger Account" + (sub ? " - " + sub : ""), W / 2, y, { size: 8.5, align: "center" }); y += 4;
+      if (customer.mobile) { text(doc, "Mobile: " + customer.mobile, W / 2, y, { size: 8, align: "center" }); y += 4; }
+      text(doc, tdate(from) + " to " + tdate(to), W / 2, y, { size: 8.5, bold: true, align: "center" });
+      return y + 3;
+    };
+    let y = head(split && parts.length > 1 ? parts[0].label : undefined);
+    parts.forEach((p, idx) => {
+      if (idx > 0 && split) { doc.addPage(); y = head(p.label); }
+      if (parts.length > 1 && !split) { y += 4; text(doc, p.label, L, y, { bold: true, size: 9.5 }); }
+      const bold = (x: string) => ({ content: x, styles: { fontStyle: "bold" } });
+      const dr = p.rows.reduce((t, r) => t + r.dr, 0) + (p.opening > 0 ? p.opening : 0);
+      const cr = p.rows.reduce((t, r) => t + r.cr, 0) + (p.opening < 0 ? -p.opening : 0);
+      const body: unknown[][] = [
+        [tdate(from), bold((p.opening >= 0 ? "To " : "By ") + "Opening Balance"), "", p.opening > 0.004 ? bold(amt(p.opening)) : "", p.opening < -0.004 ? bold(amt(p.opening)) : ""],
+        ...p.rows.map((r) => [tdate(r.d), (r.dr ? "To " : "By ") + plain(r.t || r.via || ""), plain(r.n || ""), r.dr ? amt(r.dr) : "", r.cr ? amt(r.cr) : ""]),
+      ];
+      const hi = { fillColor: [238, 242, 255], fontStyle: "bold", textColor: [30, 27, 120] };
+      const foot = [
+        ["", "", "Current Total :", amt(dr), amt(cr)],
+        [{ content: "", styles: hi }, { content: "", styles: hi }, { content: "Closing Balance :", styles: hi },
+          { content: p.closing > 0.004 ? amt(p.closing) + " Dr" : "", styles: hi }, { content: p.closing < -0.004 ? amt(p.closing) + " Cr" : Math.abs(p.closing) <= 0.004 ? "Nil" : "", styles: hi }],
+      ];
+      autoTable(doc, {
+        startY: y + 2, theme: "plain", margin: { left: L, right: 12 }, showFoot: "lastPage",
+        head: [["Date", "Particulars", "Vch No.", "Debit", "Credit"]], body, foot,
+        styles: { fontSize: 8.5, cellPadding: 1.4, textColor: [0, 0, 0], valign: "top" },
+        headStyles: { fontStyle: "bold", lineWidth: { top: 0.3, bottom: 0.3 }, lineColor: [0, 0, 0] },
+        footStyles: { fontStyle: "bold", halign: "right", lineWidth: { top: 0.2 }, lineColor: [0, 0, 0] },
+        columnStyles: { 0: { cellWidth: 20 }, 2: { cellWidth: 38 }, 3: { cellWidth: 28, halign: "right" }, 4: { cellWidth: 28, halign: "right" } },
+        didParseCell: (d: { section: string; column: { index: number }; cell: { styles: { halign: string } } }) => { if (d.section === "head" && d.column.index >= 3) d.cell.styles.halign = "right"; },
+      });
+      y = doc.lastAutoTable?.finalY || y;
+      // pending bills of this company, oldest first, with their age
+      const bills = opts.bills?.[p.account];
+      if (bills) {
+        y += 5;
+        if (y > H - 30) { doc.addPage(); y = 14; }
+        text(doc, "Pending bills - " + p.label, L, y, { bold: true, size: 9 });
+        const total = bills.reduce((t, b) => t + b.a, 0);
+        autoTable(doc, {
+          startY: y + 1.5, theme: "grid", margin: { left: L, right: 12 },
+          head: [["Bill Date", "Bill No.", "Due on", "Days", "Overdue by", "Pending Amount"]],
+          body: bills.length ? bills.map((b) => [tdate(b.d), plain(b.n), tdate(b.due), String(daysSince(b.d)), b.od ? b.od + " days" : "-", amt(b.a) + " Dr"])
+            : [[{ content: "No pending bills", colSpan: 6, styles: { halign: "center", textColor: [110, 110, 110] } }]],
+          foot: bills.length ? [["", "", "", "", "Total", amt(total) + " Dr"]] : undefined,
+          styles: { fontSize: 8, cellPadding: 1.2, lineColor: [180, 180, 180], lineWidth: 0.15, textColor: [0, 0, 0] },
+          headStyles: { fillColor: [245, 245, 245], fontStyle: "bold" },
+          footStyles: { fillColor: [255, 255, 255], fontStyle: "bold", halign: "right" },
+          columnStyles: { 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" } },
+        });
+        y = doc.lastAutoTable?.finalY || y;
+      }
+      if (!split && y > H - 30 && idx < parts.length - 1) { doc.addPage(); y = 14; }
     });
-    y = doc.lastAutoTable?.finalY || y;
-    if (y > doc.internal.pageSize.getHeight() - 30) { doc.addPage(); y = 14; }
-  }
-  if (parts.length > 1) {
+    // highlighted summary: each company's closing balance and the grand total
+    const total = parts.reduce((t, p) => t + p.closing, 0);
+    const rowsN = parts.length + (parts.length > 1 ? 1 : 0);
+    const boxH = 6 + rowsN * 6.5;
     y += 7;
-    doc.setLineWidth(0.3); doc.line(L, y - 4.5, R, y - 4.5);
-    text(doc, "Total outstanding (both accounts)", L, y, { bold: true, size: 9.5 });
-    text(doc, amt(total) + (total > 0.004 ? " Dr" : total < -0.004 ? " Cr" : ""), R, y, { bold: true, size: 9.5, align: "right" });
-  }
-  const pages = doc.getNumberOfPages(), H = doc.internal.pageSize.getHeight();
-  for (let i = 1; i <= pages; i++) { doc.setPage(i); text(doc, "Page " + i + " of " + pages, R, H - 7, { size: 7, align: "right", color: 110 }); }
+    if (y + boxH > H - 12) { doc.addPage(); y = 16; }
+    doc.setFillColor(238, 242, 255); doc.setDrawColor(67, 56, 202); doc.setLineWidth(0.4);
+    doc.roundedRect(L, y, R - L, boxH, 2, 2, "FD");
+    let yy = y + 6.5;
+    text(doc, "Balance summary", L + 4, yy, { bold: true, size: 9, color: 60 }); yy += 1;
+    parts.forEach((p) => {
+      yy += 6;
+      text(doc, p.label + " - Closing Balance", L + 4, yy, { size: 9.5 });
+      text(doc, drcrAmt(p.closing), R - 4, yy, { bold: true, size: 10, align: "right" });
+    });
+    if (parts.length > 1) {
+      yy += 2; doc.setDrawColor(67, 56, 202); doc.setLineWidth(0.3); doc.line(L + 4, yy, R - 4, yy); yy += 5;
+      text(doc, "Grand Total (both companies)", L + 4, yy, { bold: true, size: 11 });
+      text(doc, drcrAmt(total), R - 4, yy, { bold: true, size: 12, align: "right" });
+    }
+    const pages = doc.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) { doc.setPage(i); text(doc, "Page " + i + " of " + pages, R, H - 7, { size: 7, align: "right", color: 110 }); }
+    return doc;
+  };
+  let doc = draw(false);
+  if (doc.getNumberOfPages() > 1 && parts.length > 1) doc = draw(true);
   return doc.output("blob");
 }

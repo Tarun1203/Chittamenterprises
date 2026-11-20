@@ -4,6 +4,15 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.20", date: "2026-11-20", title: "Ledger: pending bills with days, highlighted totals; buy-and-sell parties", windows: "3.1",
+    items: [
+      "Ledger Statement: “Include pending bills” adds each company's open bills — bill no., date, due date, number of days and days overdue — on screen, in the PDF and in the WhatsApp message.",
+      "Ledger PDF: Particulars show the voucher type (Sales, Receipt…) instead of the list of ledgers; each company's closing balance is highlighted, and a summary box shows both companies and the grand total.",
+      "If the ledger runs past one page, Chittam Enterprises and Cash each start on their own page.",
+      "Parties you both buy from and sell to stay under Sundry Creditors in Tally: when such a party is a customer in the app, its balance and transactions are now synced too (Windows app 3.1). The earlier “move it to Debtors” warning is removed.",
+    ],
+  },
+  {
     version: "3.19", date: "2026-11-19", title: "Warning for customers filed under Creditors in Tally", windows: "3.0",
     items: [
       "The Windows app now checks, on every sync, for customers whose Tally ledger is under Sundry Creditors instead of Sundry Debtors — their balance and transactions would otherwise be missed (shown as 0).",

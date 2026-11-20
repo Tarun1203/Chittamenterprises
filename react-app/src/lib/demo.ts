@@ -58,8 +58,6 @@ export const demoReceipts: Receipt[] = [
 export const demoBalances: Record<string, BalanceSet> = {
   business: { company: "business", label: "Chittam Enterprises - 2026", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 48250, "kashi sln": 12900, "deepak": 0 }, names: { "ab infinite": "AB Infinite", "kashi sln": "Kashi SLN", "deepak": "Deepak" } },
   cash: { company: "cash", label: "Cash", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 6400, "kashi sln": 1500 } },
-  // the Windows app's check: a customer filed under Sundry Creditors in Tally
-  status: { checkedAt: new Date(Date.now() - 600e3).toISOString(), ok: true, misfiled: [{ company: "business", label: "Chittam Enterprises - 2026", name: "Adil Mobile Center", group: "Sundry Creditors", a: 18400, dr: true }] } as unknown as BalanceSet,
 };
 
 const ts = (minsAgo: number) => ({ toDate: () => new Date(Date.now() - minsAgo * 60000) }) as unknown as ActivityEntry["at"];
