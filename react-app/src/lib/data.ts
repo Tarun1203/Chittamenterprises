@@ -6,7 +6,8 @@
 import { collection, doc, onSnapshot, serverTimestamp, writeBatch, addDoc, getDocs, query, orderBy, limit, setDoc, type DocumentData, type Timestamp } from "firebase/firestore";
 import { db, auth } from "./firebase";
 
-export interface Customer { id: string; name: string; mobile?: string }
+// removed: hidden from lists (kept, never deleted); mergedInto: the customer it was merged into
+export interface Customer { id: string; name: string; mobile?: string; removed?: boolean; removedAt?: string; mergedInto?: string; mergedAt?: string }
 export interface Product { id: string; name: string; category?: string; price?: number }
 export interface Transport { id: string; name: string; contactPerson?: string; phone?: string; branch?: string }
 export interface Settings {
@@ -15,6 +16,7 @@ export interface Settings {
   upiList: { upiId: string; payeeName?: string; isDefault?: boolean }[];
   bankList: { label?: string; accountNo: string; ifsc?: string; bankBranch?: string; isDefault?: boolean }[];
   paymentModes: string[];
+  notDuplicates?: string[];   // customer pairs marked "not duplicates" ("idA|idB")
 }
 
 // avail: how many can be packed now (no stock for the rest, which stays pending in

@@ -10,7 +10,8 @@ interface Store {
   authReady: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOutUser: () => Promise<void>;
-  customers: Customer[];
+  customers: Customer[];      // active customers (not removed or merged)
+  allCustomers: Customer[];   // including removed and merged
   products: Product[];
   transports: Transport[];
   settings: Settings;
@@ -74,12 +75,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => unsubs.forEach((u) => u());
   }, [user]);
 
+  const active = customers.filter((c) => !c.removed && !c.mergedInto);
   const value: Store = {
     user,
     authReady,
     signIn: async (email, password) => { await signInWithEmailAndPassword(auth, email, password); },
     signOutUser: () => signOut(auth),
-    customers,
+    customers: active,
+    allCustomers: customers,
     products,
     transports,
     settings,

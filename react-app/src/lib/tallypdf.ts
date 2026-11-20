@@ -343,8 +343,9 @@ export async function tallyLedgerPdf(s: Settings, customer: { name: string; mobi
     });
     // highlighted summary: each company's closing balance and the grand total
     const total = parts.reduce((t, p) => t + p.closing, 0);
-    const rowsN = parts.length + (parts.length > 1 ? 1 : 0);
-    const boxH = 6 + rowsN * 6.5;
+    // exactly what's drawn below: title (7.5), a row per company (6 each), the
+    // grand-total rule and row (7), and room under the last line (5)
+    const boxH = 7.5 + parts.length * 6 + (parts.length > 1 ? 7 : 0) + 5;
     y += 7;
     if (y + boxH > H - 12) { doc.addPage(); y = 16; }
     doc.setFillColor(238, 242, 255); doc.setDrawColor(67, 56, 202); doc.setLineWidth(0.4);

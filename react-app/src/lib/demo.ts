@@ -8,7 +8,9 @@ export const demoCustomers: Customer[] = [
   "AB Infinite", "Adeshivakeshva Rhythm House - Raichur", "Adil Mobile Center", "Amaresh - Gilesugur Camp", "Ashok Reddy - Mantralayam",
   "Badrinath Allundi - Raichur", "C Raghavendra", "Deepak", "K K Enterprise - Devadurga", "Kashi SLN", "Lokesh - Kallur",
   "Mallu Mobiles and Electronics - Pothnal", "Sri Durga Electronics - Manvi", "Vijay Radios - Lingasugur",
-].map((name, i) => ({ id: "d" + i, name, mobile: i % 4 === 3 ? "" : "98" + String(45012345 + i * 7919).slice(0, 8) }));
+].map((name, i) => ({ id: "d" + i, name, mobile: i % 4 === 3 ? "" : "98" + String(45012345 + i * 7919).slice(0, 8) } as Customer))
+  // a duplicate, to check Customers → Possible duplicates
+  .concat([{ id: "d14", name: "Kashi S.L.N", mobile: "" }]);
 
 export const demoProducts: Product[] = [
   ["Makwell - Stabilizer - Led Mini - 5 Yr.", "Makwell", 740], ["Makwell - Stabilizer - RF500VA - 5 Yr.", "Makwell", 890],

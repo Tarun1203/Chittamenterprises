@@ -4,6 +4,15 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.22", date: "2026-11-20", title: "Find and merge duplicate customers; remove customers",
+    items: [
+      "Customers → Possible duplicates: finds customers saved twice — the same name written differently, a small spelling slip, or the same mobile number — and shows each one's orders, service jobs, payments and whether it's in Tally.",
+      "Pick the one to keep and Merge: the others' orders, service jobs and payments move to it, and the others are kept as “merged” (nothing is deleted). Messages already sent stay as they were. “Not duplicates” stops a pair being suggested again.",
+      "Remove a customer (edit → Remove): hidden from every list and picker but kept, and restorable under “Show removed & merged”.",
+      "Ledger PDF: the Grand Total line now sits inside the balance summary box.",
+    ],
+  },
+  {
     version: "3.21", date: "2026-11-20", title: "App receipts stand out in Tally's Day Book", windows: "3.2",
     items: [
       "Post to Tally now creates the voucher as type “App Receipt” (under Receipt), so receipts entered from the app show in their own Vch Type column in Tally's Day Book and can be filtered.",
