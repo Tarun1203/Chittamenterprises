@@ -4,6 +4,13 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.37", date: "2026-11-21", title: "Ledger PDF: each company's page headed with its own name",
+    items: [
+      "When the Ledger Statement PDF has a page per company, each page now starts with that company's name (Chittam Enterprises, Cash Bill, Vamana Enterprises…) and “<company> - Ledger Account”, instead of the business name on every page.",
+      "A one-company statement is headed with that company too.",
+    ],
+  },
+  {
     version: "3.36", date: "2026-11-21", title: "Ledger Statement: choose the companies, and save your default",
     items: [
       "Under the customer, tap a company to leave it out of the statement (or put it back) — the screen, PDF, WhatsApp message and print follow.",

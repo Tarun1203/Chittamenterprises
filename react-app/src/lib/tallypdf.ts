@@ -281,18 +281,20 @@ export async function tallyLedgerPdf(s: Settings, customer: { name: string; mobi
   const draw = (split: boolean) => {
     const doc = new jsPDF({ unit: "mm", format: "a4" }) as Doc;
     const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), L = 12, R = W - 12;
-    const head = (sub?: string) => {
+    // the heading is the company whose ledger this is (Chittam Enterprises, Cash Bill, Vamana…);
+    // one page with several companies keeps the business name, each section titled by its company
+    const head = (company?: string) => {
       let y = 13;
-      text(doc, companyName(s), W / 2, y, { bold: true, size: 12, align: "center" }); y += 4.5;
+      text(doc, plain(company || companyName(s)), W / 2, y, { bold: true, size: 12, align: "center" }); y += 4.5;
       for (const l of companyLines(s).slice(0, 3)) { text(doc, l, W / 2, y, { size: 8, align: "center" }); y += 3.6; }
       y += 3;
       text(doc, plain(customer.name), W / 2, y, { bold: true, size: 11, align: "center" }); y += 4.5;
-      text(doc, "Ledger Account" + (sub ? " - " + sub : ""), W / 2, y, { size: 8.5, align: "center" }); y += 4;
+      text(doc, (company ? plain(company) + " - " : "") + "Ledger Account", W / 2, y, { size: 8.5, align: "center" }); y += 4;
       if (customer.mobile) { text(doc, "Mobile: " + customer.mobile, W / 2, y, { size: 8, align: "center" }); y += 4; }
       text(doc, tdate(from) + " to " + tdate(to), W / 2, y, { size: 8.5, bold: true, align: "center" });
       return y + 3;
     };
-    let y = head(split && parts.length > 1 ? parts[0].label : undefined);
+    let y = head(split || parts.length === 1 ? parts[0]?.label : undefined);
     parts.forEach((p, idx) => {
       if (idx > 0 && split) { doc.addPage(); y = head(p.label); }
       if (parts.length > 1 && !split) { y += 4; text(doc, p.label, L, y, { bold: true, size: 9.5 }); }
