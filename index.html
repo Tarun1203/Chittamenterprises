@@ -26,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/app.css?v=20261120a">
+<link rel="stylesheet" href="css/app.css?v=20261121a">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#2463EB">
 <meta name="mobile-web-app-capable" content="yes">
@@ -120,6 +120,8 @@
         <button class="tile" data-view="customers"><div class="ic">👥</div><div class="t">Manage Customers</div><div class="d">Add, edit or remove customers stored on this device.</div></button>
         <button class="tile" data-view="products"><div class="ic">🏷️</div><div class="t">Product Database</div><div class="d">Manage products and prices used in Stock Update.</div></button>
         <button class="tile spot" data-href="next/#/tally"><div class="ic"><img class="ic3d" src="icons3d/star.png" alt="" draggable="false"></div><div class="t">Tally Match</div><div class="d">Payments vs Tally, possible duplicates and balances (opens in the new app).</div></button>
+        <button class="tile spot" data-href="next/#/ledger"><div class="ic"><img class="ic3d" src="icons3d/notebook.png" alt="" draggable="false"></div><div class="t">Ledger Statement</div><div class="d">A customer's account in every company, with pending bills — PDF to WhatsApp (opens in the new app).</div></button>
+        <button class="tile spot" data-href="next/#/party-codes"><div class="ic"><img class="ic3d" src="icons3d/location.png" alt="" draggable="false"></div><div class="t">Parties &amp; codes</div><div class="d">Dealers, technicians, suppliers and their codes, routes and places (opens in the new app).</div></button>
       </div>
     </section>
 
@@ -900,33 +902,33 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="js/firebase-config.js?v=20261120a"></script>
-<script src="js/00-crypto.js?v=20261120a"></script>
-<script src="js/01-core.js?v=20261120a"></script>
-<script src="js/01b-database.js?v=20261120a"></script>
-<script src="js/02-nav.js?v=20261120a"></script>
-<script src="js/03-registry.js?v=20261120a"></script>
-<script src="js/04-customers.js?v=20261120a"></script>
-<script src="js/05-products.js?v=20261120a"></script>
-<script src="js/06-duplicates.js?v=20261120a"></script>
-<script src="js/07-settings.js?v=20261120a"></script>
-<script src="js/08-payment-updated.js?v=20261120a"></script>
-<script src="js/09-balance-confirmation.js?v=20261120a"></script>
-<script src="js/10-payment-reminder.js?v=20261120a"></script>
-<script src="js/11-dispatch-confirmation.js?v=20261120a"></script>
-<script src="js/12-stock-update.js?v=20261120a"></script>
-<script src="js/13-init.js?v=20261120a"></script>
-<script src="js/14-service-material.js?v=20261120a"></script>
-<script src="js/16-stock-return.js?v=20261120a"></script>
-<script src="js/18-history.js?v=20261120a"></script>
-<script src="js/19-orders.js?v=20261120a"></script>
-<script src="js/20-service-jobs.js?v=20261120a"></script>
-<script src="js/21-transports.js?v=20261120a"></script>
-<script src="js/22-app-install.js?v=20261120a"></script>
-<script src="js/24-receipts.js?v=20261120a"></script>
-<script src="js/25-picklist.js?v=20261120a"></script>
-<script src="js/26-tally-balances.js?v=20261120a"></script>
-<script src="js/23-mobile.js?v=20261120a"></script>
-<script src="js/27-look.js?v=20261120a"></script>
+<script src="js/firebase-config.js?v=20261121a"></script>
+<script src="js/00-crypto.js?v=20261121a"></script>
+<script src="js/01-core.js?v=20261121a"></script>
+<script src="js/01b-database.js?v=20261121a"></script>
+<script src="js/02-nav.js?v=20261121a"></script>
+<script src="js/03-registry.js?v=20261121a"></script>
+<script src="js/04-customers.js?v=20261121a"></script>
+<script src="js/05-products.js?v=20261121a"></script>
+<script src="js/06-duplicates.js?v=20261121a"></script>
+<script src="js/07-settings.js?v=20261121a"></script>
+<script src="js/08-payment-updated.js?v=20261121a"></script>
+<script src="js/09-balance-confirmation.js?v=20261121a"></script>
+<script src="js/10-payment-reminder.js?v=20261121a"></script>
+<script src="js/11-dispatch-confirmation.js?v=20261121a"></script>
+<script src="js/12-stock-update.js?v=20261121a"></script>
+<script src="js/13-init.js?v=20261121a"></script>
+<script src="js/14-service-material.js?v=20261121a"></script>
+<script src="js/16-stock-return.js?v=20261121a"></script>
+<script src="js/18-history.js?v=20261121a"></script>
+<script src="js/19-orders.js?v=20261121a"></script>
+<script src="js/20-service-jobs.js?v=20261121a"></script>
+<script src="js/21-transports.js?v=20261121a"></script>
+<script src="js/22-app-install.js?v=20261121a"></script>
+<script src="js/24-receipts.js?v=20261121a"></script>
+<script src="js/25-picklist.js?v=20261121a"></script>
+<script src="js/26-tally-balances.js?v=20261121a"></script>
+<script src="js/23-mobile.js?v=20261121a"></script>
+<script src="js/27-look.js?v=20261121a"></script>
 </body>
 </html>

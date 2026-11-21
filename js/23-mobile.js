@@ -71,13 +71,15 @@
       });
       grid.appendChild(b);
     });
-    // Tally Match lives in the new app (same site, so it opens inside this app)
+    // pages that live in the new app (same site, so they open inside this app)
     if(title === 'More'){
-      var tm = document.createElement('button');
-      tm.type = 'button'; tm.className = 'm-sheet-item';
-      tm.innerHTML = '<span class="ic"><img class="ic3d" src="icons3d/star.png" alt="" draggable="false"></span><span>Tally Match</span>';
-      tm.addEventListener('click', function(){ mCloseSheet(); location.href = 'next/#/tally'; });
-      grid.appendChild(tm);
+      [['ledger', 'notebook', 'Ledger Statement'], ['tally', 'star', 'Tally Match'], ['party-codes', 'location', 'Parties & codes']].forEach(function(p){
+        var tm = document.createElement('button');
+        tm.type = 'button'; tm.className = 'm-sheet-item';
+        tm.innerHTML = '<span class="ic"><img class="ic3d" src="icons3d/' + p[1] + '.png" alt="" draggable="false"></span><span>' + p[2] + '</span>';
+        tm.addEventListener('click', function(){ mCloseSheet(); location.href = 'next/#/' + p[0]; });
+        grid.appendChild(tm);
+      });
     }
     var install = document.getElementById('btnInstallApp');
     if(title === 'More' && install && install.style.display !== 'none'){
