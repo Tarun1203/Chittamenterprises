@@ -13,7 +13,11 @@ import { newConfig, openDoc, sealDoc, setCryptoConfig, type CryptoConfig } from 
 export interface Customer {
   id: string; name: string; mobile?: string; removed?: boolean; removedAt?: string; mergedInto?: string; mergedAt?: string;
   code?: string; district?: string; route?: string; place?: string; tallyNames?: Record<string, string>;
+  kind?: PartyKind;   // missing = customer
 }
+// customer (Sundry Debtors), supplier (Sundry Creditors), or both (you buy from and sell to them)
+export type PartyKind = "customer" | "supplier" | "both";
+export const isSupplierOnly = (c: Pick<Customer, "kind">) => c.kind === "supplier";
 export interface Product { id: string; name: string; category?: string; price?: number }
 export interface Transport { id: string; name: string; contactPerson?: string; phone?: string; branch?: string }
 export interface Settings {

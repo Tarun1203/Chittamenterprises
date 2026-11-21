@@ -71,8 +71,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyProduct("Chittam Enterprises")]
 [assembly: System.Reflection.AssemblyCompany("Chittam Enterprises")]
 // keep in step with Program.DesktopVersion (build.ps1 checks)
-[assembly: System.Reflection.AssemblyVersion("3.5.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("3.5")]
+[assembly: System.Reflection.AssemblyVersion("3.6.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.6")]
 
 namespace ChittamEnterprises
 {
@@ -82,7 +82,7 @@ namespace ChittamEnterprises
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
         // where new versions of this program are published (desktop/ folder of the site)
         public const string UpdateUrl = "https://tarun1203.github.io/Chittamenterprises/desktop/version.json";
-        public const string DesktopVersion = "3.5";
+        public const string DesktopVersion = "3.6";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -1575,7 +1575,9 @@ namespace ChittamEnterprises
                         if (appCustomers == null)
                         {
                             if (token == null) token = Firebase.SignIn(Settings);
-                            appCustomers = new HashSet<string>(Firebase.List(Settings, token, "customers", "name")
+                            // suppliers only (kind "supplier" in Parties & codes) are not customers
+                            appCustomers = new HashSet<string>(Firebase.List(Settings, token, "customers", "name", "kind")
+                                .Where(r => !(r.ContainsKey("kind") && Convert.ToString(r["kind"]) == "supplier"))
                                 .Select(r => Tally.Normalize(r.ContainsKey("name") ? Convert.ToString(r["name"]) : "")).Where(n => n.Length > 0));
                         }
                         int added = 0;

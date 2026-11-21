@@ -61,10 +61,13 @@ export const demoReceipts: Receipt[] = [
 ];
 
 export const demoBalances: Record<string, BalanceSet> = {
-  business: { company: "business", label: "Chittam Enterprises - 2026", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 48250, "kashi sln": 12900, "deepak": 0 }, names: { "ab infinite": "AB Infinite", "kashi sln": "Kashi SLN", "deepak": "Deepak" } },
-  cash: { company: "cash", label: "Cash", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 6400, "kashi sln": 1500 } },
+  business: { company: "business", label: "Chittam Enterprises - 2026", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 48250, "kashi sln": 12900, "deepak": 0 }, names: { "ab infinite": "AB Infinite", "kashi sln": "Kashi SLN", "deepak": "Deepak" },
+    parties: [{ n: "AB Infinite", g: "D", al: ["RCR-CITY-1"] }, { n: "Kashi SLN", g: "D" }, { n: "Deepak", g: "D", al: ["9743387435"] }, { n: "Sri Ram Suppliers - Raichur", g: "C", m: "9876500011" }, { n: "Bharath Distributors", g: "C" }] },
+  cash: { company: "cash", label: "Cash", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 6400, "kashi sln": 1500 },
+    parties: [{ n: "AB Infinite", g: "D" }, { n: "Kashi SLN", g: "D" }, { n: "Bharath Distributors - Raichur", g: "C" }] },
   // a third company added in the Windows app (Tally Sync → Companies)
-  co1demo: { company: "co1demo", label: "Vamana Enterprises", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "kashi sln": 7000 }, names: { "kashi sln": "Kashi SLN" } },
+  co1demo: { company: "co1demo", label: "Vamana Enterprises", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "kashi sln": 7000 }, names: { "kashi sln": "Kashi SLN" },
+    parties: [{ n: "Kashi S.L.N - Raichur", g: "D" }, { n: "Sri Ram Suppliers", g: "C", m: "9876500011" }] },
   status: { checkedAt: new Date(Date.now() - 600e3).toISOString(), ok: true, accounts: [
     { key: "business", label: "Chittam Enterprises", company: "Chittam Enterprises - 2026" }, { key: "cash", label: "Cash Bill", company: "Cash" },
     { key: "co1demo", label: "Vamana Enterprises", company: "Vamana Enterprises - 2025" }] } as unknown as BalanceSet,

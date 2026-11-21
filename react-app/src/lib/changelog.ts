@@ -4,6 +4,15 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.31", date: "2026-11-21", title: "Suppliers in Parties & codes", windows: "3.6",
+    items: [
+      "Every party now has a type: Customer, Supplier, or Both (you buy from and sell to them). Suppliers get codes, routes and Tally links the same way, and “Push codes to Tally” writes theirs too.",
+      "“Add suppliers from Tally” adds every Sundry Creditors ledger not linked yet — the same supplier written differently in Chittam, Cash and Vamana becomes one party. Check them, then Save parties.",
+      "Suppliers are kept out of customer lists (Payment Updated, reminders, orders…); parties marked Both appear in both.",
+      "Windows app 3.6: a supplier-only party's Sundry Creditors balance is no longer counted with the customer balances.",
+    ],
+  },
+  {
     version: "3.30", date: "2026-11-21", title: "Parties & codes: customers, codes, routes and places in one page", windows: "3.5",
     items: [
       "New page Masters → Parties & codes — everything in one place: Add party (a new customer with name, mobile, route, place and its code), edit any party's name and mobile, and set up districts, routes and places at the top of the same page.",

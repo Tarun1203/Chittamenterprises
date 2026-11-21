@@ -10,13 +10,13 @@ import { IconDeviceFloppy, IconPlus, IconSparkles, IconUpload, IconUserPlus } fr
 import { Button, Card, Field, PageHeader, useToast } from "@/components/kit";
 import { RowRemove, Select, Text } from "@/components/forms";
 import { useStore } from "@/lib/store";
-import { logEvent, normalizeName, saveRecords, saveSettings, uid, type Customer, type District, type Route } from "@/lib/data";
+import { logEvent, normalizeName, saveRecords, saveSettings, uid, type Customer, type District, type PartyKind, type Route } from "@/lib/data";
 import { useCompanies } from "@/lib/companies";
-import { codeOf, guessPlace, looksLikeCode, nextSerial, oldCodes, partiesByCompany, suggestedRoutes, suggestLedgers } from "@/lib/parties";
+import { codeOf, guessPlace, looksLikeCode, nextSerial, oldCodes, partiesByCompany, similarNames, suggestedRoutes, suggestLedgers } from "@/lib/parties";
 import { desktopRequest, inDesktopApp } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 
-type Draft = { name: string; mobile: string; code: string; district: string; route: string; place: string; tallyNames: Record<string, string> };
+type Draft = { kind: PartyKind; name: string; mobile: string; code: string; district: string; route: string; place: string; tallyNames: Record<string, string> };
 const mobileOk = (m: string) => !m.trim() || m.replace(/\D/g, "").length === 10;
 const NONE = "__none__";
 
@@ -26,7 +26,7 @@ export function PartyCodes() {
   return (
     <div className="space-y-4">
       <PageHeader icon="location" eyebrow="Masters" title="Parties & codes"
-        subtitle="Add customers, edit their details, give each a unique code (district – route – place – serial, e.g. RC-KLM-KVTL-01) and link its ledger in every Tally company — all here." />
+        subtitle="Customers and suppliers: add them, edit their details, give each a unique code (district – route – place – serial, e.g. RC-KLM-KVTL-01) and link its ledger in every Tally company — all here." />
       <details open={routesOpen || !(settings.routes || []).length} onToggle={(e) => setRoutesOpen((e.target as HTMLDetailsElement).open)}
         className="rounded-3xl border border-neutral-200 bg-white/70 p-4">
         <summary className="cursor-pointer text-base font-extrabold">🗺️ Routes & places <span className="text-sm font-semibold text-neutral-500">· {(settings.routes || []).length} routes</span></summary>
@@ -40,7 +40,10 @@ export function PartyCodes() {
 /* ---------------------------------------------------------------- parties */
 
 function Parties({ onRoutes }: { onRoutes: () => void }) {
-  const { customers, allCustomers, balances, settings } = useStore();
+  const { allCustomers, balances, settings } = useStore();
+  // every party: customers, suppliers and both (not removed or merged)
+  const customers = useMemo(() => allCustomers.filter((c) => !c.removed && !c.mergedInto), [allCustomers]);
+  const [kindFilter, setKindFilter] = useState<"all" | PartyKind>("all");
   const companies = useCompanies();
   const toast = useToast();
   const routes = settings.routes || [];
@@ -54,13 +57,13 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
   // parties added here, not saved yet
   const [added, setAdded] = useState<Customer[]>([]);
 
-  const saved = (c: Customer): Draft => ({ name: c.name, mobile: c.mobile || "", code: c.code || "", district: c.district || "", route: c.route || "", place: c.place || "", tallyNames: c.tallyNames || {} });
+  const saved = (c: Customer): Draft => ({ kind: c.kind || "customer", name: c.name, mobile: c.mobile || "", code: c.code || "", district: c.district || "", route: c.route || "", place: c.place || "", tallyNames: c.tallyNames || {} });
   const draftOf = (c: Customer): Draft => drafts[c.id] || saved(c);
   const setDraft = (c: Customer, p: Partial<Draft>) => setDrafts((d) => ({ ...d, [c.id]: { ...draftOf(c), ...p } }));
   const isNew = (c: Customer) => added.some((x) => x.id === c.id);
   const changed = [...added, ...customers.filter((c) => drafts[c.id] && JSON.stringify(drafts[c.id]) !== JSON.stringify(saved(c)))];
   function addParty() {
-    const c: Customer = { id: uid(), name: "", mobile: "" };
+    const c: Customer = { id: uid(), name: "", mobile: "", kind: kindFilter === "all" ? "customer" : kindFilter };
     setAdded((a) => [c, ...a]);
     setDrafts((d) => ({ ...d, [c.id]: saved(c) }));
     setFilter("all"); setQ("");
@@ -126,6 +129,28 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
     toast("Suggestions filled in — check them, then Save. Nothing is saved yet.");
   }
 
+  // a draft supplier for every Sundry Creditors ledger not linked to anyone yet (the same supplier in
+  // several companies becomes one party); nothing is saved until "Save parties"
+  function addSuppliersFromTally() {
+    const used = new Map(cos.map((co) => [co.key, new Set([...customers, ...added].map((c) => normalizeName(draftOf(c).tallyNames[co.key] || draftOf(c).name)))]));
+    const groups: { name: string; mobile: string; names: Record<string, string> }[] = [];
+    for (const co of cos) for (const p of co.parties) {
+      if (p.g !== "C" || used.get(co.key)!.has(normalizeName(p.n))) continue;
+      const g = groups.find((x) => !x.names[co.key] && Object.values(x.names).some((n) => similarNames(n, p.n)));
+      if (g) { g.names[co.key] = p.n; if (!g.mobile && p.m) g.mobile = p.m; }
+      else groups.push({ name: p.n, mobile: p.m || "", names: { [co.key]: p.n } });
+    }
+    if (!groups.length) { toast("Every Sundry Creditors ledger is already linked to a party."); return; }
+    const fresh = groups.map((g) => ({ c: { id: uid(), name: "", mobile: "", kind: "supplier" as PartyKind } as Customer, g }));
+    setAdded((a) => [...fresh.map((x) => x.c), ...a]);
+    setDrafts((d) => ({ ...d, ...Object.fromEntries(fresh.map(({ c, g }) => [c.id, {
+      kind: "supplier" as PartyKind, name: g.name, mobile: g.mobile, code: "", district: "", route: "", place: "",
+      tallyNames: Object.fromEntries(Object.entries(g.names).filter(([, n]) => normalizeName(n) !== normalizeName(g.name))),
+    }])) }));
+    setFilter("all");
+    toast(groups.length + " suppliers added below from Sundry Creditors — check names, merge any that are the same, then Save parties.");
+  }
+
   async function save() {
     if (dupCodes.size) { toast("Two parties have the same code: " + [...dupCodes].join(", ")); return; }
     if (!changed.length) { toast("Nothing changed."); return; }
@@ -142,7 +167,7 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
         const d = draftOf(c);
         const name = d.name.trim();
         const tallyNames = Object.fromEntries(Object.entries(d.tallyNames).filter(([, v]) => v && normalizeName(v) !== normalizeName(name)));
-        return { coll: "customers", id: c.id, data: { ...c, name, mobile: d.mobile.trim(), code: d.code.trim().toUpperCase(), district: d.district, route: d.route, place: d.place, tallyNames }, before: isNew(c) ? null : c };
+        return { coll: "customers", id: c.id, data: { ...c, kind: d.kind, name, mobile: d.mobile.trim(), code: d.code.trim().toUpperCase(), district: d.district, route: d.route, place: d.place, tallyNames }, before: isNew(c) ? null : c };
       }));
       const nAdded = changed.filter(isNew).length;
       await logEvent("party-codes-saved", { name: "Parties & codes", added: nAdded, edited: changed.length - nAdded });
@@ -194,6 +219,7 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
   const list = [...added, ...customers]
     .filter((c) => isNew(c) || !q.trim() || (draftOf(c).name + " " + draftOf(c).mobile + " " + (draftOf(c).code || "") + " " + Object.values(draftOf(c).tallyNames).join(" ")).toLowerCase().includes(q.trim().toLowerCase()))
     .filter((c) => isNew(c) || filter === "all" || (filter === "done") === status(c).done)
+    .filter((c) => isNew(c) || kindFilter === "all" || draftOf(c).kind === kindFilter || (kindFilter !== "both" && draftOf(c).kind === "both"))
     .sort((a, b) => Number(isNew(b)) - Number(isNew(a)) || (draftOf(a).code || "~").localeCompare(draftOf(b).code || "~") || a.name.localeCompare(b.name));
   const counts = { done: customers.filter((c) => status(c).done).length, total: customers.length };
   const unlinked = cos.map((co) => {
@@ -207,6 +233,7 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={addParty} disabled={!!busy}><IconUserPlus size={16} /> Add party</Button>
           <Button variant="secondary" onClick={suggestAll} disabled={!!busy}><IconSparkles size={16} /> Suggest for all</Button>
+          <Button variant="secondary" onClick={addSuppliersFromTally} disabled={!!busy || !fullLists}><IconUserPlus size={16} /> Add suppliers from Tally</Button>
           <Button variant="secondary" onClick={save} disabled={!!busy || !changed.length}><IconDeviceFloppy size={16} /> {busy === "Saving…" ? busy : "Save parties" + (changed.length ? " (" + changed.length + ")" : "")}</Button>
           {inDesktopApp() && <Button variant="secondary" onClick={push} disabled={!!busy || !fullLists}><IconUpload size={16} /> {busy.startsWith("Waiting") ? busy : "Push codes to Tally"}</Button>}
           <span className="ml-auto text-sm text-neutral-500">{counts.done} of {counts.total} parties coded and linked</span>
@@ -216,7 +243,8 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
         {dupCodes.size > 0 && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">The same code on two parties: {[...dupCodes].join(", ")}</p>}
         <div className="flex flex-wrap gap-2">
           <Text className="min-w-0 flex-1" placeholder="Search name, code or Tally name…" value={q} onChange={(e) => setQ(e.target.value)} />
-          <Select className="w-auto" value={filter} onChange={(v) => setFilter(v as typeof filter)} options={[{ value: "todo", label: "Still to do" }, { value: "done", label: "Done" }, { value: "all", label: "All parties" }]} />
+          <Select className="w-auto" value={kindFilter} onChange={(v) => setKindFilter(v as typeof kindFilter)} options={[{ value: "all", label: "Customers & suppliers" }, { value: "customer", label: "Customers" }, { value: "supplier", label: "Suppliers" }, { value: "both", label: "Both (buy & sell)" }]} />
+          <Select className="w-auto" value={filter} onChange={(v) => setFilter(v as typeof filter)} options={[{ value: "todo", label: "Still to do" }, { value: "done", label: "Done" }, { value: "all", label: "All" }]} />
         </div>
       </Card>
 
@@ -233,10 +261,12 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
                 {isNew(c) && <RowRemove onClick={() => { setAdded((a) => a.filter((x) => x.id !== c.id)); setDrafts((x) => { const n = { ...x }; delete n[c.id]; return n; }); }} />}
               </div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-[2fr_1fr]">
+            <div className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr]">
               <Field label="Name"><Text value={d.name} onChange={(e) => setDraft(c, { name: e.target.value })} placeholder="e.g. Meghana Electronics And Electricals - Mudgal" className="font-semibold" /></Field>
               <Field label="Mobile"><Text type="tel" inputMode="tel" value={d.mobile} onChange={(e) => setDraft(c, { mobile: e.target.value })} placeholder="10-digit mobile"
                 className={cn(!mobileOk(d.mobile) && "border-rose-300 bg-rose-50/40")} /></Field>
+              <Field label="Type"><Select value={d.kind} onChange={(v) => setDraft(c, { kind: v as PartyKind })}
+                options={[{ value: "customer", label: "Customer" }, { value: "supplier", label: "Supplier" }, { value: "both", label: "Both (buy & sell)" }]} /></Field>
             </div>
             <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1.2fr]">
               <Field label="Route">
@@ -271,7 +301,7 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
 
       <Card className="space-y-2">
         <h2 className="font-extrabold">Tally ledgers not linked to any customer</h2>
-        <p className="text-sm text-neutral-500">Pick them on the right customer above, or add them as customers. (Includes Tally group and adjustment ledgers.)</p>
+        <p className="text-sm text-neutral-500">Pick them on the right party above, add a party, or use “Add suppliers from Tally” for Sundry Creditors. (Includes Tally group and adjustment ledgers.)</p>
         {unlinked.map((co) => (
           <details key={co.key} className="text-sm">
             <summary className="cursor-pointer font-semibold">{co.label}: {co.free.length}</summary>
