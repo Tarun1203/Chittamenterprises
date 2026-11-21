@@ -71,8 +71,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyProduct("Chittam Enterprises")]
 [assembly: System.Reflection.AssemblyCompany("Chittam Enterprises")]
 // keep in step with Program.DesktopVersion (build.ps1 checks)
-[assembly: System.Reflection.AssemblyVersion("3.6.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("3.6")]
+[assembly: System.Reflection.AssemblyVersion("3.7.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.7")]
 
 namespace ChittamEnterprises
 {
@@ -82,7 +82,7 @@ namespace ChittamEnterprises
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
         // where new versions of this program are published (desktop/ folder of the site)
         public const string UpdateUrl = "https://tarun1203.github.io/Chittamenterprises/desktop/version.json";
-        public const string DesktopVersion = "3.6";
+        public const string DesktopVersion = "3.7";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -382,7 +382,7 @@ namespace ChittamEnterprises
     class Debtor { public string Name, Mobile; }
     class Creditor { public string Name, Parent; public double Closing; }
     // every party ledger (Sundry Debtors "D" / Sundry Creditors "C") with its mobile and Tally aliases
-    class Party { public string Name, Group, Mobile; public List<string> Aliases = new List<string>(); }
+    class Party { public string Name, Group, Parent, Gstin, Mobile; public List<string> Aliases = new List<string>(); }
     class Bill { public string Party, Ref, Date, Due; public double Amount; public int Overdue; }
 
     static class Tally
@@ -675,14 +675,14 @@ namespace ChittamEnterprises
                     "<SVCURRENTCOMPANY>" + System.Security.SecurityElement.Escape(company) + "</SVCURRENTCOMPANY></STATICVARIABLES>" +
                     "<TDL><TDLMESSAGE><COLLECTION NAME=\"ChittamParties\" ISMODIFY=\"No\"><TYPE>Ledger</TYPE>" +
                     "<CHILDOF>" + (g == "D" ? "$$GroupSundryDebtors" : "$$GroupSundryCreditors") + "</CHILDOF><BELONGSTO>Yes</BELONGSTO>" +
-                    "<FETCH>Name, LedgerMobile, LedgerPhone, LanguageName</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
+                    "<FETCH>Name, Parent, PartyGSTIN, LedgerMobile, LedgerPhone, LanguageName</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
                 var doc = new XmlDocument();
                 doc.LoadXml(xml);
                 foreach (XmlElement e in doc.SelectNodes("//LEDGER"))
                 {
                     var name = e.GetAttribute("NAME").Trim();
                     if (name.Length == 0 || Regex.IsMatch(name, "bank a/c", RegexOptions.IgnoreCase)) continue;
-                    var party = new Party { Name = name, Group = g, Mobile = CleanMobile(Text(e, "LEDGERMOBILE")) ?? CleanMobile(Text(e, "LEDGERPHONE")) ?? "" };
+                    var party = new Party { Name = name, Group = g, Parent = Text(e, "PARENT"), Gstin = Text(e, "PARTYGSTIN"), Mobile = CleanMobile(Text(e, "LEDGERMOBILE")) ?? CleanMobile(Text(e, "LEDGERPHONE")) ?? "" };
                     foreach (XmlElement n in e.SelectNodes(".//LANGUAGENAME.LIST/NAME.LIST/NAME"))
                     {
                         var a = n.InnerText.Trim();
@@ -1188,10 +1188,10 @@ namespace ChittamEnterprises
                 { "unmatched", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", new object[0] } } } } },
                 { "balances", Map(bal) }, { "names", Map(nm) }, { "at", Ts(now) }, { "by", Str(s.Email) }
             };
-            // n name, g D (Sundry Debtors) / C (Sundry Creditors), m mobile, al aliases (e.g. the party code)
+            // n name, g D (Sundry Debtors) / C (Sundry Creditors), p its Tally group (e.g. a route group), gst GSTIN, m mobile, al aliases (e.g. the party code)
             if (parties != null)
                 fields["parties"] = new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", parties.Select(x => (object)Map(new Dictionary<string, object> {
-                    { "n", Str(x.Name) }, { "g", Str(x.Group) }, { "m", Str(x.Mobile) },
+                    { "n", Str(x.Name) }, { "g", Str(x.Group) }, { "p", Str(x.Parent ?? "") }, { "gst", Str(x.Gstin ?? "") }, { "m", Str(x.Mobile) },
                     { "al", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", x.Aliases.Select(a => (object)Str(a)).ToArray() } } } } }
                 })).ToArray() } } } };
             Send("PATCH", BaseUrl(s) + "balances/" + key, token, new Dictionary<string, object> { { "fields", Seal(s, "balances", fields) } });
@@ -1601,7 +1601,7 @@ namespace ChittamEnterprises
 
                 // ---- balances ----
                 var sig = string.Join("|", bal.Keys.OrderBy(k => k, StringComparer.Ordinal).Select(k => k + "=" + bal[k].ToString(CultureInfo.InvariantCulture))) +
-                    (parties == null ? "" : "#" + string.Join("|", parties.OrderBy(x => x.Name, StringComparer.Ordinal).Select(x => x.Name + "=" + x.Group + x.Mobile + "=" + string.Join(",", x.Aliases))));
+                    (parties == null ? "" : "#" + string.Join("|", parties.OrderBy(x => x.Name, StringComparer.Ordinal).Select(x => x.Name + "=" + x.Group + x.Mobile + "=" + x.Parent + "=" + x.Gstin + "=" + string.Join(",", x.Aliases))));
                 string hash = Hash(sig), last;
                 if (!force && Settings.LastHash.TryGetValue(key, out last) && last == hash) Log("[" + company + "] balances: no change");
                 else

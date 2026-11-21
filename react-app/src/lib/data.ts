@@ -15,9 +15,19 @@ export interface Customer {
   code?: string; district?: string; route?: string; place?: string; tallyNames?: Record<string, string>;
   kind?: PartyKind;   // missing = customer
 }
-// customer (Sundry Debtors), supplier (Sundry Creditors), or both (you buy from and sell to them)
-export type PartyKind = "customer" | "supplier" | "both";
-export const isSupplierOnly = (c: Pick<Customer, "kind">) => c.kind === "supplier";
+// what the party is: a customer on a route, a consumer (walk-in / individual), a technician,
+// a supplier, both (you buy from and sell to them), a transporter, an expense (shop rent, staff…) or other
+export type PartyKind = "customer" | "consumer" | "technician" | "supplier" | "both" | "transporter" | "expense" | "other";
+export const PARTY_KINDS: { value: PartyKind; label: string; short: string }[] = [
+  { value: "customer", label: "Customer", short: "OUT" }, { value: "consumer", label: "Consumer", short: "CON" },
+  { value: "technician", label: "Technician", short: "TEC" }, { value: "supplier", label: "Supplier", short: "SUP" },
+  { value: "both", label: "Both (buy & sell)", short: "BTH" }, { value: "transporter", label: "Transporter", short: "TRN" },
+  { value: "expense", label: "Expense (rent, staff…)", short: "EXP" }, { value: "other", label: "Other", short: "OTH" },
+];
+// shown in customer lists (payments, reminders, orders…): everyone you sell to
+export const isCustomerKind = (k?: PartyKind) => !k || k === "customer" || k === "consumer" || k === "technician" || k === "both";
+export const isSupplierKind = (k?: PartyKind) => k === "supplier" || k === "both";
+export const isSupplierOnly = (c: Pick<Customer, "kind">) => !isCustomerKind(c.kind);
 export interface Product { id: string; name: string; category?: string; price?: number }
 export interface Transport { id: string; name: string; contactPerson?: string; phone?: string; branch?: string }
 export interface Settings {
@@ -67,7 +77,7 @@ export interface BalanceSet {
   // every party ledger in the company (Windows app 3.5+): n name, g D/C (Sundry Debtors / Creditors), m mobile, al aliases
   parties?: TallyParty[];
 }
-export interface TallyParty { n: string; g?: string; m?: string; al?: string[] }
+export interface TallyParty { n: string; g?: string; p?: string; gst?: string; m?: string; al?: string[] }
 
 export const defaultSettings: Settings = {
   businessName: "Chittam Enterprises",

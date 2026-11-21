@@ -4,6 +4,17 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.32", date: "2026-11-21", title: "Party type and route read from your Tally groups", windows: "3.7",
+    items: [
+      "Parties & codes now works out each party's type from its Tally group and name: customer on a route, consumer (Customer / Customer - Cash / Customer - Credit Bills groups, or a person's name with no GSTIN), technician, supplier (Sundry Creditors), both (debtor and creditor), transporter, expense (rent, staff…) or other (own company / adjustment ledgers). The reason is shown next to the type.",
+      "Customers in a route group (e.g. “Kavithal & Lingasugur & Mudgal”) get that route, and the place from the town in their name (“… - Mudgal” → MDGL).",
+      "“Fill in routes from Tally” builds the routes from your Tally groups (KLM, SGD, MNP, SNM, RCR, GLS…), joining the same route written differently in Chittam, Cash and Vamana.",
+      "Parties not on a route get District – Type – Serial codes: RC-SUP-01 supplier, RC-TEC-01 technician, RC-CON-01 consumer, RC-TRN-01 transporter, RC-EXP-01 expense, RC-OUT-01 customer outside the routes.",
+      "“Add missing parties from Tally” adds every unlinked ledger (customers, suppliers, technicians, transporters…), already typed.",
+      "Windows app 3.7: sends each ledger's Tally group and GSTIN.",
+    ],
+  },
+  {
     version: "3.31", date: "2026-11-21", title: "Suppliers in Parties & codes", windows: "3.6",
     items: [
       "Every party now has a type: Customer, Supplier, or Both (you buy from and sell to them). Suppliers get codes, routes and Tally links the same way, and “Push codes to Tally” writes theirs too.",

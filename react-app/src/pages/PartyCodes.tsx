@@ -10,9 +10,9 @@ import { IconDeviceFloppy, IconPlus, IconSparkles, IconUpload, IconUserPlus } fr
 import { Button, Card, Field, PageHeader, useToast } from "@/components/kit";
 import { RowRemove, Select, Text } from "@/components/forms";
 import { useStore } from "@/lib/store";
-import { logEvent, normalizeName, saveRecords, saveSettings, uid, type Customer, type District, type PartyKind, type Route } from "@/lib/data";
+import { logEvent, normalizeName, PARTY_KINDS, saveRecords, saveSettings, uid, type Customer, type District, type PartyKind, type Route, type TallyParty } from "@/lib/data";
 import { useCompanies } from "@/lib/companies";
-import { codeOf, guessPlace, looksLikeCode, nextSerial, oldCodes, partiesByCompany, similarNames, suggestedRoutes, suggestLedgers } from "@/lib/parties";
+import { classify, codeOf, looksLikeCode, nextOffRouteSerial, nextSerial, offRouteCode, oldCodes, partiesByCompany, routesFromTally, similarNames, suggestedRoutes, suggestLedgers } from "@/lib/parties";
 import { desktopRequest, inDesktopApp } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 
@@ -95,60 +95,79 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
     return { ...base, district: r.district, route: r.code, place: placeShort, code };
   }
 
-  // fills in every customer's Tally ledgers, and a route / place / code where the town is known
+  const district0 = settings.districts?.[0]?.code || routes[0]?.district || "RC";
+  // a party's ledgers in every company (for its kind): its links, else its own name
+  const ledgersOf = (name: string, names: Record<string, string>): TallyParty[] =>
+    cos.flatMap((co) => co.parties.filter((p) => normalizeName(p.n) === normalizeName(names[co.key] || name)));
+  // kind, route, place and code from Tally's groups (route groups, Technician, Customer, Transport, Sundry Creditors…)
+  function typed(d: Draft, keepKind: boolean, work: Customer[], id: string): Draft {
+    const g = classify(ledgersOf(d.name, d.tallyNames), routes);
+    const kind = keepKind ? d.kind : g.kind;
+    let next: Draft = { ...d, kind };
+    if (!next.route && g.route && (kind === "customer" || kind === "both")) next = { ...next, district: g.route.district, route: g.route.code, place: g.place?.short || next.place };
+    if (!next.code) {
+      const r = routes.find((x) => x.code === next.route);
+      if (r && next.place) next.code = codeOf(r.district, r.code, next.place, nextSerial(work, r.district, r.code, next.place));
+      else if (!next.route) next.code = offRouteCode(district0, kind, nextOffRouteSerial(work, district0, kind));
+      const i = work.findIndex((x) => x.id === id);
+      if (next.code) { if (i >= 0) work[i] = { ...work[i], code: next.code }; else work.push({ id, name: next.name, code: next.code }); }
+    }
+    return next;
+  }
+
+  // fills in every party's Tally ledgers, its kind (from Tally's groups), route, place and code
   function suggestAll() {
     const next: Record<string, Draft> = { ...drafts };
     const whyAll: Record<string, Record<string, string>> = {};
     const takenNow = new Map(taken);
     const work = pending();
-    for (const c of customers) {
+    for (const c of [...customers, ...added]) {
       const base = next[c.id] || draftOf(c);
-      const s = suggestLedgers({ ...c, tallyNames: base.tallyNames }, cos, takenNow);
+      const s = suggestLedgers({ ...c, name: base.name, tallyNames: base.tallyNames }, cos, takenNow);
       const tallyNames: Record<string, string> = {};
       whyAll[c.id] = {};
       for (const [k, v] of Object.entries(s)) {
-        if (normalizeName(v.name) !== normalizeName(c.name)) tallyNames[k] = v.name;   // only a different spelling needs saving
+        if (normalizeName(v.name) !== normalizeName(base.name)) tallyNames[k] = v.name;   // only a different spelling needs saving
         whyAll[c.id][k] = v.why;
         if (!takenNow.has(k)) takenNow.set(k, new Set());
         takenNow.get(k)!.add(v.name.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim());
       }
-      let d: Draft = { ...base, tallyNames: { ...base.tallyNames, ...tallyNames } };
-      if (!d.code && routes.length) {
-        const g = guessPlace([c.name, ...Object.values(s).map((v) => v.name)], routes);
-        if (g) {
-          const code = codeOf(g.route.district, g.route.code, g.place.short, nextSerial(work, g.route.district, g.route.code, g.place.short));
-          d = { ...d, district: g.route.district, route: g.route.code, place: g.place.short, code };
-          const i = work.findIndex((x) => x.id === c.id);
-          if (i >= 0) work[i] = { ...work[i], code };
-        }
-      }
-      next[c.id] = d;
+      const d: Draft = { ...base, tallyNames: { ...base.tallyNames, ...tallyNames } };
+      // a kind already saved (or chosen here) is kept; otherwise it comes from Tally
+      const g = classify(ledgersOf(d.name, d.tallyNames), routes);
+      whyAll[c.id].kind = g.why;
+      next[c.id] = typed(d, !!c.kind || !!drafts[c.id], work, c.id);
     }
     setDrafts(next);
     setWhy(whyAll);
-    toast("Suggestions filled in — check them, then Save. Nothing is saved yet.");
+    toast("Suggestions filled in — type, route, place, code and Tally links. Check them, then Save parties. Nothing is saved yet.");
   }
 
-  // a draft supplier for every Sundry Creditors ledger not linked to anyone yet (the same supplier in
-  // several companies becomes one party); nothing is saved until "Save parties"
-  function addSuppliersFromTally() {
+  // a draft party for every Tally ledger not linked to anyone yet (the same party in several
+  // companies becomes one), typed from Tally's groups; nothing is saved until "Save parties"
+  function addMissingFromTally() {
     const used = new Map(cos.map((co) => [co.key, new Set([...customers, ...added].map((c) => normalizeName(draftOf(c).tallyNames[co.key] || draftOf(c).name)))]));
     const groups: { name: string; mobile: string; names: Record<string, string> }[] = [];
     for (const co of cos) for (const p of co.parties) {
-      if (p.g !== "C" || used.get(co.key)!.has(normalizeName(p.n))) continue;
+      if (used.get(co.key)!.has(normalizeName(p.n))) continue;
       const g = groups.find((x) => !x.names[co.key] && Object.values(x.names).some((n) => similarNames(n, p.n)));
       if (g) { g.names[co.key] = p.n; if (!g.mobile && p.m) g.mobile = p.m; }
       else groups.push({ name: p.n, mobile: p.m || "", names: { [co.key]: p.n } });
     }
-    if (!groups.length) { toast("Every Sundry Creditors ledger is already linked to a party."); return; }
-    const fresh = groups.map((g) => ({ c: { id: uid(), name: "", mobile: "", kind: "supplier" as PartyKind } as Customer, g }));
+    if (!groups.length) { toast("Every Tally party ledger is already linked to a party."); return; }
+    const work = pending();
+    const fresh = groups.map((g) => {
+      const c = { id: uid(), name: "", mobile: "" } as Customer;
+      const d = typed({ kind: "customer", name: g.name, mobile: g.mobile, code: "", district: "", route: "", place: "",
+        tallyNames: Object.fromEntries(Object.entries(g.names).filter(([, n]) => normalizeName(n) !== normalizeName(g.name))) }, false, work, c.id);
+      return { c: { ...c, kind: d.kind }, d, why: classify(ledgersOf(g.name, g.names), routes).why };
+    });
     setAdded((a) => [...fresh.map((x) => x.c), ...a]);
-    setDrafts((d) => ({ ...d, ...Object.fromEntries(fresh.map(({ c, g }) => [c.id, {
-      kind: "supplier" as PartyKind, name: g.name, mobile: g.mobile, code: "", district: "", route: "", place: "",
-      tallyNames: Object.fromEntries(Object.entries(g.names).filter(([, n]) => normalizeName(n) !== normalizeName(g.name))),
-    }])) }));
+    setDrafts((x) => ({ ...x, ...Object.fromEntries(fresh.map(({ c, d }) => [c.id, d])) }));
+    setWhy((w) => ({ ...w, ...Object.fromEntries(fresh.map(({ c, why }) => [c.id, { kind: why }])) }));
     setFilter("all");
-    toast(groups.length + " suppliers added below from Sundry Creditors — check names, merge any that are the same, then Save parties.");
+    const n = (k: PartyKind) => fresh.filter((x) => x.d.kind === k).length;
+    toast(groups.length + " parties added below from Tally (" + PARTY_KINDS.filter((k) => n(k.value)).map((k) => n(k.value) + " " + k.label.toLowerCase()).join(", ") + ") — check them, then Save parties.");
   }
 
   async function save() {
@@ -219,7 +238,7 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
   const list = [...added, ...customers]
     .filter((c) => isNew(c) || !q.trim() || (draftOf(c).name + " " + draftOf(c).mobile + " " + (draftOf(c).code || "") + " " + Object.values(draftOf(c).tallyNames).join(" ")).toLowerCase().includes(q.trim().toLowerCase()))
     .filter((c) => isNew(c) || filter === "all" || (filter === "done") === status(c).done)
-    .filter((c) => isNew(c) || kindFilter === "all" || draftOf(c).kind === kindFilter || (kindFilter !== "both" && draftOf(c).kind === "both"))
+    .filter((c) => isNew(c) || kindFilter === "all" || draftOf(c).kind === kindFilter || ((kindFilter === "customer" || kindFilter === "supplier") && draftOf(c).kind === "both"))
     .sort((a, b) => Number(isNew(b)) - Number(isNew(a)) || (draftOf(a).code || "~").localeCompare(draftOf(b).code || "~") || a.name.localeCompare(b.name));
   const counts = { done: customers.filter((c) => status(c).done).length, total: customers.length };
   const unlinked = cos.map((co) => {
@@ -233,7 +252,7 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={addParty} disabled={!!busy}><IconUserPlus size={16} /> Add party</Button>
           <Button variant="secondary" onClick={suggestAll} disabled={!!busy}><IconSparkles size={16} /> Suggest for all</Button>
-          <Button variant="secondary" onClick={addSuppliersFromTally} disabled={!!busy || !fullLists}><IconUserPlus size={16} /> Add suppliers from Tally</Button>
+          <Button variant="secondary" onClick={addMissingFromTally} disabled={!!busy || !fullLists}><IconUserPlus size={16} /> Add missing parties from Tally</Button>
           <Button variant="secondary" onClick={save} disabled={!!busy || !changed.length}><IconDeviceFloppy size={16} /> {busy === "Saving…" ? busy : "Save parties" + (changed.length ? " (" + changed.length + ")" : "")}</Button>
           {inDesktopApp() && <Button variant="secondary" onClick={push} disabled={!!busy || !fullLists}><IconUpload size={16} /> {busy.startsWith("Waiting") ? busy : "Push codes to Tally"}</Button>}
           <span className="ml-auto text-sm text-neutral-500">{counts.done} of {counts.total} parties coded and linked</span>
@@ -243,7 +262,7 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
         {dupCodes.size > 0 && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">The same code on two parties: {[...dupCodes].join(", ")}</p>}
         <div className="flex flex-wrap gap-2">
           <Text className="min-w-0 flex-1" placeholder="Search name, code or Tally name…" value={q} onChange={(e) => setQ(e.target.value)} />
-          <Select className="w-auto" value={kindFilter} onChange={(v) => setKindFilter(v as typeof kindFilter)} options={[{ value: "all", label: "Customers & suppliers" }, { value: "customer", label: "Customers" }, { value: "supplier", label: "Suppliers" }, { value: "both", label: "Both (buy & sell)" }]} />
+          <Select className="w-auto" value={kindFilter} onChange={(v) => setKindFilter(v as typeof kindFilter)} options={[{ value: "all", label: "Every type" }, ...PARTY_KINDS.map((k) => ({ value: k.value, label: k.label }))]} />
           <Select className="w-auto" value={filter} onChange={(v) => setFilter(v as typeof filter)} options={[{ value: "todo", label: "Still to do" }, { value: "done", label: "Done" }, { value: "all", label: "All" }]} />
         </div>
       </Card>
@@ -265,8 +284,12 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
               <Field label="Name"><Text value={d.name} onChange={(e) => setDraft(c, { name: e.target.value })} placeholder="e.g. Meghana Electronics And Electricals - Mudgal" className="font-semibold" /></Field>
               <Field label="Mobile"><Text type="tel" inputMode="tel" value={d.mobile} onChange={(e) => setDraft(c, { mobile: e.target.value })} placeholder="10-digit mobile"
                 className={cn(!mobileOk(d.mobile) && "border-rose-300 bg-rose-50/40")} /></Field>
-              <Field label="Type"><Select value={d.kind} onChange={(v) => setDraft(c, { kind: v as PartyKind })}
-                options={[{ value: "customer", label: "Customer" }, { value: "supplier", label: "Supplier" }, { value: "both", label: "Both (buy & sell)" }]} /></Field>
+              <Field label={"Type" + (why[c.id]?.kind ? " · " + why[c.id].kind : "")}><Select value={d.kind} onChange={(v) => {
+                  const kind = v as PartyKind;
+                  // off a route: the code follows the type (RC-SUP-01…)
+                  const off = !d.route && (!d.code || /^[A-Z]+-[A-Z]{3}-\d+$/.test(d.code));
+                  setDraft(c, off ? { kind, code: offRouteCode(district0, kind, nextOffRouteSerial(pending().filter((x) => x.id !== c.id), district0, kind)) } : { kind });
+                }} options={PARTY_KINDS.map((k) => ({ value: k.value, label: k.label }))} /></Field>
             </div>
             <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1.2fr]">
               <Field label="Route">
@@ -316,7 +339,15 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
 /* ---------------------------------------------------------------- routes & places */
 
 function Routes() {
-  const { settings, settingsLoaded } = useStore();
+  const { settings, settingsLoaded, balances } = useStore();
+  const companies = useCompanies();
+  const cos = useMemo(() => partiesByCompany(balances, companies), [balances, companies]);
+  // the routes as Tally groups them (Windows app 3.7+), else the usual ones
+  function suggest() {
+    const fromTally = routesFromTally(cos);
+    if (fromTally.length) { setDistricts([{ code: "RC", name: "Raichur" }]); setRoutes(fromTally); toast(fromTally.length + " routes filled in from your Tally groups — check the codes and short forms, then Save routes."); }
+    else { const s = suggestedRoutes(); setDistricts(s.districts || []); setRoutes(s.routes); toast("Usual routes filled in (update the Windows app to 3.7 to use your Tally groups) — check, then Save routes."); }
+  }
   const toast = useToast();
   const [districts, setDistricts] = useState<District[]>(settings.districts || []);
   const [routes, setRoutes] = useState<Route[]>(settings.routes || []);
@@ -339,9 +370,9 @@ function Routes() {
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={save}><IconDeviceFloppy size={16} /> Save routes</Button>
-          {!routes.length && <Button variant="secondary" onClick={() => { const s = suggestedRoutes(); setDistricts(s.districts || []); setRoutes(s.routes); }}><IconSparkles size={16} /> Fill in suggested routes</Button>}
+          {!routes.length && <Button variant="secondary" onClick={suggest}><IconSparkles size={16} /> Fill in routes from Tally</Button>}
         </div>
-        <p className="text-sm text-neutral-500">A code is <b>District – Route – Place – Serial</b>, e.g. <span className="font-mono">RC-KLM-KVTL-01</span>. The serial counts up per place. Changing a short form later doesn't change codes already given.</p>
+        <p className="text-sm text-neutral-500">A code is <b>District – Route – Place – Serial</b>, e.g. <span className="font-mono">RC-KLM-KVTL-01</span>; the serial counts up per place. A party not on a route gets <b>District – Type – Serial</b>: <span className="font-mono">RC-SUP-01</span> supplier, <span className="font-mono">RC-TEC-01</span> technician, <span className="font-mono">RC-CON-01</span> consumer, <span className="font-mono">RC-TRN-01</span> transporter, <span className="font-mono">RC-EXP-01</span> expense, <span className="font-mono">RC-OUT-01</span> customer outside the routes. Changing a short form later doesn't change codes already given.</p>
       </Card>
 
       <Card className="space-y-3">

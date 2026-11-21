@@ -5,7 +5,7 @@ import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } fr
 import { auth } from "./firebase";
 import { isLocked, onCryptoChange, type CryptoConfig } from "./crypto";
 import { setParties } from "./parties";
-import { listenCollection, listenCrypto, listenDoc, defaultSettings, type Customer, type Product, type Transport, type Settings, type Order, type ServiceJob, type Receipt, type BalanceSet } from "./data";
+import { isCustomerKind, isSupplierKind, listenCollection, listenCrypto, listenDoc, defaultSettings, type Customer, type Product, type Transport, type Settings, type Order, type ServiceJob, type Receipt, type BalanceSet } from "./data";
 
 interface Store {
   user: User | null;
@@ -94,8 +94,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [user, cryptoReady, locked]);
 
   const live = customers.filter((c) => !c.removed && !c.mergedInto);
-  const active = live.filter((c) => c.kind !== "supplier");
-  const suppliers = live.filter((c) => c.kind === "supplier" || c.kind === "both");
+  const active = live.filter((c) => isCustomerKind(c.kind));
+  const suppliers = live.filter((c) => isSupplierKind(c.kind));
   const value: Store = {
     user,
     authReady,

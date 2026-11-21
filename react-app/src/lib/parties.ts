@@ -4,7 +4,7 @@
 // (tallyNames) and a unique code (district-route-place-serial, e.g.
 // RC-KLM-KVTL-01). Every page that looks up a customer in Tally goes through
 // partyKey / tallyNameOf here, so the different spellings count as one party.
-import { normalizeName, type BalanceSet, type Customer, type Route, type Settings, type TallyParty } from "./data";
+import { normalizeName, PARTY_KINDS, type BalanceSet, type Customer, type PartyKind, type Route, type Settings, type TallyParty } from "./data";
 
 /* ---------------- the lookup every page uses ---------------- */
 
@@ -43,6 +43,110 @@ export function nextSerial(customers: Customer[], district: string, route: strin
 }
 // a code is any alias that looks like one (letters/digits joined by dashes, not a phone number)
 export const looksLikeCode = (a: string) => /^[A-Z]{2,}[A-Z0-9]*(-[A-Z0-9]+)+$/i.test(a.trim()) && !/^\d[\d-]*$/.test(a.trim());
+
+// the code of a party that isn't on a route: District – Type – Serial (e.g. RC-SUP-03)
+export const kindShort = (k: PartyKind) => PARTY_KINDS.find((x) => x.value === k)?.short || "OTH";
+export const offRouteCode = (district: string, kind: PartyKind, serial: number) => [district, kindShort(kind)].map((x) => x.trim().toUpperCase()).join("-") + "-" + String(serial).padStart(2, "0");
+export function nextOffRouteSerial(customers: Customer[], district: string, kind: PartyKind) {
+  const prefix = [district, kindShort(kind)].map((x) => x.trim().toUpperCase()).join("-") + "-";
+  let max = 0;
+  for (const c of customers) if (c.code?.toUpperCase().startsWith(prefix) && /^\d+$/.test(c.code.slice(prefix.length))) max = Math.max(max, Number(c.code.slice(prefix.length)));
+  return max + 1;
+}
+
+/* ---------------- routes from Tally's own groups ---------------- */
+
+// "Kavithal & Lingasugur & Mudgal" -> places; KVTL-style short forms (consonants, no "h" after
+// a consonant: Kavithal KVTL, Pothnal PTNL, Raichur RCR), KLM-style route codes (initials)
+const consonants = (w: string) => {
+  const u = w.toUpperCase().replace(/[^A-Z]/g, "");
+  return (u[0] + u.slice(1).replace(/[AEIOU]/g, "").replace(/([^AEIOU])H/g, "$1")).replace(/(.)\1+/g, "$1");
+};
+const shortOf = (place: string) => { const ws = place.split(/\s+/).filter(Boolean); return ws.length > 1 ? (consonants(ws[0]).slice(0, 2) + ws.slice(1).map((w) => w[0]).join("")).toUpperCase().slice(0, 4) : consonants(ws[0]).slice(0, 4); };
+const routeCodeOf = (places: string[]) => places.length > 1
+  ? (places.length === 2 ? consonants(places[0]).slice(0, 2) + places[1][0] : places.map((p) => p[0]).join("")).toUpperCase().slice(0, 4)
+  : consonants(places[0]).slice(0, 3);
+const NOT_ROUTE = /^(sundry debtors|sundry creditors|customer.*|outer coverage|technician.*|transport.*|billing solution.*|staff.*|rent.*|.*expenses?)$/i;
+const splitPlaces = (g: string) => g.split(/\s*(?:&|,|-|\band\b)\s*/i).map((x) => x.trim()).filter(Boolean).map((x) => x.replace(/\b\w/g, (c) => c.toUpperCase()));
+export function routesFromTally(cos: CompanyParties[], district = "RC"): Route[] {
+  // each route group as written (with how many parties are in it), the business company first
+  const seen: { places: string[]; n: number }[] = [];
+  for (const co of cos) for (const p of co.parties) if (p.g === "D" && p.p && !NOT_ROUTE.test(p.p.trim())) {
+    const places = splitPlaces(p.p.trim());
+    const hit = seen.find((x) => x.places.length === places.length && x.places.every((y, i) => y === places[i]));
+    if (hit) hit.n++; else seen.push({ places, n: 1 });
+  }
+  // "Gabbur Devadurga Sirwar" (no separators): split on spaces when each word is a known place
+  const known = seen.filter((x) => x.places.length > 1).flatMap((x) => x.places);
+  const groups = seen.map((x) => {
+    const words = x.places.length === 1 ? x.places[0].split(/\s+/) : [];
+    return words.length > 1 && words.every((w) => known.some((k) => similarWord(k, w))) ? { ...x, places: words } : x;
+  });
+  const has = (r: string[], place: string) => r.some((x) => similarWord(x, place));
+  // the same places in another order, or a part of a bigger route: joined into it
+  const routes: { places: string[]; n: number; src: string[] }[] = [];
+  for (const g of [...groups].sort((a, b) => b.places.length - a.places.length || b.n - a.n)) {
+    const into = routes.find((r) => g.places.every((x) => has(r.places, x)) || r.places.every((x) => has(g.places, x)));
+    if (into) { for (const x of g.places) if (!has(into.places, x)) into.places.push(x); into.n += g.n; if (g.n > into.n - g.n) into.src = g.places; continue; }
+    routes.push({ places: [...g.places], n: g.n, src: g.places });
+  }
+  // a group whose places are all on other routes ("Sindhanur & Pothnal") isn't a route of its own —
+  // the smallest such group goes first, so the real routes stay
+  let list = [...routes];
+  for (const r of [...routes].sort((a, b) => a.n - b.n)) {
+    const others = list.filter((o) => o !== r);
+    if (r.places.length > 1 && r.places.every((x) => others.some((o) => has(o.places, x)))) list = others;
+  }
+  const out: Route[] = [];
+  for (const r of list) {
+    // the most used spelling and order first; its code (KLM even when another company adds Gugunta)
+    const places = [...r.src, ...r.places.filter((x) => !has(r.src, x))];
+    const base = routeCodeOf(r.src);
+    let code = base, n = 2;
+    while (out.some((x) => x.code === code)) code = base + n++;
+    out.push({ code, name: places.join(", "), district, places: places.map((pl) => ({ name: pl, short: shortOf(pl) })) });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+const similarWord = (a: string, b: string) => { const x = a.toLowerCase().replace(/[^a-z]/g, ""), y = b.toLowerCase().replace(/[^a-z]/g, ""); return x === y || (x.length >= 5 && y.length >= 5 && lev(x, y) <= 2); };
+
+/* ---------------- what kind of party: from its Tally groups and name ---------------- */
+
+export interface KindGuess { kind: PartyKind; route?: Route; place?: Route["places"][number]; why: string }
+const TRANSPORT = /\b(transports?|travels|logistics|cargo|parcels?|roadlines|carriers?|movers|couriers?|lorry|tempo)\b/i;
+const TECH = /\b(technician|mechanic)\b/i;
+const EXPENSE = /\b(rent|salary|salaries|staff|wages|electricity bill|landlord|building owner|telephone bill|internet bill|advance to)\b/i;
+const OTHER = /account\s*adj|adjust|suspense|chittam enterprises|vamana enterprises|cash bill|^customer$/i;
+const BUSINESS = /\b(electronics?|electricals?|enterprises?|traders?|agenc(y|ies)|stores?|cent(er|re)|mobiles?|appliances?|hardware|steel|furniture|distributors?|marketing|industries|company|co|pvt|ltd|limited|hotels?|computers?|telecoms?|lights|agro|textiles|associates|groups?|world|solutions?|needs|home|shop|mart|bazaa?r|seeds|xerox|digital|residency|inn|clinic|hospital|school|college|sales|services?|systems?|technologies|retail|ventures)\b/i;
+
+// one party's ledgers in every company -> its kind, and its route / place when it's on one
+export function classify(ledgers: TallyParty[], routes: Route[]): KindGuess {
+  const groups = ledgers.map((l) => (l.p || "").trim());
+  const names = ledgers.map((l) => l.n);
+  const all = [...names, ...groups].join(" | ");
+  const debtor = ledgers.some((l) => l.g === "D"), creditor = ledgers.some((l) => l.g === "C");
+  if (OTHER.test(names.join(" | "))) return { kind: "other", why: "own company / adjustment ledger" };
+  if (groups.some((g) => /transport/i.test(g)) || TRANSPORT.test(names.join(" "))) return { kind: "transporter", why: groups.find((g) => /transport/i.test(g)) ? "Tally group “" + groups.find((g) => /transport/i.test(g)) + "”" : "name says transport" };
+  if (groups.some((g) => /^technician/i.test(g)) || (TECH.test(names.join(" ")) && !ledgers.every((l) => l.g === "C"))) return { kind: "technician", why: groups.some((g) => /^technician/i.test(g)) ? "Tally group “Technician”" : "name says technician" };
+  if (groups.some((g) => /staff|rent|salar|expense/i.test(g)) || EXPENSE.test(names.join(" "))) return { kind: "expense", why: "rent / staff / expense" };
+  // on a route: its Tally group is one of the routes (or its town is a place on one)
+  for (const g of groups) {
+    const r = routes.find((x) => x.places.length && g.split(/\s*(?:&|,|-|\band\b)\s*/i).filter(Boolean).every((w) => x.places.some((p) => similarWord(p.name, w))) );
+    if (r) {
+      const gp = guessPlace(names, [r]);
+      return { kind: creditor ? "both" : "customer", route: r, place: gp?.place || (r.places.length === 1 ? r.places[0] : undefined), why: "Tally group “" + g + "”" + (creditor ? ", also under Sundry Creditors" : "") };
+    }
+  }
+  const town = guessPlace(names, routes);
+  if (debtor && town) return { kind: creditor ? "both" : "customer", route: town.route, place: town.place, why: "town on route " + town.route.code };
+  if (debtor && creditor) return { kind: "both", why: "under Sundry Debtors and Sundry Creditors" };
+  if (creditor) return { kind: "supplier", why: "under Sundry Creditors" };
+  if (groups.some((g) => /^customer/i.test(g))) return { kind: "consumer", why: "Tally group “" + groups.find((g) => /^customer/i.test(g)) + "”" };
+  if (groups.some((g) => /outer coverage/i.test(g))) return { kind: "customer", why: "Outer Coverage (not on a route)" };
+  // a person's name, no GSTIN and no business words -> a consumer
+  if (!ledgers.some((l) => l.gst) && !BUSINESS.test(names.join(" "))) return { kind: "consumer", why: "a person's name, no GSTIN" };
+  return { kind: "customer", why: "under Sundry Debtors" };
+}
 
 /* ---------------- suggested routes (from the codes already in Tally) ---------------- */
 
