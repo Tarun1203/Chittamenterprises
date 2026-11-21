@@ -42,6 +42,8 @@ export interface Settings {
   notDuplicates?: string[];   // customer pairs marked "not duplicates" ("idA|idB")
   // Tally Match possible duplicates checked and found to be real, separate transactions
   checkedDuplicates?: { key: string; by: string; at: string; what: string }[];
+  // the companies a Ledger Statement starts with (missing = every company)
+  ledgerCompanies?: string[];
   districts?: District[];     // for party codes
   routes?: Route[];
 }

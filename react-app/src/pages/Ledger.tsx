@@ -9,7 +9,7 @@ import { Button, Card, Field, PageHeader, useToast } from "@/components/kit";
 import { CustomerPicker, MessagePanel, Text } from "@/components/forms";
 import { TallyFreshness } from "@/components/TallyFreshness";
 import { useStore } from "@/lib/store";
-import { loadTallyVouchers, logEvent, type Customer, type TallyVoucherSet } from "@/lib/data";
+import { loadTallyVouchers, logEvent, saveSettings, type Customer, type TallyVoucherSet } from "@/lib/data";
 import { buildLedger, drcr, ledgerMessage, syncedRange, type LedgerPart } from "@/lib/ledger";
 import { msgDate } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
@@ -26,7 +26,7 @@ import { tallyNameOf } from "@/lib/parties";
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 export function Ledger() {
-  const { customers, balances, settings } = useStore();
+  const { customers, balances, settings, settingsLoaded } = useStore();
   const companies = useCompanies();
   const toast = useToast();
   const [params] = useSearchParams();
@@ -65,7 +65,17 @@ export function Ledger() {
   [customer, sets, balances, from, to, biz, companies]);
   const isZero = (p: LedgerPart) => Math.abs(p.closing) < 0.005;
   const hasAccount = (p: LedgerPart) => p.known || p.rows.length > 0;
-  const parts = allParts.filter((p) => (withZero ? true : hasAccount(p) && !isZero(p)));
+  // the companies in this statement: the saved default (every company when none is saved); tap a chip to change
+  const defaults = useMemo(() => (settings.ledgerCompanies?.length ? settings.ledgerCompanies : companies.map((c) => c.key)), [settings.ledgerCompanies, companies]);
+  const [picked, setPicked] = useState<string[] | null>(null);
+  const chosen = picked ?? defaults;
+  const toggle = (k: string) => setPicked(chosen.includes(k) ? chosen.filter((x) => x !== k) : [...chosen, k]);
+  const isDefault = [...chosen].sort().join("|") === [...defaults].sort().join("|");
+  async function saveDefault() {
+    try { await saveSettings({ ...settings, ledgerCompanies: companies.map((c) => c.key).filter((k) => chosen.includes(k)) }, settingsLoaded ? settings : null); toast("Saved: Ledger Statements start with these companies."); }
+    catch (e) { toast("Could not save: " + (e as Error).message); }
+  }
+  const parts = allParts.filter((p) => chosen.includes(p.account) && (withZero ? true : hasAccount(p) && !isZero(p)));
   const total = parts.reduce((t, p) => t + p.closing, 0);
   const tooEarly = range.from && from < range.from;
 
@@ -159,20 +169,29 @@ export function Ledger() {
             </label>
             {tooEarly && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">Transactions before {msgDate(range.from)} aren't synced, so the opening balance on {msgDate(from)} would be wrong. Start on or after {msgDate(range.from)}.</p>}
             {customer && <TallyFreshness customer={customer.name} />}
-            {/* every company is checked; one without a Tally account for this customer is left out of the statement */}
-            {customer && sets && companies.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {companies.map((c) => {
-                  const has = parts.some((p) => p.account === c.key);
-                  const p = allParts.find((x) => x.account === c.key);
-                  const state = has ? "included" : p && hasAccount(p) ? "zero balance" : "no account";
-                  return (
-                    <span key={c.key} className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold", has ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-neutral-200 bg-neutral-50 text-neutral-500")}
-                      title={has ? "In the statement" : state === "zero balance" ? "Balance is zero — tick “Include zero-balance companies” to add it" : "No Tally balance or transactions for this customer in " + c.label}>
-                      {c.icon} {c.key === "business" ? biz : c.label} · {state}
-                    </span>
-                  );
-                })}
+            {/* the companies: tap to include / leave out; a chosen one with no balance (or no account) shows only with zero-balance ticked */}
+            {companies.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-bold uppercase tracking-wide text-neutral-500">Companies in the statement <span className="font-medium normal-case text-neutral-400">· tap to choose</span></p>
+                <div className="flex flex-wrap gap-1.5">
+                  {companies.map((c) => {
+                    const on = chosen.includes(c.key);
+                    const has = parts.some((p) => p.account === c.key);
+                    const p = allParts.find((x) => x.account === c.key);
+                    const state = !on ? "left out" : !customer || !sets ? "" : has ? "included" : p && hasAccount(p) ? "zero balance" : "no account";
+                    return (
+                      <button key={c.key} type="button" onClick={() => toggle(c.key)} aria-pressed={on}
+                        className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition",
+                          !on ? "border-dashed border-neutral-300 bg-white text-neutral-400 line-through" : has ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-neutral-200 bg-neutral-50 text-neutral-600")}
+                        title={!on ? "Left out — tap to include" : state === "zero balance" ? "Balance is zero — tick “Include zero-balance companies” to add it" : state === "no account" ? "No Tally balance or transactions in " + c.label : "In the statement — tap to leave out"}>
+                        {on ? "☑" : "☐"} {c.icon} {c.key === "business" ? biz : c.label}{state && on ? " · " + state : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-neutral-500">
+                  {isDefault ? (settings.ledgerCompanies?.length ? "This is your saved default." : "Default: every company.") : <>Not your default · <button type="button" className="font-semibold text-brand-700 underline" onClick={saveDefault}>Save as default</button> · <button type="button" className="underline" onClick={() => setPicked(null)}>Back to default</button></>}
+                </p>
               </div>
             )}
           </Card>

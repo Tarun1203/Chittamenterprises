@@ -4,6 +4,14 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.36", date: "2026-11-21", title: "Ledger Statement: choose the companies, and save your default",
+    items: [
+      "Under the customer, tap a company to leave it out of the statement (or put it back) — the screen, PDF, WhatsApp message and print follow.",
+      "“Save as default” keeps the selection: every Ledger Statement then starts with those companies. Until you save one, the default is every company. “Back to default” undoes a change.",
+      "“Include zero-balance companies” still applies: a chosen company with no balance shows only when it's ticked.",
+    ],
+  },
+  {
     version: "3.35", date: "2026-11-21", title: "Tally Match duplicates: mark the real ones, fix the rest",
     items: [
       "Each possible duplicate now has “Checked — both are real”: it's saved with who checked it and when, leaves the list and no longer counts. “Show checked” lists them, with “Put back in the list”.",
