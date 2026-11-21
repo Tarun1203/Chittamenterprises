@@ -4,7 +4,7 @@
 // (tallyNames) and a unique code (district-route-place-serial, e.g.
 // RC-KLM-KVTL-01). Every page that looks up a customer in Tally goes through
 // partyKey / tallyNameOf here, so the different spellings count as one party.
-import { normalizeName, PARTY_KINDS, type BalanceSet, type Customer, type PartyKind, type Route, type Settings, type TallyParty } from "./data";
+import { normalizeName, PARTY_KINDS, type BalanceSet, type Customer, type PartyKind, type Route, type Settings, type SubLedger, type TallyParty } from "./data";
 
 /* ---------------- the lookup every page uses ---------------- */
 
@@ -16,6 +16,7 @@ export function setParties(customers: Customer[]) {
     if (c.mergedInto) continue;
     const main = normalizeName(c.name);
     for (const n of Object.values(c.tallyNames || {})) if (n) m.set(normalizeName(n), main);
+    for (const s of c.subLedgers || []) if (s.ledger) m.set(normalizeName(s.ledger), main);
   }
   toCanon = m;
 }
@@ -25,9 +26,26 @@ export const sameParty = (a: string | undefined, b: string | undefined) => party
 // the customer's ledger name in one company
 export const tallyNameOf = (c: Pick<Customer, "name" | "tallyNames">, company: string) => c.tallyNames?.[company] || c.name;
 // the customer's closing balance in one company (null = no ledger there)
-export function balanceIn(set: BalanceSet | undefined, c: Pick<Customer, "name" | "tallyNames">, company: string) {
-  const v = set?.balances?.[normalizeName(tallyNameOf(c, company))];
-  return v === undefined ? null : v;
+// with brand ledgers, the balances of all of them in that company added up
+export function balanceIn(set: BalanceSet | undefined, c: Pick<Customer, "name" | "tallyNames" | "subLedgers">, company: string) {
+  const vals = ledgersIn(c, company).map((l) => set?.balances?.[normalizeName(l.ledger)]).filter((v): v is number => v !== undefined);
+  return vals.length ? Math.round(vals.reduce((t, v) => t + v, 0) * 100) / 100 : null;
+}
+// the party's ledgers in one company: its main ledger, then its brand ledgers there
+export const ledgersIn = (c: Pick<Customer, "name" | "tallyNames" | "subLedgers">, company: string): { ledger: string; brand: string }[] =>
+  [{ ledger: tallyNameOf(c, company), brand: "" }, ...(c.subLedgers || []).filter((s: SubLedger) => s.company === company && s.ledger).map((s) => ({ ledger: s.ledger, brand: s.brand }))];
+// the brand ending of a brand ledger's code: Makwell MKW, Flyvision FLY, Haier HAI
+export const brandShort = (brand: string) => {
+  const u = brand.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const c = (u[0] || "") + u.slice(1).replace(/[AEIOU]/g, "");
+  return (c.length >= 3 ? c : u).slice(0, 3);
+};
+// "Mallu Mobiles - Pothnal - Makwell" next to "Mallu Mobiles - Pothnal": the brand ("Makwell")
+export function brandOf(mainLedger: string, other: string) {
+  const a = normalizeName(mainLedger), b = normalizeName(other);
+  if (!a || b === a || !b.startsWith(a)) return "";
+  const rest = other.trim().slice(mainLedger.trim().length).replace(/^[\s\-–(,]+|[\s)]+$/g, "");
+  return rest.length >= 2 ? rest.replace(/\b\w/g, (x) => x.toUpperCase()) : "";
 }
 
 /* ---------------- codes ---------------- */

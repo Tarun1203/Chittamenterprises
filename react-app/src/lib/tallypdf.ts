@@ -322,7 +322,7 @@ export async function tallyLedgerPdf(s: Settings, customer: { name: string; mobi
       });
       y = doc.lastAutoTable?.finalY || y;
       // pending bills of this company, oldest first, with their age
-      const bills = opts.bills?.[p.account];
+      const bills = opts.bills?.[p.id] ?? opts.bills?.[p.account];
       if (bills) {
         y += 5;
         if (y > H - 30) { doc.addPage(); y = 14; }

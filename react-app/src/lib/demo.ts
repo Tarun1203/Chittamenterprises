@@ -10,7 +10,9 @@ export const demoCustomers: Customer[] = [
   "Mallu Mobiles and Electronics - Pothnal", "Sri Durga Electronics - Manvi", "Vijay Radios - Lingasugur",
 ].map((name, i) => ({ id: "d" + i, name, mobile: i % 4 === 3 ? "" : "98" + String(45012345 + i * 7919).slice(0, 8) } as Customer))
   // a duplicate, to check Customers → Possible duplicates
-  .concat([{ id: "d14", name: "Kashi S.L.N", mobile: "" }]);
+  .concat([{ id: "d14", name: "Kashi S.L.N", mobile: "" }])
+  // a party with a brand ledger in Chittam ("Kashi SLN - Makwell"), to check brand sections
+  .map((c) => (c.id === "d9" ? { ...c, subLedgers: [{ company: "business", ledger: "Kashi SLN - Makwell", brand: "Makwell" }] } : c));
 
 export const demoProducts: Product[] = [
   ["Makwell - Stabilizer - Led Mini - 5 Yr.", "Makwell", 740], ["Makwell - Stabilizer - RF500VA - 5 Yr.", "Makwell", 890],
@@ -61,8 +63,8 @@ export const demoReceipts: Receipt[] = [
 ];
 
 export const demoBalances: Record<string, BalanceSet> = {
-  business: { company: "business", label: "Chittam Enterprises - 2026", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 48250, "kashi sln": 12900, "deepak": 0 }, names: { "ab infinite": "AB Infinite", "kashi sln": "Kashi SLN", "deepak": "Deepak" },
-    parties: [{ n: "AB Infinite", g: "D", p: "Raichur", al: ["RCR-CITY-1"] }, { n: "Kashi SLN", g: "D", p: "Customer" }, { n: "Deepak", g: "D", p: "Customer - Credit Bills", al: ["9743387435"] },
+  business: { company: "business", label: "Chittam Enterprises - 2026", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 48250, "kashi sln": 12900, "deepak": 0, "kashi sln - makwell": 3000 }, names: { "ab infinite": "AB Infinite", "kashi sln": "Kashi SLN", "deepak": "Deepak", "kashi sln - makwell": "Kashi SLN - Makwell" },
+    parties: [{ n: "AB Infinite", g: "D", p: "Raichur", al: ["RCR-CITY-1"] }, { n: "Kashi SLN", g: "D", p: "Customer" }, { n: "Kashi SLN - Makwell", g: "D", p: "Customer" }, { n: "Deepak", g: "D", p: "Customer - Credit Bills", al: ["9743387435"] },
       { n: "Vijay Radios - Lingasugur", g: "D", p: "Kavithal & Lingasugur & Mudgal" }, { n: "K K Enterprise - Devadurga", g: "D", p: "Sirwar & Gabbur & Devadurga" },
       { n: "Sri Ram Suppliers - Raichur", g: "C", p: "Sundry Creditors", m: "9876500011" }, { n: "Bharath Distributors", g: "C", p: "Sundry Creditors" }] },
   cash: { company: "cash", label: "Cash", importedAt: new Date(Date.now() - 3600e3).toISOString(), balances: { "ab infinite": 6400, "kashi sln": 1500 },
@@ -100,6 +102,7 @@ export const demoTallyVouchers: Record<string, TallyVoucherSet> = {
     { d: iso(-10), t: "Sales", n: "VE/12", p: "Kashi SLN", a: 7000, dr: true, id: "vv1" }] },
   business: { company: "business", label: "Chittam Enterprises", tallyCompany: "Chittam Enterprises - 2026", from: iso(-90), to: iso(0), syncedAt: new Date(Date.now() - 1800e3).toISOString(), count: 6, vouchers: [
     { d: iso(0), t: "Receipt", n: "45", p: "AB Infinite", a: 2000, dr: false, nar: "Advance against order", via: "Axis Bank", id: "v1" },
+    { d: iso(-5), t: "Sales", n: "CE/250", p: "Kashi SLN - Makwell", a: 3000, dr: true, nar: "Makwell fans", via: "Sales", id: "v-mk1" },
     { d: iso(-1), t: "Receipt", n: "44", p: "Badrinath Allundi Raichur", a: 15000, dr: false, nar: "UPI", via: "Axis Bank", id: "v2" },
     { d: iso(-2), t: "Receipt", n: "43", p: "Mallu Mobiles and Electronics - Pothnal", a: 9000, dr: false, nar: "Cheque 004512", via: "Indian Bank", id: "v3" },
     { d: iso(-3), t: "Sales", n: "CE/245", p: "Kashi SLN", a: 12900, dr: true, id: "v4" },
@@ -130,6 +133,7 @@ export const demoTallyStock = {
 export const demoTallyBills = {
   business: { company: "business", label: "Chittam Enterprises", syncedAt: synced, asOn: iso(0), bills: [
     { p: "Kashi SLN", n: "2026-27/MKWL/12", d: iso(-52), due: iso(-37), a: 8400, od: 37 },
+    { p: "Kashi SLN - Makwell", n: "CE/250", d: iso(-5), due: iso(10), a: 3000, od: 0 },
     { p: "Kashi SLN", n: "2026-27/HR/31", d: iso(-12), due: iso(3), a: 4500, od: 0 },
     { p: "AB Infinite", n: "2026-27/MKWL/40", d: iso(-20), due: iso(-5), a: 48250, od: 5 },
   ] },

@@ -16,12 +16,12 @@ import { inr, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { printHtml } from "./PickList";
 import { safeFileName, sharePdf } from "@/lib/pdf";
-import { billsOf, useTallyBills } from "@/lib/tallydata";
+import { billsOf, billsOfLedger, useTallyBills } from "@/lib/tallydata";
 import { billAge } from "@/lib/ledger";
 import { fetchVoucher, summaryVoucher, tallyLedgerPdf, voucherPdf, voucherTitle } from "@/lib/tallypdf";
 import type { LedgerRow as Row } from "@/lib/ledger";
 import { companyIcon, useCompanies } from "@/lib/companies";
-import { tallyNameOf } from "@/lib/parties";
+import { ledgersIn, tallyNameOf } from "@/lib/parties";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
@@ -60,9 +60,18 @@ export function Ledger() {
 
   // one section per company (Chittam Enterprises, Cash, and any added in the Windows app), each
   // under the customer's ledger name in that company
+  // a party with brand ledgers gets a section per ledger ("Chittam Enterprises · Makwell")
   const allParts: LedgerPart[] = useMemo(() => !customer || !sets || !from ? [] :
-    companies.map((c) => buildLedger(sets, balances, c.key, tallyNameOf(customer, c.key), c.key === "business" ? biz : c.label, from, to)),
+    companies.flatMap((c) => {
+      const name = c.key === "business" ? biz : c.label;
+      const ls = ledgersIn(customer, c.key);
+      if (ls.length === 1) return [buildLedger(sets, balances, c.key, tallyNameOf(customer, c.key), name, from, to)];
+      return ls.map((l) => buildLedger(sets, balances, c.key, l.ledger, l.brand ? name + " · " + l.brand : name, from, to, { exact: true, brand: l.brand }))
+        .filter((p, i) => i > 0 || p.known || p.rows.length);   // the main ledger only when it's used
+    }),
   [customer, sets, balances, from, to, biz, companies]);
+  const exactBills = (p: LedgerPart) => !!customer && ledgersIn(customer, p.account).length > 1;
+  const billsOfPart = (p: LedgerPart) => (exactBills(p) ? billsOfLedger(tallyBills, p.account, p.ledger) : billsOf(tallyBills, p.account, customer?.name || ""));
   const isZero = (p: LedgerPart) => Math.abs(p.closing) < 0.005;
   const hasAccount = (p: LedgerPart) => p.known || p.rows.length > 0;
   // the companies in this statement: the saved default (every company when none is saved); tap a chip to change
@@ -116,7 +125,7 @@ export function Ledger() {
   function billsFor() {
     if (!withBills || !customer) return undefined;
     const out: Partial<Record<string, { n: string; d: string; due?: string; a: number; od?: number }[]>> = {};
-    for (const p of parts) out[p.account] = billsOf(tallyBills, p.account, customer.name);
+    for (const p of parts) out[p.id] = billsOfPart(p);
     return out;
   }
 
@@ -200,9 +209,9 @@ export function Ledger() {
             ? <>Every company's balance is zero for {customer.name}. Tick “Include zero-balance companies” to send a ₹0 statement.</>
             : <>No Tally balance or transactions for {customer.name} in any company. Check the name matches the Tally ledger (or link it in Parties &amp; codes).</>}</Card>}
           {parts.map((p) => (
-            <Card key={p.account} className="p-0">
+            <Card key={p.id} className="p-0">
               <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
-                <span className="font-extrabold">{companyIcon(p.account) + " "}{p.label}</span>
+                <span className="min-w-0"><span className="font-extrabold">{companyIcon(p.account) + " "}{p.label}</span>{p.brand && <span className="block truncate text-xs text-neutral-500">{p.ledger}</span>}</span>
                 {!p.known && <span className="text-xs font-semibold text-amber-700">no Tally balance — opening taken as 0</span>}
               </div>
               <div className="divide-y divide-neutral-100 text-sm">
@@ -215,9 +224,9 @@ export function Ledger() {
             </Card>
           ))}
           {withBills && customer && parts.map((p) => {
-            const bills = billsOf(tallyBills, p.account, customer.name);
+            const bills = billsOfPart(p);
             return (
-              <Card key={"b" + p.account} className="p-0">
+              <Card key={"b" + p.id} className="p-0">
                 <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
                   <span className="font-extrabold">Pending bills · {p.label}</span>
                   <span className="text-sm font-bold tabular-nums">{inr(bills.reduce((t, b) => t + b.a, 0))}</span>

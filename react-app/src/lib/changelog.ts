@@ -4,6 +4,16 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.38", date: "2026-11-21", title: "Brand ledgers: one party, a ledger per brand",
+    items: [
+      "For parties kept as separate Tally ledgers per brand (e.g. “Mallu Mobiles - Pothnal - Makwell / - Flyvision / - Haier”): in Parties & codes, “+ Brand ledger” under a company links each brand ledger to the same party, with its brand.",
+      "“Suggest for all” finds them by itself — ledgers named like the party's main ledger plus a brand.",
+      "Balances add up everywhere (Payment Updated, Payment Reminder, Balance Confirmation, Tally Match balances), so the party gets one reminder with the full amount.",
+      "Ledger Statement shows each brand ledger as its own section (“Chittam Enterprises · Makwell”) with its own transactions and pending bills, and one grand total — on screen, in the PDF and on WhatsApp.",
+      "Push codes to Tally gives brand ledgers the party code with a brand ending, e.g. RC-MNP-PTNL-03-MKW.",
+    ],
+  },
+  {
     version: "3.37", date: "2026-11-21", title: "Ledger PDF: each company's page headed with its own name",
     items: [
       "When the Ledger Statement PDF has a page per company, each page now starts with that company's name (Chittam Enterprises, Cash Bill, Vamana Enterprises…) and “<company> - Ledger Account”, instead of the business name on every page.",

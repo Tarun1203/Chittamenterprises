@@ -14,7 +14,10 @@ export interface Customer {
   id: string; name: string; mobile?: string; removed?: boolean; removedAt?: string; mergedInto?: string; mergedAt?: string;
   code?: string; district?: string; route?: string; place?: string; tallyNames?: Record<string, string>;
   kind?: PartyKind;   // missing = customer
+  // extra ledgers of the same party, one per brand ("Mallu Mobiles - Pothnal - Makwell"), in any company
+  subLedgers?: SubLedger[];
 }
+export interface SubLedger { company: string; ledger: string; brand: string }
 // what the party is: a customer on a route, a consumer (walk-in / individual), a technician,
 // a supplier, both (you buy from and sell to them), a transporter, an expense (shop rent, staff…) or other
 export type PartyKind = "customer" | "consumer" | "technician" | "supplier" | "both" | "transporter" | "expense" | "other";

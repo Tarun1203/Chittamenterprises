@@ -10,13 +10,13 @@ import { IconDeviceFloppy, IconPlus, IconSparkles, IconUpload, IconUserPlus } fr
 import { Button, Card, Field, PageHeader, useToast } from "@/components/kit";
 import { RowRemove, Select, Text } from "@/components/forms";
 import { useStore } from "@/lib/store";
-import { logEvent, normalizeName, PARTY_KINDS, saveRecords, saveSettings, uid, type Customer, type District, type PartyKind, type Route, type TallyParty } from "@/lib/data";
+import { logEvent, normalizeName, PARTY_KINDS, saveRecords, saveSettings, uid, type Customer, type District, type PartyKind, type Route, type SubLedger, type TallyParty } from "@/lib/data";
 import { useCompanies } from "@/lib/companies";
-import { allPlaces, classify, guessPlace, isMadeCode, looksLikeCode, makeCode, needsPlace, needsRoute, oldCodes, partiesByCompany, routesFromTally, similarNames, suggestedRoutes, suggestLedgers } from "@/lib/parties";
+import { allPlaces, brandOf, brandShort, classify, guessPlace, isMadeCode, looksLikeCode, makeCode, needsPlace, needsRoute, oldCodes, partiesByCompany, routesFromTally, similarNames, suggestedRoutes, suggestLedgers } from "@/lib/parties";
 import { desktopRequest, inDesktopApp } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 
-type Draft = { kind: PartyKind; name: string; mobile: string; code: string; district: string; route: string; place: string; tallyNames: Record<string, string> };
+type Draft = { kind: PartyKind; name: string; mobile: string; code: string; district: string; route: string; place: string; tallyNames: Record<string, string>; subLedgers: SubLedger[] };
 const mobileOk = (m: string) => !m.trim() || m.replace(/\D/g, "").length === 10;
 const NONE = "__none__";
 
@@ -57,7 +57,7 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
   // parties added here, not saved yet
   const [added, setAdded] = useState<Customer[]>([]);
 
-  const saved = (c: Customer): Draft => ({ kind: c.kind || "customer", name: c.name, mobile: c.mobile || "", code: c.code || "", district: c.district || "", route: c.route || "", place: c.place || "", tallyNames: c.tallyNames || {} });
+  const saved = (c: Customer): Draft => ({ kind: c.kind || "customer", name: c.name, mobile: c.mobile || "", code: c.code || "", district: c.district || "", route: c.route || "", place: c.place || "", tallyNames: c.tallyNames || {}, subLedgers: c.subLedgers || [] });
   const draftOf = (c: Customer): Draft => drafts[c.id] || saved(c);
   const setDraft = (c: Customer, p: Partial<Draft>) => setDrafts((d) => ({ ...d, [c.id]: { ...draftOf(c), ...p } }));
   const isNew = (c: Customer) => added.some((x) => x.id === c.id);
@@ -81,8 +81,8 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
   const taken = useMemo(() => {
     const m = new Map<string, Set<string>>();
     for (const c of customers) for (const co of companies) {
-      const n = draftOf(c).tallyNames[co.key];
-      if (n) { if (!m.has(co.key)) m.set(co.key, new Set()); m.get(co.key)!.add(n.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim()); }
+      const ns = [draftOf(c).tallyNames[co.key], ...draftOf(c).subLedgers.filter((s) => s.company === co.key).map((s) => s.ledger)];
+      for (const n of ns) if (n) { if (!m.has(co.key)) m.set(co.key, new Set()); m.get(co.key)!.add(n.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim()); }
     }
     return m;
   }, [drafts, customers, companies]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -136,6 +136,21 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
         takenNow.get(k)!.add(v.name.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim());
       }
       const d: Draft = { ...base, tallyNames: { ...base.tallyNames, ...tallyNames } };
+      // brand ledgers: other free ledgers named like the main one plus a brand ("Mallu Mobiles - Pothnal - Makwell")
+      const subs = [...d.subLedgers];
+      for (const co of cos) {
+        const main = d.tallyNames[co.key] || co.parties.find((p) => normalizeName(p.n) === normalizeName(d.name))?.n || "";
+        if (!main) continue;
+        for (const p of co.parties) {
+          const brand = brandOf(main, p.n);
+          const k = p.n.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+          if (!brand || takenNow.get(co.key)?.has(k) || subs.some((s) => s.company === co.key && normalizeName(s.ledger) === normalizeName(p.n))) continue;
+          subs.push({ company: co.key, ledger: p.n, brand });
+          if (!takenNow.has(co.key)) takenNow.set(co.key, new Set());
+          takenNow.get(co.key)!.add(k);
+        }
+      }
+      d.subLedgers = subs;
       // a kind already saved (or chosen here) is kept; otherwise it comes from Tally
       const g = classify(ledgersOf(d.name, d.tallyNames), routes);
       whyAll[c.id].kind = g.why;
@@ -149,7 +164,7 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
   // a draft party for every Tally ledger not linked to anyone yet (the same party in several
   // companies becomes one), typed from Tally's groups; nothing is saved until "Save parties"
   function addMissingFromTally() {
-    const used = new Map(cos.map((co) => [co.key, new Set([...customers, ...added].map((c) => normalizeName(draftOf(c).tallyNames[co.key] || draftOf(c).name)))]));
+    const used = new Map(cos.map((co) => [co.key, new Set([...customers, ...added].flatMap((c) => [normalizeName(draftOf(c).tallyNames[co.key] || draftOf(c).name), ...draftOf(c).subLedgers.filter((s) => s.company === co.key).map((s) => normalizeName(s.ledger))]))]));
     const groups: { name: string; mobile: string; names: Record<string, string> }[] = [];
     for (const co of cos) for (const p of co.parties) {
       if (used.get(co.key)!.has(normalizeName(p.n))) continue;
@@ -162,7 +177,7 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
     const fresh = groups.map((g) => {
       const c = { id: uid(), name: "", mobile: "" } as Customer;
       const d = typed({ kind: "customer", name: g.name, mobile: g.mobile, code: "", district: "", route: "", place: "",
-        tallyNames: Object.fromEntries(Object.entries(g.names).filter(([, n]) => normalizeName(n) !== normalizeName(g.name))) }, false, work, c.id);
+        tallyNames: Object.fromEntries(Object.entries(g.names).filter(([, n]) => normalizeName(n) !== normalizeName(g.name))), subLedgers: [] }, false, work, c.id);
       return { c: { ...c, kind: d.kind }, d, why: classify(ledgersOf(g.name, g.names), routes).why };
     });
     setAdded((a) => [...fresh.map((x) => x.c), ...a]);
@@ -189,7 +204,7 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
         const d = draftOf(c);
         const name = d.name.trim();
         const tallyNames = Object.fromEntries(Object.entries(d.tallyNames).filter(([, v]) => v && normalizeName(v) !== normalizeName(name)));
-        return { coll: "customers", id: c.id, data: { ...c, kind: d.kind, name, mobile: d.mobile.trim(), code: d.code.trim().toUpperCase(), district: d.district, route: d.route, place: d.place, tallyNames }, before: isNew(c) ? null : c };
+        return { coll: "customers", id: c.id, data: { ...c, kind: d.kind, name, mobile: d.mobile.trim(), code: d.code.trim().toUpperCase(), district: d.district, route: d.route, place: d.place, tallyNames, subLedgers: d.subLedgers.filter((s) => s.ledger).map((s) => ({ ...s, brand: s.brand.trim() || "Brand" })) }, before: isNew(c) ? null : c };
       }));
       const nAdded = changed.filter(isNew).length;
       await logEvent("party-codes-saved", { name: "Parties & codes", added: nAdded, edited: changed.length - nAdded });
@@ -205,13 +220,16 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
     for (const c of customers) {
       if (!c.code) continue;
       for (const co of cos) {
-        const ledgerName = c.tallyNames?.[co.key] || c.name;
-        const p = co.parties.find((x) => normalizeName(x.n) === normalizeName(ledgerName));
-        if (!p) continue;
-        const keep = (p.al || []).filter((a) => !looksLikeCode(a));
-        const aliases = [c.code, ...keep];
-        if ((p.al || []).length === aliases.length && aliases.every((a) => (p.al || []).includes(a))) continue;   // already right
-        items.push({ key: co.key, ledger: p.n, aliases });
+        const ledgers = [{ ledger: c.tallyNames?.[co.key] || c.name, code: c.code },
+          ...(c.subLedgers || []).filter((s) => s.company === co.key).map((s) => ({ ledger: s.ledger, code: c.code + "-" + brandShort(s.brand) }))];
+        for (const l of ledgers) {
+          const p = co.parties.find((x) => normalizeName(x.n) === normalizeName(l.ledger));
+          if (!p) continue;
+          const keep = (p.al || []).filter((a) => !looksLikeCode(a));
+          const aliases = [l.code!, ...keep];
+          if ((p.al || []).length === aliases.length && aliases.every((a) => (p.al || []).includes(a))) continue;   // already right
+          items.push({ key: co.key, ledger: p.n, aliases });
+        }
       }
     }
     return items;
@@ -245,7 +263,7 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
     .sort((a, b) => Number(isNew(b)) - Number(isNew(a)) || (draftOf(a).code || "~").localeCompare(draftOf(b).code || "~") || a.name.localeCompare(b.name));
   const counts = { done: customers.filter((c) => status(c).done).length, total: customers.length };
   const unlinked = cos.map((co) => {
-    const used = new Set(customers.map((c) => normalizeName(draftOf(c).tallyNames[co.key] || draftOf(c).name)));
+    const used = new Set(customers.flatMap((c) => [normalizeName(draftOf(c).tallyNames[co.key] || draftOf(c).name), ...draftOf(c).subLedgers.filter((s) => s.company === co.key).map((s) => normalizeName(s.ledger))]));
     return { ...co, free: co.parties.filter((p) => !used.has(normalizeName(p.n))) };
   });
 
@@ -315,12 +333,27 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
               {cos.map((co) => {
                 const cur = d.tallyNames[co.key] || (co.parties.find((p) => normalizeName(p.n) === normalizeName(d.name))?.n || "");
                 const w = why[c.id]?.[co.key];
+                const subs = d.subLedgers.map((s, i) => ({ s, i })).filter((x) => x.s.company === co.key);
+                const setSub = (i: number, p: Partial<SubLedger>) => setDraft(c, { subLedgers: d.subLedgers.map((s, j) => (j === i ? { ...s, ...p } : s)) });
                 return (
-                  <Field key={co.key} label={co.label + (w && w !== "same name" && w !== "saved" ? " · " + w : "")}>
-                    <Select value={cur || NONE} onChange={(v) => setDraft(c, { tallyNames: { ...d.tallyNames, [co.key]: v === NONE ? "" : v } })}
-                      className={cn(!cur && "text-neutral-400", w === "similar name" && "border-amber-300 bg-amber-50/40")}
-                      options={[{ value: NONE, label: "— not in " + co.label + " —" }, ...co.parties.map((p) => p.n).sort().map((n) => ({ value: n, label: n }))]} />
-                  </Field>
+                  <div key={co.key} className="space-y-1.5">
+                    <Field label={co.label + (w && w !== "same name" && w !== "saved" ? " · " + w : "")}>
+                      <Select value={cur || NONE} onChange={(v) => setDraft(c, { tallyNames: { ...d.tallyNames, [co.key]: v === NONE ? "" : v } })}
+                        className={cn(!cur && "text-neutral-400", w === "similar name" && "border-amber-300 bg-amber-50/40")}
+                        options={[{ value: NONE, label: "— not in " + co.label + " —" }, ...co.parties.map((p) => p.n).sort().map((n) => ({ value: n, label: n }))]} />
+                    </Field>
+                    {/* brand ledgers of the same party in this company */}
+                    {subs.map(({ s, i }) => (
+                      <div key={i} className="flex gap-1.5 rounded-xl border border-violet-100 bg-violet-50/40 p-1.5">
+                        <Text className="w-24 shrink-0 text-xs" placeholder="Brand" value={s.brand} onChange={(e) => setSub(i, { brand: e.target.value })} />
+                        <Select className="min-w-0 flex-1 text-xs" value={s.ledger || NONE} onChange={(v) => setSub(i, { ledger: v === NONE ? "" : v })}
+                          options={[{ value: NONE, label: "— pick the brand ledger —" }, ...co.parties.map((p) => p.n).sort().map((n) => ({ value: n, label: n }))]} />
+                        <RowRemove onClick={() => setDraft(c, { subLedgers: d.subLedgers.filter((_, j) => j !== i) })} />
+                      </div>
+                    ))}
+                    <button type="button" className="text-xs font-semibold text-brand-700 hover:underline"
+                      onClick={() => setDraft(c, { subLedgers: [...d.subLedgers, { company: co.key, ledger: "", brand: "" }] })}>+ Brand ledger</button>
+                  </div>
                 );
               })}
             </div>

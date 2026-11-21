@@ -18,7 +18,7 @@ import { Chip } from "./ReceiptsReport";
 import { TallyFreshness } from "@/components/TallyFreshness";
 import { billsOf, useTallyBills } from "@/lib/tallydata";
 import { amountOf, companyIcon, receiptTotal, useCompanies, withAmount } from "@/lib/companies";
-import { partyKey, tallyNameOf } from "@/lib/parties";
+import { balanceIn, partyKey } from "@/lib/parties";
 
 
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
@@ -704,9 +704,9 @@ function BalancesView() {
 
   const rows = useMemo(() => customers.map((c) => {
     // each company under the customer's ledger name there (party codes)
-    const per = maps.map((m, i) => m[normalizeName(tallyNameOf(c, companies[i].key))]);
+    const per = companies.map((co) => balanceIn(balances[co.key], c, co.key) ?? undefined);
     return { c, per, total: per.reduce((t: number, v) => t + (v || 0), 0), inTally: per.some((v) => v !== undefined) };
-  }), [customers, maps, companies]);
+  }), [customers, balances, companies]);
   const customerKeys = useMemo(() => new Set(customers.map((c) => partyKey(c.name))), [customers]);
   const tallyOnly = useMemo(() => [...new Set(maps.flatMap((m) => Object.keys(m)))].filter((k) => !customerKeys.has(partyKey(k)))
     .map((k) => ({ k, name: names[k] || k, total: maps.reduce((t, m) => t + (m[k] || 0), 0) }))

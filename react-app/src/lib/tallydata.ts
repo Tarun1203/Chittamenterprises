@@ -64,4 +64,10 @@ export function billsOf(sets: Record<string, BillSet> | null, company: string, c
   return (sets?.[company]?.bills || []).filter((b) => partyKey(b.p) === k && b.a > 0).sort((x, y) => (x.d || "").localeCompare(y.d || ""));
 }
 
+// one ledger's open bills exactly (a brand ledger, without the party's other ledgers)
+export function billsOfLedger(sets: Record<string, BillSet> | null, company: string, ledger: string) {
+  const k = normalizeName(ledger);
+  return (sets?.[company]?.bills || []).filter((b) => normalizeName(b.p) === k && b.a > 0).sort((x, y) => (x.d || "").localeCompare(y.d || ""));
+}
+
 export const syncedWhen = (iso?: string) => (iso ? new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "");

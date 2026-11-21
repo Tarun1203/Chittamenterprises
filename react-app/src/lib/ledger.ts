@@ -11,7 +11,8 @@ import { partyKey } from "./parties";
 
 export type Account = string;   // a company key
 export interface LedgerRow { d: string; label: string; dr: number; cr: number; bal: number; t?: string; n?: string; via?: string; nar?: string; id?: string; v?: TallyVoucher }
-export interface LedgerPart { account: Account; label: string; opening: number; rows: LedgerRow[]; closing: number; known: boolean }
+// id: company + ledger (a company can have several sections: the party's main ledger and its brand ledgers)
+export interface LedgerPart { id: string; account: Account; ledger: string; brand?: string; label: string; opening: number; rows: LedgerRow[]; closing: number; known: boolean }
 
 const key = (s?: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const round = (n: number) => Math.round(n * 100) / 100;
@@ -25,15 +26,17 @@ export function syncedRange(sets: Record<string, TallyVoucherSet> | null) {
   return { from: f[f.length - 1] || "", to: t[t.length - 1] || "" };   // the range both companies cover
 }
 
+// exact: only this ledger (a party with brand ledgers gets one section per ledger)
 export function buildLedger(sets: Record<string, TallyVoucherSet> | null, balances: Record<string, BalanceSet>, account: Account,
-  customerName: string, label: string, from: string, to: string): LedgerPart {
+  customerName: string, label: string, from: string, to: string, opts: { exact?: boolean; brand?: string } = {}): LedgerPart {
   const k = key(customerName);
   const pk = partyKey(customerName);
-  const all = (sets?.[account]?.vouchers || []).filter((v) => key(v.p) === k || partyKey(v.p) === pk).sort((a, b) => a.d.localeCompare(b.d) || (a.n || "").localeCompare(b.n || ""));
+  const mine = (n: string) => key(n) === k || (!opts.exact && partyKey(n) === pk);
+  const all = (sets?.[account]?.vouchers || []).filter((v) => mine(v.p)).sort((a, b) => a.d.localeCompare(b.d) || (a.n || "").localeCompare(b.n || ""));
   const balMap = balances[account]?.balances || {};
   let closingNow = balMap[normalizeName(customerName)];
   if (closingNow === undefined) {
-    const hit = Object.keys(balMap).find((x) => key(x) === k || partyKey(x) === pk);
+    const hit = Object.keys(balMap).find((x) => mine(x));
     if (hit) closingNow = balMap[hit];
   }
   const known = closingNow !== undefined;
@@ -48,7 +51,7 @@ export function buildLedger(sets: Record<string, TallyVoucherSet> | null, balanc
     bal = round(bal + move(v));
     return { d: v.d, label: v.t + (v.n ? " " + v.n : "") + (v.nar ? " — " + v.nar : ""), dr: v.dr ? v.a : 0, cr: v.dr ? 0 : v.a, bal, t: v.t, n: v.n, via: v.via, nar: v.nar, id: v.id, v };
   });
-  return { account, label, opening, rows, closing, known };
+  return { id: account + "|" + normalizeName(customerName), account, ledger: customerName, brand: opts.brand, label, opening, rows, closing, known };
 }
 
 // the WhatsApp text
@@ -61,14 +64,14 @@ export function ledgerMessage(s: Settings, customerName: string, from: string, t
     "Dear " + customerName + ",\n\n" +
     "Here is your account statement from *" + msgDate(from) + "* to *" + msgDate(to) + "*.\n";
   parts.forEach((p) => {
-    msg += "\n" + companyIcon(p.account) + " *" + p.label + "*\n" +
+    msg += "\n" + companyIcon(p.account) + " *" + p.label + "*\n" + (p.brand ? "_" + p.ledger + "_\n" : "") +
       "Opening Balance: " + drcr(p.opening) + "\n";
     if (!p.rows.length) msg += "No transactions in this period.\n";
     p.rows.forEach((r) => {
       msg += "• " + msgDate(r.d) + " · " + r.label.replace(/ — .*$/, "") + " · " + (r.dr ? inr(r.dr) + " Dr" : inr(r.cr) + " Cr") + "\n";
     });
     msg += "*Closing Balance: " + drcr(p.closing) + "*\n";
-    const pb = bills?.[p.account];
+    const pb = bills?.[p.id] ?? bills?.[p.account];
     if (pb) {
       msg += "_Pending bills:_\n";
       if (!pb.length) msg += "None\n";
