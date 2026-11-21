@@ -44,15 +44,38 @@ export function nextSerial(customers: Customer[], district: string, route: strin
 // a code is any alias that looks like one (letters/digits joined by dashes, not a phone number)
 export const looksLikeCode = (a: string) => /^[A-Z]{2,}[A-Z0-9]*(-[A-Z0-9]+)+$/i.test(a.trim()) && !/^\d[\d-]*$/.test(a.trim());
 
-// the code of a party that isn't on a route: District – Type – Serial (e.g. RC-SUP-03)
+// what each type asks for: dealers a route and a place, technicians a place, the rest nothing
+export const needsRoute = (k: PartyKind) => k === "customer" || k === "both";
+export const needsPlace = (k: PartyKind) => needsRoute(k) || k === "technician";
 export const kindShort = (k: PartyKind) => PARTY_KINDS.find((x) => x.value === k)?.short || "OTH";
-export const offRouteCode = (district: string, kind: PartyKind, serial: number) => [district, kindShort(kind)].map((x) => x.trim().toUpperCase()).join("-") + "-" + String(serial).padStart(2, "0");
-export function nextOffRouteSerial(customers: Customer[], district: string, kind: PartyKind) {
-  const prefix = [district, kindShort(kind)].map((x) => x.trim().toUpperCase()).join("-") + "-";
+const nextAfter = (others: Customer[], prefix: string) => {
   let max = 0;
-  for (const c of customers) if (c.code?.toUpperCase().startsWith(prefix) && /^\d+$/.test(c.code.slice(prefix.length))) max = Math.max(max, Number(c.code.slice(prefix.length)));
+  for (const c of others) { const code = c.code?.toUpperCase() || ""; if (code.startsWith(prefix) && /^\d+$/.test(code.slice(prefix.length))) max = Math.max(max, Number(code.slice(prefix.length))); }
   return max + 1;
+};
+// the next code for a party of this type ("" while a route / place it needs is missing):
+//   dealer RC-KLM-KVTL-01 · technician TEC-RCR-01 · supplier VEN-001 · consumer CUS-001 · TRN-001 · EXP-001 · OTH-001
+export function makeCode(kind: PartyKind, route: string, place: string, routes: Route[], others: Customer[]) {
+  if (needsRoute(kind)) {
+    const r = routes.find((x) => x.code === route);
+    return r && place ? codeOf(r.district, r.code, place, nextSerial(others, r.district, r.code, place)) : "";
+  }
+  if (kind === "technician") {
+    if (!place) return "";
+    const prefix = "TEC-" + place.toUpperCase() + "-";
+    return prefix + String(nextAfter(others, prefix)).padStart(2, "0");
+  }
+  const prefix = kindShort(kind) + "-";
+  return prefix + String(nextAfter(others, prefix)).padStart(3, "0");
 }
+// a code the app made (so it may be replaced when the type, route or place changes)
+export const isMadeCode = (code: string) => !code || /^(VEN|CUS|TRN|EXP|OTH)-\d+$|^TEC-[A-Z0-9]+-\d+$|^[A-Z]+-[A-Z0-9]+-[A-Z0-9]+-\d+$|^[A-Z]+-[A-Z]{3}-\d+$/.test(code);
+// every place on every route (technicians are coded by place alone)
+export const allPlaces = (routes: Route[]) => {
+  const seen = new Map<string, { short: string; name: string }>();
+  for (const r of routes) for (const p of r.places) if (p.short && !seen.has(p.short)) seen.set(p.short, { short: p.short, name: p.name });
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+};
 
 /* ---------------- routes from Tally's own groups ---------------- */
 

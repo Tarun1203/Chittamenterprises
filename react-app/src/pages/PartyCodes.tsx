@@ -12,7 +12,7 @@ import { RowRemove, Select, Text } from "@/components/forms";
 import { useStore } from "@/lib/store";
 import { logEvent, normalizeName, PARTY_KINDS, saveRecords, saveSettings, uid, type Customer, type District, type PartyKind, type Route, type TallyParty } from "@/lib/data";
 import { useCompanies } from "@/lib/companies";
-import { classify, codeOf, looksLikeCode, nextOffRouteSerial, nextSerial, offRouteCode, oldCodes, partiesByCompany, routesFromTally, similarNames, suggestedRoutes, suggestLedgers } from "@/lib/parties";
+import { allPlaces, classify, guessPlace, isMadeCode, looksLikeCode, makeCode, needsPlace, needsRoute, oldCodes, partiesByCompany, routesFromTally, similarNames, suggestedRoutes, suggestLedgers } from "@/lib/parties";
 import { desktopRequest, inDesktopApp } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +26,7 @@ export function PartyCodes() {
   return (
     <div className="space-y-4">
       <PageHeader icon="location" eyebrow="Masters" title="Parties & codes"
-        subtitle="Customers and suppliers: add them, edit their details, give each a unique code (district – route – place – serial, e.g. RC-KLM-KVTL-01) and link its ledger in every Tally company — all here." />
+        subtitle="Dealers, technicians, suppliers, consumers, transport and expenses: add them, edit their details, give each a unique code and link its ledger in every Tally company — all here." />
       <details open={routesOpen || !(settings.routes || []).length} onToggle={(e) => setRoutesOpen((e.target as HTMLDetailsElement).open)}
         className="rounded-3xl border border-neutral-200 bg-white/70 p-4">
         <summary className="cursor-pointer text-base font-extrabold">🗺️ Routes & places <span className="text-sm font-semibold text-neutral-500">· {(settings.routes || []).length} routes</span></summary>
@@ -87,15 +87,17 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
     return m;
   }, [drafts, customers, companies]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  function placeCode(c: Customer, routeCode: string, placeShort: string, base: Draft) {
-    const r = routes.find((x) => x.code === routeCode);
-    if (!r || !placeShort) return { ...base, route: routeCode, place: placeShort };
-    const others = pending().filter((x) => x.id !== c.id);
-    const code = codeOf(r.district, r.code, placeShort, nextSerial(others, r.district, r.code, placeShort));
-    return { ...base, district: r.district, route: r.code, place: placeShort, code };
+  // a new type / route / place: the code the app made follows it (a code typed by hand is kept)
+  function recode(c: Customer, base: Draft, p: Partial<Draft>): Draft {
+    const d = { ...base, ...p };
+    if (!needsRoute(d.kind)) d.route = "";
+    if (!needsPlace(d.kind)) d.place = "";
+    const r = routes.find((x) => x.code === d.route);
+    d.district = needsRoute(d.kind) ? r?.district || "" : "";
+    if (isMadeCode(base.code)) d.code = makeCode(d.kind, d.route, d.place, routes, pending().filter((x) => x.id !== c.id));
+    return d;
   }
 
-  const district0 = settings.districts?.[0]?.code || routes[0]?.district || "RC";
   // a party's ledgers in every company (for its kind): its links, else its own name
   const ledgersOf = (name: string, names: Record<string, string>): TallyParty[] =>
     cos.flatMap((co) => co.parties.filter((p) => normalizeName(p.n) === normalizeName(names[co.key] || name)));
@@ -104,11 +106,12 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
     const g = classify(ledgersOf(d.name, d.tallyNames), routes);
     const kind = keepKind ? d.kind : g.kind;
     let next: Draft = { ...d, kind };
-    if (!next.route && g.route && (kind === "customer" || kind === "both")) next = { ...next, district: g.route.district, route: g.route.code, place: g.place?.short || next.place };
+    if (needsRoute(kind) && !next.route && g.route) next = { ...next, district: g.route.district, route: g.route.code, place: g.place?.short || next.place };
+    if (kind === "technician" && !next.place) next = { ...next, place: guessPlace([d.name, ...Object.values(d.tallyNames)], routes)?.place.short || "" };
+    if (!needsRoute(kind)) next = { ...next, route: "", district: "" };
+    if (!needsPlace(kind)) next = { ...next, place: "" };
     if (!next.code) {
-      const r = routes.find((x) => x.code === next.route);
-      if (r && next.place) next.code = codeOf(r.district, r.code, next.place, nextSerial(work, r.district, r.code, next.place));
-      else if (!next.route) next.code = offRouteCode(district0, kind, nextOffRouteSerial(work, district0, kind));
+      next.code = makeCode(kind, next.route, next.place, routes, work);
       const i = work.findIndex((x) => x.id === id);
       if (next.code) { if (i >= 0) work[i] = { ...work[i], code: next.code }; else work.push({ id, name: next.name, code: next.code }); }
     }
@@ -284,24 +287,28 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
               <Field label="Name"><Text value={d.name} onChange={(e) => setDraft(c, { name: e.target.value })} placeholder="e.g. Meghana Electronics And Electricals - Mudgal" className="font-semibold" /></Field>
               <Field label="Mobile"><Text type="tel" inputMode="tel" value={d.mobile} onChange={(e) => setDraft(c, { mobile: e.target.value })} placeholder="10-digit mobile"
                 className={cn(!mobileOk(d.mobile) && "border-rose-300 bg-rose-50/40")} /></Field>
-              <Field label={"Type" + (why[c.id]?.kind ? " · " + why[c.id].kind : "")}><Select value={d.kind} onChange={(v) => {
-                  const kind = v as PartyKind;
-                  // off a route: the code follows the type (RC-SUP-01…)
-                  const off = !d.route && (!d.code || /^[A-Z]+-[A-Z]{3}-\d+$/.test(d.code));
-                  setDraft(c, off ? { kind, code: offRouteCode(district0, kind, nextOffRouteSerial(pending().filter((x) => x.id !== c.id), district0, kind)) } : { kind });
-                }} options={PARTY_KINDS.map((k) => ({ value: k.value, label: k.label }))} /></Field>
+              <Field label={"Type" + (why[c.id]?.kind ? " · " + why[c.id].kind : "")}><Select value={d.kind} onChange={(v) => setDrafts((x) => ({ ...x, [c.id]: recode(c, d, { kind: v as PartyKind }) }))}
+                  options={PARTY_KINDS.map((k) => ({ value: k.value, label: k.label }))} /></Field>
             </div>
-            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1.2fr]">
-              <Field label="Route">
-                <Select value={d.route} onChange={(v) => setDraft(c, placeCode(c, v, "", { ...d, code: "" }))}
-                  options={[{ value: "", label: "—" }, ...routes.map((x) => ({ value: x.code, label: x.district + "-" + x.code + " · " + x.name }))]} />
-              </Field>
-              <Field label="Place">
-                <Select value={d.place} onChange={(v) => setDraft(c, placeCode(c, d.route, v, d))}
-                  options={[{ value: "", label: "—" }, ...(r?.places || []).map((p) => ({ value: p.short, label: p.short + " · " + p.name }))]} />
-              </Field>
-              <Field label="Code">
-                <Text value={d.code} onChange={(e) => setDraft(c, { code: e.target.value.toUpperCase() })} placeholder="RC-KLM-KVTL-01" className="font-mono" />
+            {/* dealers: route and place · technicians: place · the rest: a direct code */}
+            <div className={cn("grid gap-2", needsRoute(d.kind) ? "sm:grid-cols-[1fr_1fr_1.2fr]" : needsPlace(d.kind) ? "sm:grid-cols-[1fr_1.2fr]" : "sm:grid-cols-[1.2fr]")}>
+              {needsRoute(d.kind) && (
+                <Field label="Route">
+                  <Select value={d.route} onChange={(v) => setDrafts((x) => ({ ...x, [c.id]: recode(c, d, { route: v, place: "" }) }))}
+                    className={cn(!d.route && "border-amber-300 bg-amber-50/40")}
+                    options={[{ value: "", label: "— pick the route —" }, ...routes.map((x) => ({ value: x.code, label: x.district + "-" + x.code + " · " + x.name }))]} />
+                </Field>
+              )}
+              {needsPlace(d.kind) && (
+                <Field label="Place">
+                  <Select value={d.place} onChange={(v) => setDrafts((x) => ({ ...x, [c.id]: recode(c, d, { place: v }) }))}
+                    className={cn(!d.place && "border-amber-300 bg-amber-50/40")}
+                    options={[{ value: "", label: "— pick the place —" }, ...(needsRoute(d.kind) ? r?.places || [] : allPlaces(routes)).map((p) => ({ value: p.short, label: p.short + " · " + p.name }))]} />
+                </Field>
+              )}
+              <Field label={needsRoute(d.kind) ? "Dealer code" : d.kind === "technician" ? "Technician code" : d.kind === "supplier" ? "Vendor code" : d.kind === "consumer" ? "Customer code" : "Code"}>
+                <Text value={d.code} onChange={(e) => setDraft(c, { code: e.target.value.toUpperCase() })} className="font-mono"
+                  placeholder={needsRoute(d.kind) ? "pick route and place" : d.kind === "technician" ? "pick the place" : ""} />
               </Field>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
@@ -372,7 +379,7 @@ function Routes() {
           <Button onClick={save}><IconDeviceFloppy size={16} /> Save routes</Button>
           {!routes.length && <Button variant="secondary" onClick={suggest}><IconSparkles size={16} /> Fill in routes from Tally</Button>}
         </div>
-        <p className="text-sm text-neutral-500">A code is <b>District – Route – Place – Serial</b>, e.g. <span className="font-mono">RC-KLM-KVTL-01</span>; the serial counts up per place. A party not on a route gets <b>District – Type – Serial</b>: <span className="font-mono">RC-SUP-01</span> supplier, <span className="font-mono">RC-TEC-01</span> technician, <span className="font-mono">RC-CON-01</span> consumer, <span className="font-mono">RC-TRN-01</span> transporter, <span className="font-mono">RC-EXP-01</span> expense, <span className="font-mono">RC-OUT-01</span> customer outside the routes. Changing a short form later doesn't change codes already given.</p>
+        <p className="text-sm text-neutral-500">Codes by type — <b>Dealer</b>: District – Route – Place – Serial, e.g. <span className="font-mono">RC-KLM-KVTL-01</span> (pick route and place) · <b>Technician</b>: <span className="font-mono">TEC-RCR-01</span> (pick the place) · <b>Supplier</b>: vendor code <span className="font-mono">VEN-001</span> · <b>Consumer</b>: customer code <span className="font-mono">CUS-001</span> · <b>Transport</b> <span className="font-mono">TRN-001</span> · <b>Expenses</b> <span className="font-mono">EXP-001</span>. Serials count up by themselves. Changing a short form later doesn't change codes already given.</p>
       </Card>
 
       <Card className="space-y-3">

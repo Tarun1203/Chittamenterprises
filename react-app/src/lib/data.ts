@@ -18,11 +18,14 @@ export interface Customer {
 // what the party is: a customer on a route, a consumer (walk-in / individual), a technician,
 // a supplier, both (you buy from and sell to them), a transporter, an expense (shop rent, staff…) or other
 export type PartyKind = "customer" | "consumer" | "technician" | "supplier" | "both" | "transporter" | "expense" | "other";
+// short = the start of its code: dealers  RC-KLM-KVTL-01 (district-route-place-serial), technicians
+// TEC-RCR-01 (with the place), the rest a direct code: VEN-001 supplier (vendor), CUS-001 consumer…
+// ("customer" is stored for dealers, as before)
 export const PARTY_KINDS: { value: PartyKind; label: string; short: string }[] = [
-  { value: "customer", label: "Customer", short: "OUT" }, { value: "consumer", label: "Consumer", short: "CON" },
-  { value: "technician", label: "Technician", short: "TEC" }, { value: "supplier", label: "Supplier", short: "SUP" },
-  { value: "both", label: "Both (buy & sell)", short: "BTH" }, { value: "transporter", label: "Transporter", short: "TRN" },
-  { value: "expense", label: "Expense (rent, staff…)", short: "EXP" }, { value: "other", label: "Other", short: "OTH" },
+  { value: "customer", label: "Dealer", short: "" }, { value: "technician", label: "Technician", short: "TEC" },
+  { value: "supplier", label: "Supplier", short: "VEN" }, { value: "consumer", label: "Consumer", short: "CUS" },
+  { value: "transporter", label: "Transport", short: "TRN" }, { value: "expense", label: "Expenses (rent, staff…)", short: "EXP" },
+  { value: "both", label: "Dealer & supplier", short: "" }, { value: "other", label: "Other", short: "OTH" },
 ];
 // shown in customer lists (payments, reminders, orders…): everyone you sell to
 export const isCustomerKind = (k?: PartyKind) => !k || k === "customer" || k === "consumer" || k === "technician" || k === "both";

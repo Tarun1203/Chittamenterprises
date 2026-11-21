@@ -4,6 +4,16 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.33", date: "2026-11-21", title: "Party types: Dealer, Technician, Supplier, Consumer, Transport, Expenses — each with its own code",
+    items: [
+      "Dealer: asks for the route and place → dealer code RC-KLM-KVTL-01.",
+      "Technician: asks for the place → technician code TEC-RCR-01.",
+      "Supplier: direct vendor code VEN-001. Consumer: direct customer code CUS-001. Transport TRN-001, Expenses EXP-001.",
+      "Each party card shows only what its type needs; changing the type, route or place updates the code the app made (a code typed by hand is kept).",
+      "“Dealer & supplier” (dealer code, also in supplier lists) and “Other” stay at the end of the list.",
+    ],
+  },
+  {
     version: "3.32", date: "2026-11-21", title: "Party type and route read from your Tally groups", windows: "3.7",
     items: [
       "Parties & codes now works out each party's type from its Tally group and name: customer on a route, consumer (Customer / Customer - Cash / Customer - Credit Bills groups, or a person's name with no GSTIN), technician, supplier (Sundry Creditors), both (debtor and creditor), transporter, expense (rent, staff…) or other (own company / adjustment ledgers). The reason is shown next to the type.",
