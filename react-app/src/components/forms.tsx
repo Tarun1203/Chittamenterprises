@@ -11,6 +11,7 @@ import { logEvent, logMessage, normalizeName, type BalanceSet, type Customer } f
 import { waNumber } from "@/lib/messages";
 import { inr } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { balanceIn } from "@/lib/parties";
 
 /* ---------------- type-ahead box (shared by the pickers) ---------------- */
 interface Option { key: string; label: string; sub?: string }
@@ -231,19 +232,17 @@ export function MessagePanel({ type, customer, build, inputs, onGenerated, title
 }
 
 /* ---------------- Tally balances ---------------- */
-function balanceOf(set: BalanceSet | undefined, c: Customer) {
-  const v = set?.balances?.[normalizeName(c.name)];
-  return v === undefined ? null : v;
-}
+// the customer's balance in one company, under its ledger name there (party codes)
+const balanceOf = (set: BalanceSet | undefined, c: Customer, company: string) => balanceIn(set, c, company);
 // what to fill in for this customer from the last Tally import
 export function useTallyFill() {
   const { balances } = useStore();
   return (c: Customer | null) => {
     const others: Record<string, number | null> = {};
     if (!c) return { business: null, cash: null, others, note: "" };
-    const business = balanceOf(balances.business, c), cash = balanceOf(balances.cash, c);
+    const business = balanceOf(balances.business, c, "business"), cash = balanceOf(balances.cash, c, "cash");
     // companies added in the Windows app (every balances document except business, cash and the status note)
-    for (const k of Object.keys(balances)) if (k !== "business" && k !== "cash" && k !== "status") others[k] = balanceOf(balances[k], c);
+    for (const k of Object.keys(balances)) if (k !== "business" && k !== "cash" && k !== "status") others[k] = balanceOf(balances[k], c, k);
     if (business === null && cash === null && Object.values(others).every((v) => v === null)) {
       return { business, cash, others, note: Object.keys(balances).length ? "No Tally balance on file for this customer — enter it manually." : "" };
     }

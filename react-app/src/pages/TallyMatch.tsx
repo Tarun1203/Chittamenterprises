@@ -18,6 +18,7 @@ import { Chip } from "./ReceiptsReport";
 import { TallyFreshness } from "@/components/TallyFreshness";
 import { billsOf, useTallyBills } from "@/lib/tallydata";
 import { amountOf, companyIcon, receiptTotal, useCompanies, withAmount } from "@/lib/companies";
+import { partyKey, tallyNameOf } from "@/lib/parties";
 
 
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
@@ -287,7 +288,7 @@ function RecordDialog({ entry, onClose, accLabel, modes, cashMode, bankMode }: {
   const [note, setNote] = useState("");
   useEffect(() => {
     if (!entry) return;
-    setCustomer(customers.find((c) => normalizeName(c.name) === normalizeName(entry.p)) || null);
+    setCustomer(customers.find((c) => partyKey(c.name) === partyKey(entry.p)) || null);
     setMode(viaKind(entry.via) === "cash" ? cashMode : viaKind(entry.via) === "bank" ? bankMode : modes[0]);
     setNote(entry.nar || "");
     // only when another voucher is opened
@@ -624,12 +625,12 @@ function BalancesView() {
   const names = useMemo(() => Object.assign({}, ...companies.map((co) => balances[co.key]?.names || {}).reverse()) as Record<string, string>, [companies, balances]);
 
   const rows = useMemo(() => customers.map((c) => {
-    const k = normalizeName(c.name);
-    const per = maps.map((m) => m[k]);
+    // each company under the customer's ledger name there (party codes)
+    const per = maps.map((m, i) => m[normalizeName(tallyNameOf(c, companies[i].key))]);
     return { c, per, total: per.reduce((t: number, v) => t + (v || 0), 0), inTally: per.some((v) => v !== undefined) };
-  }), [customers, maps]);
-  const customerKeys = useMemo(() => new Set(customers.map((c) => normalizeName(c.name))), [customers]);
-  const tallyOnly = useMemo(() => [...new Set(maps.flatMap((m) => Object.keys(m)))].filter((k) => !customerKeys.has(k))
+  }), [customers, maps, companies]);
+  const customerKeys = useMemo(() => new Set(customers.map((c) => partyKey(c.name))), [customers]);
+  const tallyOnly = useMemo(() => [...new Set(maps.flatMap((m) => Object.keys(m)))].filter((k) => !customerKeys.has(partyKey(k)))
     .map((k) => ({ k, name: names[k] || k, total: maps.reduce((t, m) => t + (m[k] || 0), 0) }))
     .sort((a, b) => b.total - a.total), [maps, customerKeys, names]);
   const shown = rows.filter((r) => (filter === "all" || (filter === "owes" ? r.total > 0 : !r.inTally)) && (!q.trim() || r.c.name.toLowerCase().includes(q.trim().toLowerCase())))

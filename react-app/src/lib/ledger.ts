@@ -7,6 +7,7 @@ import { msgDate } from "./messages";
 import { inr } from "./format";
 
 import { companyIcon } from "./companies";
+import { partyKey } from "./parties";
 
 export type Account = string;   // a company key
 export interface LedgerRow { d: string; label: string; dr: number; cr: number; bal: number; t?: string; n?: string; via?: string; nar?: string; id?: string; v?: TallyVoucher }
@@ -27,11 +28,12 @@ export function syncedRange(sets: Record<string, TallyVoucherSet> | null) {
 export function buildLedger(sets: Record<string, TallyVoucherSet> | null, balances: Record<string, BalanceSet>, account: Account,
   customerName: string, label: string, from: string, to: string): LedgerPart {
   const k = key(customerName);
-  const all = (sets?.[account]?.vouchers || []).filter((v) => key(v.p) === k).sort((a, b) => a.d.localeCompare(b.d) || (a.n || "").localeCompare(b.n || ""));
+  const pk = partyKey(customerName);
+  const all = (sets?.[account]?.vouchers || []).filter((v) => key(v.p) === k || partyKey(v.p) === pk).sort((a, b) => a.d.localeCompare(b.d) || (a.n || "").localeCompare(b.n || ""));
   const balMap = balances[account]?.balances || {};
   let closingNow = balMap[normalizeName(customerName)];
   if (closingNow === undefined) {
-    const hit = Object.keys(balMap).find((x) => key(x) === k);
+    const hit = Object.keys(balMap).find((x) => key(x) === k || partyKey(x) === pk);
     if (hit) closingNow = balMap[hit];
   }
   const known = closingNow !== undefined;

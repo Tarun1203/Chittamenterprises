@@ -11,6 +11,7 @@ import { decodeFileText } from "@/lib/format";
 import { findDuplicates, pairKey, type DupGroup } from "@/lib/dupes";
 import { cn } from "@/lib/utils";
 import { companyList } from "@/lib/companies";
+import { tallyNameOf } from "@/lib/parties";
 
 const COLORS = ["from-brand-500 to-indigo-500", "from-emerald-500 to-teal-500", "from-amber-500 to-orange-500", "from-pink-500 to-rose-500", "from-violet-500 to-purple-500", "from-sky-500 to-cyan-500"];
 function initials(name: string) {
@@ -46,7 +47,7 @@ export function Customers() {
   const usageOf = (id: string) => usage.get(id) || { orders: 0, services: 0, receipts: 0 };
   const coList = companyList(balances, settings);
   // the companies (short names) whose Tally has this customer
-  const inTally = (c: Customer) => coList.filter((co) => balances[co.key]?.names?.[normalizeName(c.name)] !== undefined || balances[co.key]?.balances?.[normalizeName(c.name)] !== undefined)
+  const inTally = (c: Customer) => coList.filter((co) => { const k = normalizeName(tallyNameOf(c, co.key)); return balances[co.key]?.names?.[k] !== undefined || balances[co.key]?.balances?.[k] !== undefined; })
     .map((co) => (co.key === "business" ? "Chittam Ent." : co.label));
 
   const list = useMemo(() => {

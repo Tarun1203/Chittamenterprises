@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 import { auth } from "./firebase";
 import { isLocked, onCryptoChange, type CryptoConfig } from "./crypto";
+import { setParties } from "./parties";
 import { listenCollection, listenCrypto, listenDoc, defaultSettings, type Customer, type Product, type Transport, type Settings, type Order, type ServiceJob, type Receipt, type BalanceSet } from "./data";
 
 interface Store {
@@ -54,7 +55,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // sample data without signing in, so screens can be checked; nothing saves
     if (import.meta.env.DEV && new URLSearchParams(location.search).has("demo")) {
       import("./demo").then((d) => {
-        setUser(d.demoUser); setCustomers(d.demoCustomers); setProducts(d.demoProducts); setTransports(d.demoTransports);
+        setUser(d.demoUser); setParties(d.demoCustomers); setCustomers(d.demoCustomers); setProducts(d.demoProducts); setTransports(d.demoTransports);
         setOrders(d.demoOrders); setServices(d.demoServices); setReceipts(d.demoReceipts); setBalances(d.demoBalances);
         setSettingsLoaded(true); setSynced(true); setAuthReady(true); setCryptoReady(true);
       });
@@ -75,7 +76,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setError("");
     const fail = (e: Error) => setError(e.message);
     const unsubs = [
-      listenCollection<Customer>("customers", (items, fromCache) => { setCustomers(items); setSynced(!fromCache); }, fail),
+      listenCollection<Customer>("customers", (items, fromCache) => { setParties(items); setCustomers(items); setSynced(!fromCache); }, fail),
       listenCollection<Product>("products", (items) => setProducts(items), fail),
       listenCollection<Transport>("transports", (items) => setTransports(items), fail),
       listenCollection<Order>("orders", (items) => setOrders(items), fail),

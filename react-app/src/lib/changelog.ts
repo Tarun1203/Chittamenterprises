@@ -4,6 +4,15 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.30", date: "2026-11-21", title: "Party codes: one code per party, linked across every Tally company", windows: "3.5",
+    items: [
+      "New page Masters → Party codes. Set up districts, routes and places once (Routes & places), then each party gets a unique code: District – Route – Place – Serial, e.g. RC-KLM-KVTL-01.",
+      "Each party is linked to its ledger in every company even when the name is written differently (e.g. “Meghana Electronics” in Cash, “Meghana Electronics & Electricals - Mudgal” in Chittam). “Suggest for all” fills these in from the same name, the same old code, the same mobile or a similar name — check, then Save.",
+      "Balances, open bills, the Ledger Statement, Payment pages and Tally Match now use these links, so the different spellings count as one party.",
+      "Windows app 3.5: sends every party ledger with its aliases, and “Push codes to Tally” adds each party's code as the ledger alias in every company — after showing the full list for you to confirm. Phone-number aliases are kept; old route codes are replaced.",
+    ],
+  },
+  {
     version: "3.29", date: "2026-11-21", title: "Ledger Statement shows every company it checked",
     items: [
       "Under the customer, Ledger Statement now lists every Tally company (Chittam Enterprises, Cash, Vamana Enterprises…) marked “included” or “no account”.",

@@ -71,8 +71,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyProduct("Chittam Enterprises")]
 [assembly: System.Reflection.AssemblyCompany("Chittam Enterprises")]
 // keep in step with Program.DesktopVersion (build.ps1 checks)
-[assembly: System.Reflection.AssemblyVersion("3.4.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("3.4")]
+[assembly: System.Reflection.AssemblyVersion("3.5.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.5")]
 
 namespace ChittamEnterprises
 {
@@ -82,7 +82,7 @@ namespace ChittamEnterprises
         public const string ClassicUrl = "https://tarun1203.github.io/Chittamenterprises/";
         // where new versions of this program are published (desktop/ folder of the site)
         public const string UpdateUrl = "https://tarun1203.github.io/Chittamenterprises/desktop/version.json";
-        public const string DesktopVersion = "3.4";
+        public const string DesktopVersion = "3.5";
 
         [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -381,6 +381,8 @@ namespace ChittamEnterprises
     class StockLine { public string Name, Unit, Group = ""; public double Qty, Rate, SellingPrice; }
     class Debtor { public string Name, Mobile; }
     class Creditor { public string Name, Parent; public double Closing; }
+    // every party ledger (Sundry Debtors "D" / Sundry Creditors "C") with its mobile and Tally aliases
+    class Party { public string Name, Group, Mobile; public List<string> Aliases = new List<string>(); }
     class Bill { public string Party, Ref, Date, Due; public double Amount; public int Overdue; }
 
     static class Tally
@@ -660,6 +662,55 @@ namespace ChittamEnterprises
                 if (name.Length > 0) list.Add(new Creditor { Name = name, Parent = Text(e, "PARENT"), Closing = Num(Text(e, "CLOSINGBALANCE")) });
             }
             return list;
+        }
+
+        // all party ledgers with their aliases (Tally keeps the name and aliases in LANGUAGENAME.LIST)
+        public static List<Party> Parties(string url, string company)
+        {
+            var list = new List<Party>();
+            foreach (var g in new[] { "D", "C" })
+            {
+                var xml = Post(url, "<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>ChittamParties</ID></HEADER>" +
+                    "<BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>" +
+                    "<SVCURRENTCOMPANY>" + System.Security.SecurityElement.Escape(company) + "</SVCURRENTCOMPANY></STATICVARIABLES>" +
+                    "<TDL><TDLMESSAGE><COLLECTION NAME=\"ChittamParties\" ISMODIFY=\"No\"><TYPE>Ledger</TYPE>" +
+                    "<CHILDOF>" + (g == "D" ? "$$GroupSundryDebtors" : "$$GroupSundryCreditors") + "</CHILDOF><BELONGSTO>Yes</BELONGSTO>" +
+                    "<FETCH>Name, LedgerMobile, LedgerPhone, LanguageName</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>");
+                var doc = new XmlDocument();
+                doc.LoadXml(xml);
+                foreach (XmlElement e in doc.SelectNodes("//LEDGER"))
+                {
+                    var name = e.GetAttribute("NAME").Trim();
+                    if (name.Length == 0 || Regex.IsMatch(name, "bank a/c", RegexOptions.IgnoreCase)) continue;
+                    var party = new Party { Name = name, Group = g, Mobile = CleanMobile(Text(e, "LEDGERMOBILE")) ?? CleanMobile(Text(e, "LEDGERPHONE")) ?? "" };
+                    foreach (XmlElement n in e.SelectNodes(".//LANGUAGENAME.LIST/NAME.LIST/NAME"))
+                    {
+                        var a = n.InnerText.Trim();
+                        if (a.Length > 0 && a != name && !party.Aliases.Contains(a)) party.Aliases.Add(a);
+                    }
+                    list.Add(party);
+                }
+            }
+            return list;
+        }
+
+        // sets a ledger's aliases (the full list; the ledger's name stays first). Only the
+        // aliases are sent, so nothing else on the ledger changes. Returns null when done.
+        public static string SetAliases(string url, string company, string ledger, List<string> aliases)
+        {
+            Func<string, string> x = v => System.Security.SecurityElement.Escape(v ?? "");
+            var names = "<NAME>" + x(ledger) + "</NAME>" + string.Concat(aliases.Where(a => a.Length > 0 && a != ledger).Distinct().Select(a => "<NAME>" + x(a) + "</NAME>"));
+            var xml = "<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>All Masters</REPORTNAME>" +
+                "<STATICVARIABLES><SVCURRENTCOMPANY>" + x(company) + "</SVCURRENTCOMPANY></STATICVARIABLES></REQUESTDESC><REQUESTDATA>" +
+                "<TALLYMESSAGE xmlns:UDF=\"TallyUDF\"><LEDGER NAME=\"" + x(ledger) + "\" ACTION=\"Alter\">" +
+                "<LANGUAGENAME.LIST><NAME.LIST TYPE=\"String\">" + names + "</NAME.LIST><LANGUAGEID> 1033</LANGUAGEID></LANGUAGENAME.LIST>" +
+                "</LEDGER></TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>";
+            string res;
+            try { res = Post(url, xml); } catch (Exception ex) { return ex.Message; }
+            var altered = Regex.Match(res, "<ALTERED>\\s*(\\d+)\\s*</ALTERED>");
+            if (altered.Success && altered.Groups[1].Value != "0") return null;
+            var errs = Regex.Matches(res, "<LINEERROR>(.*?)</LINEERROR>").Cast<Match>().Select(m => WebUtility.HtmlDecode(m.Groups[1].Value)).ToList();
+            return errs.Count > 0 ? string.Join("; ", errs) : "Tally did not change the ledger";
         }
 
         public static List<Debtor> ParseDebtors(string xml)
@@ -1123,7 +1174,7 @@ namespace ChittamEnterprises
         }
 
         public static void SaveBalances(Settings s, string token, string key, string label, string company,
-            Dictionary<string, double> balances, Dictionary<string, string> names)
+            Dictionary<string, double> balances, Dictionary<string, string> names, List<Party> parties = null)
         {
             string now = Now();
             var bal = new Dictionary<string, object>();
@@ -1137,6 +1188,12 @@ namespace ChittamEnterprises
                 { "unmatched", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", new object[0] } } } } },
                 { "balances", Map(bal) }, { "names", Map(nm) }, { "at", Ts(now) }, { "by", Str(s.Email) }
             };
+            // n name, g D (Sundry Debtors) / C (Sundry Creditors), m mobile, al aliases (e.g. the party code)
+            if (parties != null)
+                fields["parties"] = new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", parties.Select(x => (object)Map(new Dictionary<string, object> {
+                    { "n", Str(x.Name) }, { "g", Str(x.Group) }, { "m", Str(x.Mobile) },
+                    { "al", new Dictionary<string, object> { { "arrayValue", new Dictionary<string, object> { { "values", x.Aliases.Select(a => (object)Str(a)).ToArray() } } } } }
+                })).ToArray() } } } };
             Send("PATCH", BaseUrl(s) + "balances/" + key, token, new Dictionary<string, object> { { "fields", Seal(s, "balances", fields) } });
             Log(s, token, "balances-synced", label, new Dictionary<string, object> { { "name", Str(label) }, { "company", Str(company) }, { "names", Int(balances.Count) } });
         }
@@ -1295,6 +1352,11 @@ namespace ChittamEnterprises
         {
             Log(s, token, "tally-voucher-posted", party, new Dictionary<string, object> {
                 { "name", Str(party) }, { "company", Str(company) }, { "amount", Dbl(amount) }, { "into", Str(into) }, { "date", Str(date) }, { "receiptId", Str(receiptId) } });
+        }
+
+        public static void LogAliases(Settings s, string token, int ok, int failed)
+        {
+            Log(s, token, "tally-party-codes-written", "Party codes", new Dictionary<string, object> { { "name", Str("Party codes") }, { "ledgers", Int(ok) }, { "failed", Int(failed) } });
         }
 
         public static void LogCompanySwitch(Settings s, string token, string label, string from, string to)
@@ -1530,14 +1592,20 @@ namespace ChittamEnterprises
                 }
                 catch (Exception ex) { Log("[" + company + "] Sundry Creditors customers skipped: " + ex.Message); }
 
+                // ---- every party ledger with its aliases (for party codes in the app) ----
+                List<Party> parties = null;
+                try { parties = Tally.Parties(Settings.TallyUrl, company); }
+                catch (Exception ex) { Log("[" + company + "] party list skipped: " + ex.Message); }
+
                 // ---- balances ----
-                var sig = string.Join("|", bal.Keys.OrderBy(k => k, StringComparer.Ordinal).Select(k => k + "=" + bal[k].ToString(CultureInfo.InvariantCulture)));
+                var sig = string.Join("|", bal.Keys.OrderBy(k => k, StringComparer.Ordinal).Select(k => k + "=" + bal[k].ToString(CultureInfo.InvariantCulture))) +
+                    (parties == null ? "" : "#" + string.Join("|", parties.OrderBy(x => x.Name, StringComparer.Ordinal).Select(x => x.Name + "=" + x.Group + x.Mobile + "=" + string.Join(",", x.Aliases))));
                 string hash = Hash(sig), last;
                 if (!force && Settings.LastHash.TryGetValue(key, out last) && last == hash) Log("[" + company + "] balances: no change");
                 else
                 {
                     if (token == null) token = Firebase.SignIn(Settings);
-                    Firebase.SaveBalances(Settings, token, key, label, company, bal, names);
+                    Firebase.SaveBalances(Settings, token, key, label, company, bal, names, parties);
                     Settings.LastHash[key] = hash;
                     Settings.LastStatus[key] = DateTime.Now.ToString("dd MMM yyyy, h:mm tt") + " · " + bal.Count + " names";
                     Settings.Save();
@@ -2449,6 +2517,7 @@ namespace ChittamEnterprises
                 case "tally-post-receipt": PostReceipt(obj); break;
                 case "share-file": ShareFile(obj); break;
                 case "tally-voucher": SendVoucher(obj); break;
+                case "tally-set-aliases": SetAliases(obj); break;
             }
         }
 
@@ -2508,6 +2577,54 @@ namespace ChittamEnterprises
 
         static string Str(Dictionary<string, object> o, string k) { object v; return o.TryGetValue(k, out v) && v != null ? Convert.ToString(v, CultureInfo.InvariantCulture) : ""; }
         string CompanyFor(string key) { return sync.Settings.CompanyFor(key); }
+        // party codes into Tally: each item = { key (company), ledger, aliases (the full list) }.
+        // A confirmation lists every change; nothing is written unless it's accepted.
+        void SetAliases(Dictionary<string, object> obj)
+        {
+            var reqId = Str(obj, "reqId");
+            var items = new List<Dictionary<string, object>>();
+            object raw;
+            if (obj.TryGetValue("items", out raw) && raw is System.Collections.ArrayList)
+                foreach (var it in (System.Collections.ArrayList)raw) { var d = it as Dictionary<string, object>; if (d != null) items.Add(d); }
+            Action<bool, string, List<object>> done = (ok, err, results) => Reply(new Dictionary<string, object> {
+                { "type", "tally-aliases-result" }, { "reqId", reqId }, { "ok", ok }, { "error", err ?? "" }, { "results", (results ?? new List<object>()).ToArray() } });
+            if (items.Count == 0) { done(false, "Nothing to send.", null); return; }
+            var lines = items.Take(25).Select(d => sync.Settings.LabelFor(Str(d, "key")) + ": " + Str(d, "ledger") + "  ->  " + string.Join(", ", ListOf(d, "aliases")));
+            var msg = "Write party codes into Tally as ledger aliases?\n\n" + string.Join("\n", lines) +
+                (items.Count > 25 ? "\n… and " + (items.Count - 25) + " more" : "") +
+                "\n\nOnly the aliases change; names, balances and everything else on the ledgers stay as they are.";
+            if (MessageBox.Show(this, msg, "Party codes → Tally (" + items.Count + " ledgers)", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK)
+            { done(false, "Cancelled.", null); return; }
+            var settings = sync.Settings;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                var results = new List<object>();
+                int okCount = 0;
+                foreach (var d in items)
+                {
+                    string key = Str(d, "key"), ledger = Str(d, "ledger"), company = settings.CompanyFor(key);
+                    string err = company.Length == 0 ? "Unknown company" : Tally.SetAliases(settings.TallyUrl, company, ledger, ListOf(d, "aliases"));
+                    if (err == null) okCount++;
+                    results.Add(new Dictionary<string, object> { { "key", key }, { "ledger", ledger }, { "ok", err == null }, { "error", err ?? "" } });
+                }
+                sync.Log("Party codes written into Tally: " + okCount + " of " + items.Count + " ledgers");
+                try
+                {
+                    var token = Firebase.SignIn(settings);
+                    Firebase.LogAliases(settings, token, okCount, items.Count - okCount);
+                }
+                catch { }
+                BeginInvoke((Action)delegate { done(true, "", results); sync.Start(true); });
+            });
+        }
+        static List<string> ListOf(Dictionary<string, object> d, string k)
+        {
+            object v;
+            var list = new List<string>();
+            if (d.TryGetValue(k, out v) && v is System.Collections.ArrayList) foreach (var x in (System.Collections.ArrayList)v) if (x != null) list.Add(x.ToString().Trim());
+            return list;
+        }
+
         void Reply(Dictionary<string, object> o) { try { if (web.CoreWebView2 != null) web.CoreWebView2.PostWebMessageAsJson(new JavaScriptSerializer().Serialize(o)); } catch { } }
 
         void SendCashBank(string key)

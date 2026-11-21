@@ -2,6 +2,7 @@
 // and possible duplicate transactions on either side. Pure functions, so the
 // rules are easy to read and check.
 import { normalizeName, type Receipt, type TallyVoucher, type TallyVoucherSet } from "./data";
+import { partyKey } from "./parties";
 import { amountOf, receiptKeys } from "./companies";
 
 // a company key: "business", "cash", or one added in the Windows app
@@ -79,7 +80,7 @@ export function matchPayments(app: AppPayment[], tally: TallyEntry[]): MatchResu
     let best: TallyEntry | null = null, gap = Infinity;
     for (const t of tally) {
       if (used.has(t.key) || t.account !== a.account || !SAME_AMOUNT(t.a, a.amount)) continue;
-      if (sameName !== (normalizeName(t.p) === normalizeName(a.name))) continue;
+      if (sameName !== (partyKey(t.p) === partyKey(a.name))) continue;
       const g = days(t.d, a.date);
       if (g <= DAY_WINDOW && g < gap) { best = t; gap = g; }
     }
@@ -111,7 +112,7 @@ export function matchPayments(app: AppPayment[], tally: TallyEntry[]): MatchResu
   res.onlyApp = res.onlyApp.filter((a) => {
     const other = pairs.find((p) => p.app.receiptId !== a.receiptId && p.tally.account === a.account && (
       (a.tallyId && p.tally.id === a.tallyId) || sameNo(p.tally.n, a.tallyNo) ||
-      (normalizeName(p.app.name) === normalizeName(a.name) && SAME_AMOUNT(p.tally.a, a.amount) && days(p.tally.d, a.date) <= DAY_WINDOW)));
+      (partyKey(p.app.name) === partyKey(a.name) && SAME_AMOUNT(p.tally.a, a.amount) && days(p.tally.d, a.date) <= DAY_WINDOW)));
     if (other) { res.recordedTwice.push({ app: a, other }); return false; }
     return true;
   });
@@ -140,7 +141,7 @@ function clusters<T>(items: T[], key: (x: T) => string, date: (x: T) => string, 
 }
 
 export function tallyDuplicates(entries: TallyEntry[]): DupGroup<TallyEntry>[] {
-  const sameEntry = clusters(entries, (v) => [v.account, v.t.toLowerCase(), normalizeName(v.p), v.a.toFixed(2), v.dr].join("|"), (v) => v.d,
+  const sameEntry = clusters(entries, (v) => [v.account, v.t.toLowerCase(), partyKey(v.p), v.a.toFixed(2), v.dr].join("|"), (v) => v.d,
     "Same customer, type and amount within " + DAY_WINDOW + " days");
   // the same voucher number used twice for the same voucher type
   const byNo = new Map<string, TallyEntry[]>();
@@ -160,7 +161,7 @@ export function appDuplicates(receipts: Receipt[], from: string, to: string): Du
 // Tally sales vs Dispatch messages and Orders; Tally credit notes vs Stock
 // Return messages. Customers are matched ignoring case and punctuation.
 export interface SentMessage { id: string; type: string; customerName?: string; date: string; inputs?: Record<string, unknown> }
-const custKey = (s?: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const custKey = (s?: string) => partyKey(s).replace(/[^a-z0-9]/g, "");
 const noKey = (s?: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const signedDays = (from: string, to: string) => Math.round((new Date(to + "T00:00:00").getTime() - new Date(from + "T00:00:00").getTime()) / 86400000);
 

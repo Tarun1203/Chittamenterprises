@@ -18,6 +18,7 @@ import { Catalog } from "@/pages/Catalog";
 import { TallyMatch } from "@/pages/TallyMatch";
 import { WhatsNew } from "@/pages/WhatsNew";
 import { Ledger } from "@/pages/Ledger";
+import { PartyCodes } from "@/pages/PartyCodes";
 
 function Gate() {
   const { user, authReady, cryptoReady, locked } = useStore();
@@ -51,6 +52,7 @@ function Gate() {
         <Route path="/history" element={<History />} />
         <Route path="/whats-new" element={<WhatsNew />} />
         <Route path="/ledger" element={<Ledger />} />
+        <Route path="/party-codes" element={<PartyCodes />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Dashboard />} />
       </Routes>

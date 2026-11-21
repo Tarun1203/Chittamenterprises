@@ -6,6 +6,7 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "./firebase";
 import { normalizeName } from "./data";
 import { openDoc } from "./crypto";
+import { partyKey } from "./parties";
 
 export interface StockItem { n: string; q: number; u?: string }
 export interface StockSet { company: string; label?: string; tallyCompany?: string; syncedAt?: string; items: Record<string, StockItem> }
@@ -59,8 +60,8 @@ export function stockOf(sets: Record<string, StockSet> | null, name: string) {
 
 // a customer's open invoices in one company, oldest first
 export function billsOf(sets: Record<string, BillSet> | null, company: string, customerName: string) {
-  const k = normalizeName(customerName);
-  return (sets?.[company]?.bills || []).filter((b) => normalizeName(b.p) === k && b.a > 0).sort((x, y) => (x.d || "").localeCompare(y.d || ""));
+  const k = partyKey(customerName);
+  return (sets?.[company]?.bills || []).filter((b) => partyKey(b.p) === k && b.a > 0).sort((x, y) => (x.d || "").localeCompare(y.d || ""));
 }
 
 export const syncedWhen = (iso?: string) => (iso ? new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "");

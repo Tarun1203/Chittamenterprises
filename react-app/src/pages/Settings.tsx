@@ -13,6 +13,7 @@ import { APP_UPDATED, APP_VERSION } from "@/version";
 import { cn } from "@/lib/utils";
 import { firebaseProjectId } from "@/lib/firebase";
 import { useCompanies } from "@/lib/companies";
+import { partyKey } from "@/lib/parties";
 
 type Upi = S["upiList"][number];
 type Bank = S["bankList"][number];
@@ -147,7 +148,7 @@ export function Settings() {
   }
 
   /* ---------- Tally balances ---------- */
-  const customerKeys = useMemo(() => new Set(customers.map((c) => normalizeName(c.name))), [customers]);
+  const customerKeys = useMemo(() => new Set(customers.map((c) => partyKey(c.name))), [customers]);
   async function importBalances(file: File) {
     try {
       const rows = parseTallyBalances(decodeFileText(await file.arrayBuffer()));
@@ -158,7 +159,7 @@ export function Settings() {
       rows.forEach((r) => {
         const k = normalizeName(r.name);
         map[k] = r.amount; names[k] = r.name;
-        if (customerKeys.has(k)) matched++; else unmatched.push(r.name);
+        if (customerKeys.has(partyKey(k))) matched++; else unmatched.push(r.name);
       });
       const label = companies.find((c) => c.key === balCompany)?.label || (balCompany === "business" ? settings.businessName || "Chittam Enterprises" : "Cash Bill");
       await saveBalances(balCompany, {
@@ -276,8 +277,8 @@ export function Settings() {
             {companies.map(({ key: co, label: coLabel, icon }) => {
               const e = balances[co];
               const keys = Object.keys(e?.balances || {});
-              const matched = keys.filter((k) => customerKeys.has(k)).length;
-              const unmatched = keys.filter((k) => !customerKeys.has(k)).map((k) => e?.names?.[k] || k).sort();
+              const matched = keys.filter((k) => customerKeys.has(partyKey(k))).length;
+              const unmatched = keys.filter((k) => !customerKeys.has(partyKey(k))).map((k) => e?.names?.[k] || k).sort();
               const label = co === "cash" ? "Cash Bill" : coLabel;
               return (
                 <div key={co} className="rounded-xl border border-neutral-100 bg-neutral-50/60 p-3">
