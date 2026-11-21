@@ -4,6 +4,15 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.34", date: "2026-11-21", title: "Ledger Statement: choose whether zero-balance companies are included",
+    items: [
+      "New tick box “Include zero-balance companies”. Unticked (the usual), the statement, PDF, WhatsApp message and print show only the companies where the customer has a balance.",
+      "Ticked, companies with a zero balance — and those where the customer has no account — are included too, each as a ₹0 statement.",
+      "Under the customer, each company now shows “included”, “zero balance” or “no account”.",
+      "Each company's statement uses the customer's ledger name in that company (Parties & codes), so differently spelled ledgers are found.",
+    ],
+  },
+  {
     version: "3.33", date: "2026-11-21", title: "Party types: Dealer, Technician, Supplier, Consumer, Transport, Expenses — each with its own code",
     items: [
       "Dealer: asks for the route and place → dealer code RC-KLM-KVTL-01.",

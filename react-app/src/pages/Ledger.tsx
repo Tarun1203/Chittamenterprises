@@ -21,6 +21,7 @@ import { billAge } from "@/lib/ledger";
 import { fetchVoucher, summaryVoucher, tallyLedgerPdf, voucherPdf, voucherTitle } from "@/lib/tallypdf";
 import type { LedgerRow as Row } from "@/lib/ledger";
 import { companyIcon, useCompanies } from "@/lib/companies";
+import { tallyNameOf } from "@/lib/parties";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
@@ -35,6 +36,8 @@ export function Ledger() {
   const [to, setTo] = useState(todayISO());
   // bill-wise pending payments (from Tally's open bills), with their age in days
   const [withBills, setWithBills] = useState(true);
+  // companies whose closing balance is zero (or with no account) are left out unless this is ticked
+  const [withZero, setWithZero] = useState(false);
   const tallyBills = useTallyBills();
   const biz = settings.businessName || "Chittam Enterprises";
 
@@ -55,10 +58,14 @@ export function Ledger() {
     if (id && !customer) { const c = customers.find((x) => x.id === id); if (c) setCustomer(c); }
   }, [params, customers, customer]);
 
-  const parts: LedgerPart[] = useMemo(() => !customer || !sets || !from ? [] : [
-    // one section per company (Chittam Enterprises, Cash, and any added in the Windows app)
-    ...companies.map((c) => buildLedger(sets, balances, c.key, customer.name, c.key === "business" ? biz : c.label, from, to)),
-  ].filter((p) => p.known || p.rows.length), [customer, sets, balances, from, to, biz, companies]);
+  // one section per company (Chittam Enterprises, Cash, and any added in the Windows app), each
+  // under the customer's ledger name in that company
+  const allParts: LedgerPart[] = useMemo(() => !customer || !sets || !from ? [] :
+    companies.map((c) => buildLedger(sets, balances, c.key, tallyNameOf(customer, c.key), c.key === "business" ? biz : c.label, from, to)),
+  [customer, sets, balances, from, to, biz, companies]);
+  const isZero = (p: LedgerPart) => Math.abs(p.closing) < 0.005;
+  const hasAccount = (p: LedgerPart) => p.known || p.rows.length > 0;
+  const parts = allParts.filter((p) => (withZero ? true : hasAccount(p) && !isZero(p)));
   const total = parts.reduce((t, p) => t + p.closing, 0);
   const tooEarly = range.from && from < range.from;
 
@@ -146,6 +153,10 @@ export function Ledger() {
               <input type="checkbox" className="size-4 accent-brand-600" checked={withBills} onChange={(e) => setWithBills(e.target.checked)} />
               Include pending bills (bill-wise, with number of days)
             </label>
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" className="size-4 accent-brand-600" checked={withZero} onChange={(e) => setWithZero(e.target.checked)} />
+              Include zero-balance companies (also where there's no account — shown as ₹0)
+            </label>
             {tooEarly && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">Transactions before {msgDate(range.from)} aren't synced, so the opening balance on {msgDate(from)} would be wrong. Start on or after {msgDate(range.from)}.</p>}
             {customer && <TallyFreshness customer={customer.name} />}
             {/* every company is checked; one without a Tally account for this customer is left out of the statement */}
@@ -153,10 +164,12 @@ export function Ledger() {
               <div className="flex flex-wrap gap-1.5">
                 {companies.map((c) => {
                   const has = parts.some((p) => p.account === c.key);
+                  const p = allParts.find((x) => x.account === c.key);
+                  const state = has ? "included" : p && hasAccount(p) ? "zero balance" : "no account";
                   return (
                     <span key={c.key} className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold", has ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-neutral-200 bg-neutral-50 text-neutral-500")}
-                      title={has ? "In the statement" : "No Tally balance or transactions for this customer in " + c.label}>
-                      {c.icon} {c.key === "business" ? biz : c.label} · {has ? "included" : "no account"}
+                      title={has ? "In the statement" : state === "zero balance" ? "Balance is zero — tick “Include zero-balance companies” to add it" : "No Tally balance or transactions for this customer in " + c.label}>
+                      {c.icon} {c.key === "business" ? biz : c.label} · {state}
                     </span>
                   );
                 })}
@@ -164,7 +177,9 @@ export function Ledger() {
             )}
           </Card>
 
-          {customer && sets && !parts.length && <Card className="text-sm text-neutral-500">No Tally balance or transactions for {customer.name} in any company. Check the name matches the Tally ledger.</Card>}
+          {customer && sets && !parts.length && <Card className="text-sm text-neutral-500">{allParts.some(hasAccount)
+            ? <>Every company's balance is zero for {customer.name}. Tick “Include zero-balance companies” to send a ₹0 statement.</>
+            : <>No Tally balance or transactions for {customer.name} in any company. Check the name matches the Tally ledger (or link it in Parties &amp; codes).</>}</Card>}
           {parts.map((p) => (
             <Card key={p.account} className="p-0">
               <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
