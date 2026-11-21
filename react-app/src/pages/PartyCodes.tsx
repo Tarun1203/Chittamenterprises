@@ -1,36 +1,38 @@
-// Party codes: one unique code per party (district-route-place-serial, e.g.
+// Parties & codes — everything about a party in one place: add a customer,
+// edit its name and mobile, give it a code, set up routes and places.
+// One unique code per party (district-route-place-serial, e.g.
 // RC-KLM-KVTL-01) and its ledger name in each Tally company, so a party written
 // differently in Chittam, Cash and Vamana counts as one everywhere. Saved in the
 // app; "Push to Tally" (Windows app) then adds the code as the ledger's alias in
 // every company, after a confirmation there.
 import { useMemo, useState } from "react";
-import { IconDeviceFloppy, IconPlus, IconSparkles, IconUpload } from "@tabler/icons-react";
+import { IconDeviceFloppy, IconPlus, IconSparkles, IconUpload, IconUserPlus } from "@tabler/icons-react";
 import { Button, Card, Field, PageHeader, useToast } from "@/components/kit";
 import { RowRemove, Select, Text } from "@/components/forms";
 import { useStore } from "@/lib/store";
-import { logEvent, normalizeName, saveRecords, saveSettings, type Customer, type District, type Route } from "@/lib/data";
+import { logEvent, normalizeName, saveRecords, saveSettings, uid, type Customer, type District, type Route } from "@/lib/data";
 import { useCompanies } from "@/lib/companies";
 import { codeOf, guessPlace, looksLikeCode, nextSerial, oldCodes, partiesByCompany, suggestedRoutes, suggestLedgers } from "@/lib/parties";
 import { desktopRequest, inDesktopApp } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 
-type Draft = { code: string; district: string; route: string; place: string; tallyNames: Record<string, string> };
+type Draft = { name: string; mobile: string; code: string; district: string; route: string; place: string; tallyNames: Record<string, string> };
+const mobileOk = (m: string) => !m.trim() || m.replace(/\D/g, "").length === 10;
 const NONE = "__none__";
 
 export function PartyCodes() {
-  const [tab, setTab] = useState<"parties" | "routes">("parties");
+  const { settings } = useStore();
+  const [routesOpen, setRoutesOpen] = useState(false);
   return (
-    <div>
-      <PageHeader icon="location" eyebrow="Masters" title="Party codes"
-        subtitle="One unique code for each party (district – route – place – serial, e.g. RC-KLM-KVTL-01) and its ledger name in every Tally company." />
-      <div className="mb-4 flex gap-2">
-        {(["parties", "routes"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={cn("rounded-full border px-4 py-1.5 text-sm font-bold", tab === t ? "border-brand-600 bg-brand-600 text-white" : "border-neutral-200 bg-white text-neutral-600")}>
-            {t === "parties" ? "Parties" : "Routes & places"}
-          </button>
-        ))}
-      </div>
-      {tab === "parties" ? <Parties onRoutes={() => setTab("routes")} /> : <Routes />}
+    <div className="space-y-4">
+      <PageHeader icon="location" eyebrow="Masters" title="Parties & codes"
+        subtitle="Add customers, edit their details, give each a unique code (district – route – place – serial, e.g. RC-KLM-KVTL-01) and link its ledger in every Tally company — all here." />
+      <details open={routesOpen || !(settings.routes || []).length} onToggle={(e) => setRoutesOpen((e.target as HTMLDetailsElement).open)}
+        className="rounded-3xl border border-neutral-200 bg-white/70 p-4">
+        <summary className="cursor-pointer text-base font-extrabold">🗺️ Routes & places <span className="text-sm font-semibold text-neutral-500">· {(settings.routes || []).length} routes</span></summary>
+        <div className="mt-4"><Routes /></div>
+      </details>
+      <Parties onRoutes={() => setRoutesOpen(true)} />
     </div>
   );
 }
@@ -49,18 +51,28 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"todo" | "all" | "done">("todo");
   const [busy, setBusy] = useState("");
+  // parties added here, not saved yet
+  const [added, setAdded] = useState<Customer[]>([]);
 
-  const draftOf = (c: Customer): Draft => drafts[c.id] || { code: c.code || "", district: c.district || "", route: c.route || "", place: c.place || "", tallyNames: c.tallyNames || {} };
+  const saved = (c: Customer): Draft => ({ name: c.name, mobile: c.mobile || "", code: c.code || "", district: c.district || "", route: c.route || "", place: c.place || "", tallyNames: c.tallyNames || {} });
+  const draftOf = (c: Customer): Draft => drafts[c.id] || saved(c);
   const setDraft = (c: Customer, p: Partial<Draft>) => setDrafts((d) => ({ ...d, [c.id]: { ...draftOf(c), ...p } }));
-  const changed = customers.filter((c) => drafts[c.id] && JSON.stringify(drafts[c.id]) !== JSON.stringify({ code: c.code || "", district: c.district || "", route: c.route || "", place: c.place || "", tallyNames: c.tallyNames || {} }));
+  const isNew = (c: Customer) => added.some((x) => x.id === c.id);
+  const changed = [...added, ...customers.filter((c) => drafts[c.id] && JSON.stringify(drafts[c.id]) !== JSON.stringify(saved(c)))];
+  function addParty() {
+    const c: Customer = { id: uid(), name: "", mobile: "" };
+    setAdded((a) => [c, ...a]);
+    setDrafts((d) => ({ ...d, [c.id]: saved(c) }));
+    setFilter("all"); setQ("");
+  }
 
   // codes as they'd be after saving (to find the next serial and duplicates)
-  const pending = (): Customer[] => allCustomers.map((c) => (drafts[c.id] ? { ...c, code: drafts[c.id].code } : c));
+  const pending = (): Customer[] => [...added, ...allCustomers].map((c) => (drafts[c.id] ? { ...c, code: drafts[c.id].code } : c));
   const dupCodes = useMemo(() => {
     const seen = new Map<string, number>();
     for (const c of pending()) if (c.code && !c.mergedInto) seen.set(c.code.toUpperCase(), (seen.get(c.code.toUpperCase()) || 0) + 1);
     return new Set([...seen].filter(([, n]) => n > 1).map(([k]) => k));
-  }, [drafts, allCustomers]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [drafts, allCustomers, added]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // a Tally ledger already linked to another customer can't be picked twice
   const taken = useMemo(() => {
@@ -117,16 +129,25 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
   async function save() {
     if (dupCodes.size) { toast("Two parties have the same code: " + [...dupCodes].join(", ")); return; }
     if (!changed.length) { toast("Nothing changed."); return; }
+    for (const c of changed) {
+      const d = draftOf(c);
+      if (!d.name.trim()) { toast("Enter a name for every party (" + (isNew(c) ? "new party" : c.name) + ")."); return; }
+      if (!mobileOk(d.mobile)) { toast(d.name + ": the mobile number should have 10 digits."); return; }
+      const clash = [...allCustomers, ...added].find((x) => x.id !== c.id && normalizeName(drafts[x.id]?.name ?? x.name) === normalizeName(d.name));
+      if (clash) { toast(d.name.trim() + (clash.removed || clash.mergedInto ? " exists but is removed — restore it in Customers (Show removed & merged)." : " is already a party.")); return; }
+    }
     setBusy("Saving…");
     try {
       await saveRecords(changed.map((c) => {
-        const d = drafts[c.id];
-        const tallyNames = Object.fromEntries(Object.entries(d.tallyNames).filter(([, v]) => v && normalizeName(v) !== normalizeName(c.name)));
-        return { coll: "customers", id: c.id, data: { ...c, code: d.code.trim().toUpperCase(), district: d.district, route: d.route, place: d.place, tallyNames }, before: c };
+        const d = draftOf(c);
+        const name = d.name.trim();
+        const tallyNames = Object.fromEntries(Object.entries(d.tallyNames).filter(([, v]) => v && normalizeName(v) !== normalizeName(name)));
+        return { coll: "customers", id: c.id, data: { ...c, name, mobile: d.mobile.trim(), code: d.code.trim().toUpperCase(), district: d.district, route: d.route, place: d.place, tallyNames }, before: isNew(c) ? null : c };
       }));
-      await logEvent("party-codes-saved", { name: "Party codes", customers: changed.length });
-      toast(changed.length + " parties saved.");
-      setDrafts({});
+      const nAdded = changed.filter(isNew).length;
+      await logEvent("party-codes-saved", { name: "Parties & codes", added: nAdded, edited: changed.length - nAdded });
+      toast((nAdded ? nAdded + " added, " : "") + (changed.length - nAdded) + " saved.");
+      setDrafts({}); setAdded([]);
     } catch (e) { toast("Could not save: " + (e as Error).message); }
     finally { setBusy(""); }
   }
@@ -167,16 +188,16 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
 
   const status = (c: Customer) => {
     const d = draftOf(c);
-    const linked = cos.filter((co) => co.parties.some((p) => normalizeName(p.n) === normalizeName(d.tallyNames[co.key] || c.name))).length;
+    const linked = cos.filter((co) => co.parties.some((p) => normalizeName(p.n) === normalizeName(d.tallyNames[co.key] || d.name))).length;
     return { d, linked, done: !!d.code && linked > 0 };
   };
-  const list = customers
-    .filter((c) => !q.trim() || (c.name + " " + (draftOf(c).code || "") + " " + Object.values(draftOf(c).tallyNames).join(" ")).toLowerCase().includes(q.trim().toLowerCase()))
-    .filter((c) => filter === "all" || (filter === "done") === status(c).done)
-    .sort((a, b) => (draftOf(a).code || "~").localeCompare(draftOf(b).code || "~") || a.name.localeCompare(b.name));
+  const list = [...added, ...customers]
+    .filter((c) => isNew(c) || !q.trim() || (draftOf(c).name + " " + draftOf(c).mobile + " " + (draftOf(c).code || "") + " " + Object.values(draftOf(c).tallyNames).join(" ")).toLowerCase().includes(q.trim().toLowerCase()))
+    .filter((c) => isNew(c) || filter === "all" || (filter === "done") === status(c).done)
+    .sort((a, b) => Number(isNew(b)) - Number(isNew(a)) || (draftOf(a).code || "~").localeCompare(draftOf(b).code || "~") || a.name.localeCompare(b.name));
   const counts = { done: customers.filter((c) => status(c).done).length, total: customers.length };
   const unlinked = cos.map((co) => {
-    const used = new Set(customers.map((c) => normalizeName(draftOf(c).tallyNames[co.key] || c.name)));
+    const used = new Set(customers.map((c) => normalizeName(draftOf(c).tallyNames[co.key] || draftOf(c).name)));
     return { ...co, free: co.parties.filter((p) => !used.has(normalizeName(p.n))) };
   });
 
@@ -184,8 +205,9 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
     <div className="space-y-4">
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={suggestAll} disabled={!!busy}><IconSparkles size={16} /> Suggest for all</Button>
-          <Button variant="secondary" onClick={save} disabled={!!busy || !changed.length}><IconDeviceFloppy size={16} /> {busy === "Saving…" ? busy : "Save" + (changed.length ? " (" + changed.length + ")" : "")}</Button>
+          <Button onClick={addParty} disabled={!!busy}><IconUserPlus size={16} /> Add party</Button>
+          <Button variant="secondary" onClick={suggestAll} disabled={!!busy}><IconSparkles size={16} /> Suggest for all</Button>
+          <Button variant="secondary" onClick={save} disabled={!!busy || !changed.length}><IconDeviceFloppy size={16} /> {busy === "Saving…" ? busy : "Save parties" + (changed.length ? " (" + changed.length + ")" : "")}</Button>
           {inDesktopApp() && <Button variant="secondary" onClick={push} disabled={!!busy || !fullLists}><IconUpload size={16} /> {busy.startsWith("Waiting") ? busy : "Push codes to Tally"}</Button>}
           <span className="ml-auto text-sm text-neutral-500">{counts.done} of {counts.total} parties coded and linked</span>
         </div>
@@ -205,11 +227,16 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
         return (
           <Card key={c.id} className={cn("space-y-3", drafts[c.id] && "ring-2 ring-brand-200", d.code && dupCodes.has(d.code.toUpperCase()) && "ring-2 ring-rose-300")}>
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="font-extrabold">{c.name}</p>
-                <p className="text-xs text-neutral-500">{c.mobile || "No mobile"}{olds.length ? " · old code in Tally: " + olds.join(", ") : ""}</p>
+              <p className="text-xs text-neutral-500">{isNew(c) ? "New party — not saved yet" : olds.length ? "Old code in Tally: " + olds.join(", ") : "\u00a0"}</p>
+              <div className="flex items-center gap-1">
+                <span className={cn("rounded-full px-2.5 py-1 text-xs font-bold", isNew(c) ? "bg-brand-50 text-brand-700" : done ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>{isNew(c) ? "New" : done ? "Done" : "To do"}</span>
+                {isNew(c) && <RowRemove onClick={() => { setAdded((a) => a.filter((x) => x.id !== c.id)); setDrafts((x) => { const n = { ...x }; delete n[c.id]; return n; }); }} />}
               </div>
-              <span className={cn("rounded-full px-2.5 py-1 text-xs font-bold", done ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>{done ? "Done" : "To do"}</span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[2fr_1fr]">
+              <Field label="Name"><Text value={d.name} onChange={(e) => setDraft(c, { name: e.target.value })} placeholder="e.g. Meghana Electronics And Electricals - Mudgal" className="font-semibold" /></Field>
+              <Field label="Mobile"><Text type="tel" inputMode="tel" value={d.mobile} onChange={(e) => setDraft(c, { mobile: e.target.value })} placeholder="10-digit mobile"
+                className={cn(!mobileOk(d.mobile) && "border-rose-300 bg-rose-50/40")} /></Field>
             </div>
             <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1.2fr]">
               <Field label="Route">
@@ -226,7 +253,7 @@ function Parties({ onRoutes }: { onRoutes: () => void }) {
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
               {cos.map((co) => {
-                const cur = d.tallyNames[co.key] || (co.parties.some((p) => normalizeName(p.n) === normalizeName(c.name)) ? c.name : "");
+                const cur = d.tallyNames[co.key] || (co.parties.find((p) => normalizeName(p.n) === normalizeName(d.name))?.n || "");
                 const w = why[c.id]?.[co.key];
                 return (
                   <Field key={co.key} label={co.label + (w && w !== "same name" && w !== "saved" ? " · " + w : "")}>

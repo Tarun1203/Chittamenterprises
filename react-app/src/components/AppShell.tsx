@@ -40,7 +40,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
     group: "Masters",
     items: [
       { to: "/customers", label: "Customers", icon: "boy" },
-      { to: "/party-codes", label: "Party codes", icon: "location" },
+      { to: "/party-codes", label: "Parties & codes", icon: "location" },
       { to: "/products", label: "Products", icon: "cube" },
       { to: "/transports", label: "Transports", icon: "location" },
     ],
