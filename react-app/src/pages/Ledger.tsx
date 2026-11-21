@@ -148,9 +148,23 @@ export function Ledger() {
             </label>
             {tooEarly && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">Transactions before {msgDate(range.from)} aren't synced, so the opening balance on {msgDate(from)} would be wrong. Start on or after {msgDate(range.from)}.</p>}
             {customer && <TallyFreshness customer={customer.name} />}
+            {/* every company is checked; one without a Tally account for this customer is left out of the statement */}
+            {customer && sets && companies.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {companies.map((c) => {
+                  const has = parts.some((p) => p.account === c.key);
+                  return (
+                    <span key={c.key} className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold", has ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-neutral-200 bg-neutral-50 text-neutral-500")}
+                      title={has ? "In the statement" : "No Tally balance or transactions for this customer in " + c.label}>
+                      {c.icon} {c.key === "business" ? biz : c.label} · {has ? "included" : "no account"}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </Card>
 
-          {customer && sets && !parts.length && <Card className="text-sm text-neutral-500">No Tally balance or transactions for {customer.name} in either company. Check the name matches the Tally ledger.</Card>}
+          {customer && sets && !parts.length && <Card className="text-sm text-neutral-500">No Tally balance or transactions for {customer.name} in any company. Check the name matches the Tally ledger.</Card>}
           {parts.map((p) => (
             <Card key={p.account} className="p-0">
               <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">

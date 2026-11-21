@@ -4,6 +4,13 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.29", date: "2026-11-21", title: "Ledger Statement shows every company it checked",
+    items: [
+      "Under the customer, Ledger Statement now lists every Tally company (Chittam Enterprises, Cash, Vamana Enterprises…) marked “included” or “no account”.",
+      "A company is in the statement when the customer has a Tally balance or transactions there; otherwise it shows “no account”, so you can see it was checked.",
+    ],
+  },
+  {
     version: "3.28", date: "2026-11-20", title: "Added Tally companies show in Settings",
     items: [
       "Settings → Tally balances now lists every company synced from Tally (for example Vamana Enterprises), with when it was synced and how many customers it has — not just Chittam Enterprises and Cash.",
