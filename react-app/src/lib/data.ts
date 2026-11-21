@@ -40,6 +40,8 @@ export interface Settings {
   bankList: { label?: string; accountNo: string; ifsc?: string; bankBranch?: string; isDefault?: boolean }[];
   paymentModes: string[];
   notDuplicates?: string[];   // customer pairs marked "not duplicates" ("idA|idB")
+  // Tally Match possible duplicates checked and found to be real, separate transactions
+  checkedDuplicates?: { key: string; by: string; at: string; what: string }[];
   districts?: District[];     // for party codes
   routes?: Route[];
 }

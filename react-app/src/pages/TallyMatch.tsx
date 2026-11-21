@@ -8,8 +8,8 @@ import { IconAlertTriangle, IconCheck, IconFileText, IconLink, IconLinkOff, Icon
 import { Button, Card, Dialog, EmptyState, Field, PageHeader, useToast } from "@/components/kit";
 import { CustomerPicker, Select, Text } from "@/components/forms";
 import { useStore } from "@/lib/store";
-import { loadLatest, loadTallyVouchers, normalizeName, saveRecord, uid, type Customer, type MessageEntry, type Receipt, type TallyVoucherSet } from "@/lib/data";
-import { appDuplicates, appPayments, isReceipt, matchPayments, matchSales, type SentMessage, type SalesResult, tallyDuplicates, tallyEntries, DAY_WINDOW, viaKind, type Account, type AppPayment, type Pair, type TallyEntry } from "@/lib/tallymatch";
+import { loadLatest, loadTallyVouchers, normalizeName, saveRecord, saveSettings, uid, type Customer, type MessageEntry, type Receipt, type TallyVoucherSet } from "@/lib/data";
+import { appDuplicates, appPayments, dupKey, isReceipt, matchPayments, matchSales, type SentMessage, type SalesResult, tallyDuplicates, tallyEntries, DAY_WINDOW, viaKind, type Account, type AppPayment, type Pair, type TallyEntry } from "@/lib/tallymatch";
 import { desktopPost, desktopSend, inDesktopApp, useDesktopReply, useDesktopStatus } from "@/lib/desktop";
 import { msgDate } from "@/lib/messages";
 import { inr, todayISO } from "@/lib/format";
@@ -70,7 +70,10 @@ export function TallyMatch() {
   }, [sets, receipts, from, to, account, messages, orders]);
 
   const hasVouchers = !!sets && Object.values(sets).some((s) => s.vouchers?.length);
-  const dupCount = result ? result.tallyDups.length + result.appDups.length : 0;
+  // possible duplicates still to check (the ones marked "both are real" don't count)
+  const checkedDups = new Set((settings.checkedDuplicates || []).map((c) => c.key));
+  const dupCount = result ? result.tallyDups.filter((g) => !checkedDups.has("t:" + dupKey(g.items.map((v) => v.id || v.key)))).length
+    + result.appDups.filter((g) => !checkedDups.has("a:" + dupKey(g.items.map((r) => r.id)))).length : 0;
 
   return (
     <div>
@@ -590,26 +593,101 @@ function SalesView({ r, accLabel }: { r: SalesResult; accLabel: (a: Account) => 
 }
 
 /* ---------------- duplicates ---------------- */
+// Possible duplicates. Each card: "Checked — both are real" (saved, with who and when; the card
+// moves to "Checked" and can be put back), or "It's a duplicate" (how to fix it — in Tally, the
+// app never changes vouchers; in the app, cancel the extra payment).
 function DuplicatesView({ tally, app, accLabel }: { tally: ReturnType<typeof tallyDuplicates>; app: ReturnType<typeof appDuplicates>; accLabel: (a: Account) => string }) {
+  const { settings, settingsLoaded, user } = useStore();
+  const toast = useToast();
+  const [showChecked, setShowChecked] = useState(false);
+  const [howTo, setHowTo] = useState("");
+  const checked = settings.checkedDuplicates || [];
+  const isChecked = (k: string) => checked.some((c) => c.key === k);
+  const tKey = (g: (typeof tally)[number]) => "t:" + dupKey(g.items.map((v) => v.id || v.key));
+  const aKey = (g: (typeof app)[number]) => "a:" + dupKey(g.items.map((r) => r.id));
+  async function setChecked(k: string, on: boolean, what: string) {
+    const next = on ? [...checked.filter((c) => c.key !== k), { key: k, by: user?.email || "", at: new Date().toISOString(), what }] : checked.filter((c) => c.key !== k);
+    try { await saveSettings({ ...settings, checkedDuplicates: next }, settingsLoaded ? settings : null); toast(on ? "Marked as real, separate transactions." : "Put back in the list."); }
+    catch (e) { toast("Could not save: " + (e as Error).message); }
+  }
+  const tOpen = tally.filter((g) => !isChecked(tKey(g))), aOpen = app.filter((g) => !isChecked(aKey(g)));
+  const tDone = tally.filter((g) => isChecked(tKey(g))), aDone = app.filter((g) => isChecked(aKey(g)));
+  const nDone = tDone.length + aDone.length;
   if (!tally.length && !app.length) return <EmptyState icon="star" title="No possible duplicates" text={"Nothing with the same customer and amount within " + DAY_WINDOW + " days, in the app or in Tally."} />;
+  const by = (k: string) => { const c = checked.find((x) => x.key === k); return c ? "Checked by " + (c.by || "—") + " · " + new Date(c.at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : ""; };
+
+  const tallyCard = (g: (typeof tally)[number], done: boolean) => {
+    const k = tKey(g);
+    const sameNo = g.why.includes("Same voucher number");
+    return (
+      <Card key={k} className={cn("p-0", done && "opacity-70")}>
+        <div className="flex flex-wrap items-center gap-2 border-b border-neutral-100 px-4 py-2.5 text-sm font-bold">
+          {done ? <IconCheck size={16} className="text-emerald-600" /> : <IconAlertTriangle size={16} className="text-amber-500" />} In Tally · {g.why}
+          {done && <span className="ml-auto text-xs font-medium text-neutral-500">{by(k)}</span>}
+        </div>
+        <div className="divide-y divide-neutral-100">{g.items.map((t) => <Row key={t.key} tone={done ? "ok" : "warn"} left={t.p} sub={tallySub(t, accLabel) + (t.dr ? " · debit" : " · credit")} right={inr(t.a)} />)}</div>
+        {howTo === k && (
+          <div className="space-y-1.5 border-t border-neutral-100 bg-amber-50/60 px-4 py-3 text-sm text-neutral-700">
+            <p className="font-bold">Fix it in Tally ({accLabel(g.items[0].account)}):</p>
+            <ol className="list-decimal space-y-1 pl-5">
+              <li>Open <b>Day Book</b> (Gateway → Display More Reports → Day Book) and press <b>F2</b> to go to {g.items.map((t) => msgDate(t.d)).join(" / ")}.</li>
+              <li>Open each {g.items[0].t} ({g.items.map((t) => "#" + (t.n || "—")).join(", ")}) for {g.items[0].p} and compare the items and amounts.</li>
+              <li>If one was entered twice: open the extra one and press <b>Alt+X</b> to cancel it (keeps the number) or <b>Alt+D</b> to delete it.</li>
+              {sameNo && <li>If both are real sales that just share a number: change the second one's voucher number (e.g. the next free number).</li>}
+            </ol>
+            <p className="text-xs text-neutral-500">The app picks up the change at the next Tally sync, and the card goes away by itself.</p>
+          </div>
+        )}
+        {!done ? (
+          <div className="flex flex-wrap gap-2 border-t border-neutral-100 px-4 py-2.5">
+            <Button size="sm" variant="secondary" onClick={() => setChecked(k, true, g.items[0].p + " · " + g.items.map((t) => t.t + " #" + (t.n || "—") + " " + t.d).join(", "))}><IconCheck size={15} /> Checked — both are real</Button>
+            <Button size="sm" variant="secondary" onClick={() => setHowTo(howTo === k ? "" : k)}><IconAlertTriangle size={15} /> It's a duplicate — how to fix</Button>
+          </div>
+        ) : (
+          <div className="border-t border-neutral-100 px-4 py-2"><Button size="sm" variant="secondary" onClick={() => setChecked(k, false, "")}>Put back in the list</Button></div>
+        )}
+      </Card>
+    );
+  };
+  const appCard = (g: (typeof app)[number], done: boolean) => {
+    const k = aKey(g);
+    return (
+      <Card key={k} className={cn("p-0", done && "opacity-70")}>
+        <div className="flex flex-wrap items-center gap-2 border-b border-neutral-100 px-4 py-2.5 text-sm font-bold">
+          {done ? <IconCheck size={16} className="text-emerald-600" /> : <IconAlertTriangle size={16} className="text-amber-500" />} In the app (Payments Received) · {g.why}
+          {done && <span className="ml-auto text-xs font-medium text-neutral-500">{by(k)}</span>}
+        </div>
+        <div className="divide-y divide-neutral-100">{g.items.map((r: Receipt) => (
+          <Row key={r.id} tone={done ? "ok" : "warn"} left={r.customerName} right={inr(receiptTotal(r))}
+            sub={msgDate(r.date) + " · " + r.mode + " · " + r.source + (r.ref ? " " + r.ref : "") + (r.note ? " · " + r.note : "")} />
+        ))}</div>
+        {howTo === k && <p className="border-t border-neutral-100 bg-amber-50/60 px-4 py-3 text-sm text-neutral-700">Open <b>Payment Updated → Payments Received</b>, find the extra payment, edit it and tick <b>Cancelled</b> (it's kept, marked cancelled — nothing is deleted).</p>}
+        {!done ? (
+          <div className="flex flex-wrap gap-2 border-t border-neutral-100 px-4 py-2.5">
+            <Button size="sm" variant="secondary" onClick={() => setChecked(k, true, g.items[0].customerName + " · " + g.items.map((r) => r.date + " " + receiptTotal(r)).join(", "))}><IconCheck size={15} /> Checked — both are real</Button>
+            <Button size="sm" variant="secondary" onClick={() => setHowTo(howTo === k ? "" : k)}><IconAlertTriangle size={15} /> It's a duplicate — how to fix</Button>
+          </div>
+        ) : (
+          <div className="border-t border-neutral-100 px-4 py-2"><Button size="sm" variant="secondary" onClick={() => setChecked(k, false, "")}>Put back in the list</Button></div>
+        )}
+      </Card>
+    );
+  };
+
   return (
     <div className="space-y-4">
-      <p className="text-sm text-neutral-500">These look alike — they may be real separate transactions. Check each one before changing anything in Tally.</p>
-      {tally.map((g, i) => (
-        <Card key={"t" + i} className="p-0">
-          <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-2.5 text-sm font-bold"><IconAlertTriangle size={16} className="text-amber-500" /> In Tally · {g.why}</div>
-          <div className="divide-y divide-neutral-100">{g.items.map((t) => <Row key={t.key} tone="warn" left={t.p} sub={tallySub(t, accLabel) + (t.dr ? " · debit" : " · credit")} right={inr(t.a)} />)}</div>
-        </Card>
-      ))}
-      {app.map((g, i) => (
-        <Card key={"a" + i} className="p-0">
-          <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-2.5 text-sm font-bold"><IconAlertTriangle size={16} className="text-amber-500" /> In the app (Payments Received) · {g.why}</div>
-          <div className="divide-y divide-neutral-100">{g.items.map((r: Receipt) => (
-            <Row key={r.id} tone="warn" left={r.customerName} right={inr(receiptTotal(r))}
-              sub={msgDate(r.date) + " · " + r.mode + " · " + r.source + (r.ref ? " " + r.ref : "") + (r.note ? " · " + r.note : "") + " — cancel the extra one on Payment Updated → Payments Received"} />
-          ))}</div>
-        </Card>
-      ))}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-neutral-500">These look alike — they may be real separate transactions. Check each one: mark it <b>Checked — both are real</b>, or fix the extra one.</p>
+        {nDone > 0 && <Button size="sm" variant="secondary" onClick={() => setShowChecked((x) => !x)}>{showChecked ? "Hide checked" : "Show checked (" + nDone + ")"}</Button>}
+      </div>
+      {!tOpen.length && !aOpen.length && <EmptyState icon="star" title="All checked" text={nDone + " possible duplicate" + (nDone === 1 ? " was" : "s were") + " checked and marked as real."} />}
+      {tOpen.map((g) => tallyCard(g, false))}
+      {aOpen.map((g) => appCard(g, false))}
+      {showChecked && <>
+        <p className="pt-2 text-xs font-bold uppercase tracking-wide text-neutral-500">Checked — real, separate transactions</p>
+        {tDone.map((g) => tallyCard(g, true))}
+        {aDone.map((g) => appCard(g, true))}
+      </>}
     </div>
   );
 }

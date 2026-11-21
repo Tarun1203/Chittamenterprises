@@ -148,8 +148,17 @@ export function tallyDuplicates(entries: TallyEntry[]): DupGroup<TallyEntry>[] {
   entries.filter((v) => v.n).forEach((v) => { const k = [v.account, v.t.toLowerCase(), v.n.toLowerCase()].join("|"); byNo.set(k, [...(byNo.get(k) || []), v]); });
   const sameNo: DupGroup<TallyEntry>[] = [];
   byNo.forEach((list) => { if (new Set(list.map((v) => v.id || v.key)).size > 1) sameNo.push({ why: "Same voucher number used twice", items: list }); });
-  return [...sameNo, ...sameEntry];
+  // the same entries found by both checks: one card listing both reasons
+  const out: DupGroup<TallyEntry>[] = [];
+  for (const g of [...sameNo, ...sameEntry]) {
+    const k = dupKey(g.items.map((v) => v.id || v.key));
+    const hit = out.find((x) => dupKey(x.items.map((v) => v.id || v.key)) === k);
+    if (hit) { if (!hit.why.includes(g.why)) hit.why += " · " + g.why; } else out.push({ why: g.why, items: [...g.items] });
+  }
+  return out;
 }
+// one key per set of entries (order doesn't matter): what "checked — both are real" is saved under
+export const dupKey = (ids: string[]) => [...ids].sort().join("|");
 
 export function appDuplicates(receipts: Receipt[], from: string, to: string): DupGroup<Receipt>[] {
   const live = receipts.filter((r) => !r.cancelled && r.date >= from && r.date <= to);

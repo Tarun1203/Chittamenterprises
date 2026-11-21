@@ -4,6 +4,14 @@ export interface Release { version: string; date: string; title: string; items: 
 
 export const RELEASES: Release[] = [
   {
+    version: "3.35", date: "2026-11-21", title: "Tally Match duplicates: mark the real ones, fix the rest",
+    items: [
+      "Each possible duplicate now has “Checked — both are real”: it's saved with who checked it and when, leaves the list and no longer counts. “Show checked” lists them, with “Put back in the list”.",
+      "“It's a duplicate — how to fix” shows the steps for that pair: Day Book on those dates, compare the vouchers, cancel (Alt+X) or delete (Alt+D) the extra one — or give the second one a new number when both are real. The app never changes Tally vouchers itself; the card goes away after the next Tally sync.",
+      "The same pair found twice (same voucher number, and same customer and amount within 3 days) is now one card with both reasons.",
+    ],
+  },
+  {
     version: "3.34", date: "2026-11-21", title: "Ledger Statement: choose whether zero-balance companies are included",
     items: [
       "New tick box “Include zero-balance companies”. Unticked (the usual), the statement, PDF, WhatsApp message and print show only the companies where the customer has a balance.",
